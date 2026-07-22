@@ -1,0 +1,40 @@
+# Override de produção. Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Diferenças em relação ao dev:
+#   - Nenhuma porta do banco ou da API exposta no host
+#   - Caddy na frente pegando 80/443 e fazendo HTTPS via Let's Encrypt
+#   - Web (nginx) só ouve internamente
+#   - DOMINIO controla o certificado emitido pelo Caddy
+
+services:
+  db:
+    ports: !override []   # não expõe 5432 pra fora
+
+  api:
+    ports: !override []   # nem 3000
+
+  web:
+    ports: !override []   # nem 8080
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: oficina-caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"     # HTTP/3
+    environment:
+      DOMINIO: ${DOMINIO:?defina DOMINIO no .env (ex: 5-161-42-10.sslip.io)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

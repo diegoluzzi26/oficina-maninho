@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+
+  body {
+    @apply bg-[#f4f5f9] text-slate-800 font-sans;
+    /* Textura de chapa escovada: diagonal que ecoa o arco do logo,
+       discreta o bastante para não competir com o conteúdo. */
+    background-image:
+      repeating-linear-gradient(
+        100deg,
+        rgba(40, 48, 144, .022) 0px,
+        rgba(40, 48, 144, .022) 1px,
+        transparent 1px,
+        transparent 5px
+      );
+  }
+
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  ::selection { @apply bg-maninho-600 text-white; }
+
+  :focus-visible {
+    outline: 2px solid #283090;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-md border border-slate-200/90 shadow-card;
+  }
+
+  /* Cartão com faixa da marca no topo */
+  .card-marca {
+    @apply card relative overflow-hidden;
+  }
+  .card-marca::before {
+    content: '';
+    @apply absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-maninho-600 via-maninho-500 to-ouro-500;
+  }
+
+  .label {
+    @apply text-[10.5px] font-semibold uppercase tracking-[.12em] text-slate-500;
+  }
+
+  .input {
+    @apply w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm
+           placeholder:text-slate-400 outline-none transition
+           focus:border-maninho-600 focus:ring-2 focus:ring-maninho-600/15;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2
+           text-sm font-semibold tracking-wide transition active:translate-y-px
+           disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn bg-maninho-600 text-white hover:bg-maninho-700 shadow-sm; }
+  .btn-ghost   { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-400; }
+  .btn-ouro    { @apply btn bg-ouro-500 text-painel-900 hover:bg-ouro-600 shadow-sm; }
+  .btn-escuro  { @apply btn bg-painel-900 text-white hover:bg-painel-800; }
+
+  .th {
+    @apply px-4 py-2.5 text-left text-[10.5px] font-bold uppercase
+           tracking-[.1em] text-slate-500;
+  }
+  .td { @apply px-4 py-3 text-sm text-slate-700; }
+
+  /* Marcador diagonal ecoando o arco do letreiro */
+  .titulo-secao {
+    @apply relative pl-3 font-display text-base font-semibold uppercase
+           tracking-wide text-maninho-800;
+  }
+  .titulo-secao::before {
+    content: '';
+    @apply absolute left-0 top-1/2 h-[70%] w-[3px] -translate-y-1/2
+           skew-y-[-12deg] rounded-full bg-ouro-500;
+  }
+
+  .numero {
+    @apply tnum font-display font-semibold leading-none tracking-tight;
+  }
+}
+
+@keyframes sobe {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.anima { animation: sobe .4s cubic-bezier(.22,.9,.3,1) both; }
+
+@keyframes pulso {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, .5); }
+  50%      { box-shadow: 0 0 0 5px rgba(225, 29, 72, 0); }
+}
+.pulso { animation: pulso 2.2s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anima, .pulso { animation: none; }
+}

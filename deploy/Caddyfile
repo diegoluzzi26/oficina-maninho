@@ -1,0 +1,40 @@
+# Caddy fica na frente de tudo: pega HTTPS de graça no Let's Encrypt,
+# proxa /api -> API Node e o resto -> web (nginx que serve o React).
+#
+# {$DOMINIO} vem do docker-compose (ex: 5-161-42-10.sslip.io).
+# Se um dia trocarmos por dominio.com.br, muda só a variável e o Caddy
+# revalida automaticamente com Let's Encrypt.
+
+{$DOMINIO} {
+	encode gzip
+
+	# API: tudo em /api vai pro backend Node
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# WhatsApp webhook precisa ser público (a Meta chama sem token)
+	handle /api/whatsapp/webhook {
+		reverse_proxy api:3000
+	}
+
+	# Frontend estático (build do Vite servido pelo nginx do container `web`)
+	handle {
+		reverse_proxy web:80
+	}
+
+	# Cabeçalhos básicos de segurança. Nada rígido demais pra não
+	# quebrar o React (evita CSP muito estrita que precisaria nonces).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "SAMEORIGIN"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

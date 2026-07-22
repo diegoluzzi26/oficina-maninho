@@ -1,0 +1,82 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: oficina-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oficina}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oficina}
+      POSTGRES_DB: ${POSTGRES_DB:-oficina}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # A API não pode subir antes do banco aceitar conexão
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oficina} -d ${POSTGRES_DB:-oficina}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: oficina-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-oficina}:${POSTGRES_PASSWORD:-oficina}@db:5432/${POSTGRES_DB:-oficina}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      PHONE_NUMBER_ID: ${PHONE_NUMBER_ID:-}
+      VERIFY_TOKEN: ${VERIFY_TOKEN:-}
+      WABA_ID: ${WABA_ID:-}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
+      WHATSAPP_TEMPLATE_ABERTURA: ${WHATSAPP_TEMPLATE_ABERTURA:-os_aberta}
+      WHATSAPP_TEMPLATE_FINALIZADA: ${WHATSAPP_TEMPLATE_FINALIZADA:-os_finalizada}
+      WHATSAPP_TEMPLATE_ALERTA: ${WHATSAPP_TEMPLATE_ALERTA:-alerta_contas}
+      ALERTA_WHATSAPP: ${ALERTA_WHATSAPP:-}
+      ALERTA_HORA: ${ALERTA_HORA:-8}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    command: sh -c "node scripts/migrate.js && node src/server.js"
+
+  web:
+    build: ./frontend
+    container_name: oficina-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+  # Backup diário do banco -> Google Drive via rclone.
+  # A configuração do rclone (rclone.conf) mora num volume nomeado
+  # pra sobreviver a rebuilds; a autorização OAuth é feita uma vez
+  # manualmente com: docker compose run --rm backup rclone config
+  backup:
+    build: ./backup
+    container_name: oficina-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-oficina}:${POSTGRES_PASSWORD:-oficina}@db:5432/${POSTGRES_DB:-oficina}
+      BACKUP_HORA: ${BACKUP_HORA:-3}
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-drive}
+      RCLONE_PASTA: ${RCLONE_PASTA:-oficina-backups}
+      TZ: America/Sao_Paulo
+    volumes:
+      # Config do rclone (OAuth token do Google Drive)
+      - rclone-config:/config
+      # Backups locais (fallback caso o upload falhe)
+      - ./backups:/backups
+
+volumes:
+  pgdata:
+  rclone-config:

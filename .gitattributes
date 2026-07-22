@@ -1,0 +1,9 @@
+# Normaliza line endings: repositório sempre em LF, working dir do Windows
+# pode ficar em CRLF. Evita quebrar scripts .sh que rodam no container Alpine.
+* text=auto eol=lf
+
+# Binários — não converter
+*.png binary
+*.jpg binary
+*.pdf binary
+*.svg binary
