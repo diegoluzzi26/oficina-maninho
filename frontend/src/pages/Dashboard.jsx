@@ -130,6 +130,44 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Meta mensal — só aparece se configurada */}
+      {painel.meta && painel.meta > 0 && (() => {
+        const pct = Math.min(100, (painel.receita / painel.meta) * 100);
+        const pctReal = (painel.receita / painel.meta) * 100;
+        const atingiu = painel.receita >= painel.meta;
+        return (
+          <div className="card anima p-5">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h2 className="titulo-secao">Meta do mês</h2>
+                <p className="text-xs text-slate-500">
+                  {atingiu
+                    ? `🎯 Meta batida! ${(pctReal - 100).toFixed(1).replace('.', ',')}% acima.`
+                    : painel.dias_restantes > 0
+                      ? `Faltam ${brl(painel.meta - painel.receita)} em ${painel.dias_restantes} ${painel.dias_restantes === 1 ? 'dia' : 'dias'}`
+                      : `Fechou em ${brl(painel.receita)} — ${brl(painel.meta - painel.receita)} abaixo da meta.`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="tnum font-display text-2xl font-bold text-maninho-700">
+                  {brl(painel.receita)} <span className="text-sm font-normal text-slate-500">de {brl(painel.meta)}</span>
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {pctReal.toFixed(1).replace('.', ',')}%
+                  {painel.projecao_fechamento && painel.dias_restantes > 0 && (
+                    <> · projeção fecha em <b>{brl(painel.projecao_fechamento)}</b></>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className={`h-full rounded-full transition-all ${atingiu ? 'bg-emerald-500' : 'bg-maninho-600'}`}
+                style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* KPIs do mês */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi titulo="Receita" valor={brl(painel.receita)}

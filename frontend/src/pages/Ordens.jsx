@@ -1,8 +1,31 @@
-import { useEffect, useState, useCallback } from 'react';
-import { api } from '../lib/api';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { api, getToken } from '../lib/api';
 import { brl, data, dataHora, telefone, STATUS, nomeMes,
   FORMAS_PAGAMENTO, rotuloForma, hojeISO } from '../lib/format';
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
+
+/**
+ * Anexo protegido por JWT: baixa via fetch (com Authorization) e
+ * cria blob URL pra usar em <img>. Libera a URL ao desmontar.
+ */
+function AnexoImg({ id, alt, onClick, className }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    let blobUrl = '';
+    fetch(api.urlDoAnexo(id), { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then((r) => r.blob())
+      .then((b) => {
+        if (!vivo) return;
+        blobUrl = URL.createObjectURL(b);
+        setUrl(blobUrl);
+      })
+      .catch(() => {});
+    return () => { vivo = false; if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, [id]);
+  if (!url) return <div className={`animate-pulse bg-slate-200 ${className}`} />;
+  return <img src={url} alt={alt} className={className} onClick={onClick} />;
+}
 
 const FILTROS = [
   { chave: '', texto: 'Todas' },
@@ -457,6 +480,10 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
   const [novoSvc, setNovoSvc] = useState({ servico_id: '', quantidade: 1, valor_unit: '' });
   const [novaPeca, setNovaPeca] = useState({ descricao: '', quantidade: 1, valor_unit: '' });
   const [addAberto, setAddAberto] = useState(null); // 'servico' | 'peca' | null
+  const [fotos, setFotos] = useState([]);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [previewFoto, setPreviewFoto] = useState(null);
+  const inputFileRef = useRef(null);
 
   const editavel = os && os.status !== 'paga';
 
@@ -464,6 +491,35 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
     if (!os || !editavel) return;
     api.servicos().then(setServicos).catch(() => {});
   }, [os?.id, editavel]);
+
+  useEffect(() => {
+    if (!os) return;
+    api.anexosDaOS(os.id).then(setFotos).catch(() => setFotos([]));
+  }, [os?.id]);
+
+  async function enviarFoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErro(''); setEnviandoFoto(true);
+    try {
+      await api.enviarAnexoOS(os.id, file);
+      const atualizada = await api.anexosDaOS(os.id);
+      setFotos(atualizada);
+    } catch (err) {
+      setErro(`Foto não enviada: ${err.message}`);
+    } finally {
+      setEnviandoFoto(false);
+      if (inputFileRef.current) inputFileRef.current.value = '';
+    }
+  }
+
+  async function removerFoto(anexoId) {
+    if (!confirm('Remover esta foto?')) return;
+    try {
+      await api.removerAnexo(anexoId);
+      setFotos((f) => f.filter((x) => x.id !== anexoId));
+    } catch (err) { setErro(err.message); }
+  }
 
   if (!os) return null;
 
@@ -547,6 +603,11 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
             Aberta em {dataHora(os.aberta_em)}
             {os.criado_por_nome && <> · por <b className="text-slate-700">{os.criado_por_nome}</b></>}
           </span>
+          <a href={`#/os/${os.id}/imprimir`} target="_blank" rel="noopener"
+            className="ml-auto rounded bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+            title={os.status === 'paga' ? 'Imprimir recibo' : 'Imprimir OS para o cliente assinar'}>
+            🖨 {os.status === 'paga' ? 'Recibo' : 'Imprimir'}
+          </a>
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
               · Paga em {data(os.paga_em)} · {rotuloForma(os.forma_pagamento)}
@@ -579,6 +640,36 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
             <p className="text-sm text-slate-700">{os.observacoes}</p>
           </div>
         )}
+
+        {/* Fotos */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="label">Fotos ({fotos.length})</p>
+            <label className="btn-ghost cursor-pointer px-2.5 py-1 text-xs">
+              {enviandoFoto ? '…enviando' : '+ Adicionar foto'}
+              <input ref={inputFileRef} type="file" accept="image/*" capture="environment"
+                className="hidden" onChange={enviarFoto} disabled={enviandoFoto} />
+            </label>
+          </div>
+          {fotos.length === 0 ? (
+            <p className="py-3 text-center text-xs text-slate-400">
+              Nenhuma foto anexada. Tira do painel, do hodômetro ou de um dano existente.
+            </p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {fotos.map((f) => (
+                <div key={f.id} className="group relative aspect-square overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <AnexoImg id={f.id} alt={f.descricao || 'foto da OS'}
+                    onClick={() => setPreviewFoto(f)}
+                    className="h-full w-full cursor-pointer object-cover transition group-hover:opacity-80" />
+                  <button onClick={() => removerFoto(f.id)}
+                    className="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 opacity-0 shadow transition group-hover:opacity-100"
+                    title="Remover">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -716,6 +807,17 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
           </p>
         )}
       </div>
+
+      {/* Preview grande da foto */}
+      <Modal aberto={!!previewFoto} titulo={previewFoto?.descricao || 'Foto da OS'}
+        largura="max-w-3xl" onFechar={() => setPreviewFoto(null)}>
+        {previewFoto && (
+          <div className="flex justify-center">
+            <AnexoImg id={previewFoto.id} alt="foto"
+              className="max-h-[70vh] w-auto object-contain" />
+          </div>
+        )}
+      </Modal>
     </Modal>
   );
 }

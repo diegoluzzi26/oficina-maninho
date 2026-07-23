@@ -80,6 +80,15 @@ function alerta() {
 }
 
 /**
+ * Meta de faturamento mensal. NULL = sem meta configurada, o painel
+ * esconde o bloco pra não poluir a tela de quem não usa.
+ */
+function meta() {
+  const mensal = get('meta.mensal', null);
+  return { mensal: mensal ? Number(mensal) : null };
+}
+
+/**
  * Mascara chave secreta (mostra só últimos 4 chars) — usado no GET da API
  * pra não retornar o token cru pra frontend.
  */
@@ -89,4 +98,4 @@ function mascarar(valor) {
   return `••••${valor.slice(-4)}`;
 }
 
-module.exports = { inicializar, get, set, whatsapp, alerta, mascarar };
+module.exports = { inicializar, get, set, whatsapp, alerta, meta, mascarar };

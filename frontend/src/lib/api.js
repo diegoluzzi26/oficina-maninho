@@ -143,4 +143,24 @@ export const api = {
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),
+
+  // --- anexos ---
+  anexosDaOS: (osId) => request(`/os/${osId}/anexos`),
+  removerAnexo: (id) => request(`/anexos/${id}`, { method: 'DELETE' }),
+  // Upload é multipart — não passa pelo helper `request` (que serializa JSON).
+  async enviarAnexoOS(osId, arquivo, descricao) {
+    const fd = new FormData();
+    fd.append('arquivo', arquivo);
+    if (descricao) fd.append('descricao', descricao);
+    const token = getToken();
+    const res = await fetch(`${BASE}/os/${osId}/anexos`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.erro || `Erro ${res.status}`, res.status, data.detalhes);
+    return data;
+  },
+  urlDoAnexo: (id) => `${BASE}/anexos/${id}`,
 };

@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../config/db');
+const config = require('./config.service');
 
 /**
  * Todos os relatórios usam vw_faturamento, que considera apenas OS com
@@ -205,11 +206,26 @@ async function painelMes({ ano, mes } = {}) {
   const receita = Number(fatQ.rows[0].receita);
   const despesa = Number(despQ.rows[0].despesa || 0);
 
+  // Projeção linear: extrapola o ritmo atual pro fechamento do mês.
+  // Só faz sentido pro mês corrente — pra meses passados, projeção = receita.
+  const eMesAtual = y === hoje.getUTCFullYear() && m === hoje.getUTCMonth() + 1;
+  const diasNoMes = new Date(y, m, 0).getDate();
+  const diaAtual = eMesAtual ? hoje.getDate() : diasNoMes;
+  const projecao = eMesAtual && diaAtual > 0
+    ? Number(((receita / diaAtual) * diasNoMes).toFixed(2))
+    : receita;
+  const diasRestantes = eMesAtual ? diasNoMes - diaAtual : 0;
+
+  const metaMensal = config.meta().mensal;
+
   return {
     referencia: { ano: y, mes: m, inicio, fim: proxMes },
     receita,
     despesa,
     lucro: Number((receita - despesa).toFixed(2)),
+    meta: metaMensal,
+    projecao_fechamento: projecao,
+    dias_restantes: diasRestantes,
     qtd_os: fatQ.rows[0].qtd_os,
     ticket_medio: Number(Number(fatQ.rows[0].ticket_medio).toFixed(2)),
     clientes_atendidos: fatQ.rows[0].clientes,

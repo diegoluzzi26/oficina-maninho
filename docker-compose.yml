@@ -46,6 +46,10 @@ services:
       ALERTA_HORA: ${ALERTA_HORA:-8}
     ports:
       - "${API_PORT:-3000}:3000"
+    volumes:
+      # Fotos anexadas às OSs. Bind mount pra ser fácil de fazer backup
+      # via `backup` container e de inspecionar direto no host.
+      - ./anexos:/app/anexos
     command: sh -c "node scripts/migrate.js && node src/server.js"
 
   web:
@@ -79,6 +83,9 @@ services:
       - rclone-config:/config
       # Backups locais (fallback caso o upload falhe)
       - ./backups:/backups
+      # Anexos das OSs — o backup também precisa ver essa pasta pra
+      # tarballzar junto do pg_dump
+      - ./anexos:/anexos:ro
 
 volumes:
   pgdata:

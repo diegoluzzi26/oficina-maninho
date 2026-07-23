@@ -21,11 +21,11 @@ router.use(requireRole('admin'));
  * Token e verify_token vêm mascarados; a UI usa isso só como pista
  * de "há algo configurado".
  */
-router.get('/whatsapp', h(async (_req, res) => {
+function estadoAtual() {
   const w = config.whatsapp();
   const a = config.alerta();
-
-  res.json({
+  const m = config.meta();
+  return {
     setup: {
       token: config.mascarar(w.token),
       phone_number_id: w.phoneNumberId,
@@ -35,13 +35,13 @@ router.get('/whatsapp', h(async (_req, res) => {
       default_lang: w.defaultLang,
     },
     templates: w.templates,
-    alerta: {
-      whatsapp: a.whatsapp,
-      hora: a.hora,
-    },
+    alerta: { whatsapp: a.whatsapp, hora: a.hora },
+    meta: { mensal: m.mensal },
     enabled: w.enabled,
-  });
-}));
+  };
+}
+
+router.get('/whatsapp', h(async (_req, res) => res.json(estadoAtual())));
 
 const putBody = z.object({
   setup: z.object({
@@ -64,6 +64,9 @@ const putBody = z.object({
     whatsapp: z.string().optional(),
     hora: z.coerce.number().int().min(0).max(23).optional(),
   }).optional(),
+  meta: z.object({
+    mensal: z.union([z.coerce.number().min(0), z.literal('')]).optional(),
+  }).optional(),
 });
 
 const MAPA = {
@@ -81,6 +84,7 @@ const MAPA = {
   'templates.alerta':      'whatsapp.template_alerta',
   'alerta.whatsapp':       'alerta.whatsapp',
   'alerta.hora':           'alerta.hora',
+  'meta.mensal':           'meta.mensal',
 };
 
 router.put('/whatsapp', validate({ body: putBody }), h(async (req, res) => {
@@ -94,22 +98,7 @@ router.put('/whatsapp', validate({ body: putBody }), h(async (req, res) => {
     }
   }
 
-  // Retorna o estado atualizado (mascarado)
-  const w = config.whatsapp();
-  const a = config.alerta();
-  res.json({
-    setup: {
-      token: config.mascarar(w.token),
-      phone_number_id: w.phoneNumberId,
-      verify_token: config.mascarar(w.verifyToken),
-      waba_id: w.wabaId,
-      api_version: w.apiVersion,
-      default_lang: w.defaultLang,
-    },
-    templates: w.templates,
-    alerta: { whatsapp: a.whatsapp, hora: a.hora },
-    enabled: w.enabled,
-  });
+  res.json(estadoAtual());
 }));
 
 module.exports = router;

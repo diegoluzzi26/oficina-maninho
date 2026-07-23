@@ -44,7 +44,7 @@ function CampoSecreto({ label, valorMascarado, valor, onChange, obrigatorio, aju
 export default function Configuracoes() {
   const [dados, setDados] = useState(null);
   const [form, setForm] = useState({
-    setup: {}, templates: {}, alerta: {},
+    setup: {}, templates: {}, alerta: {}, meta: {},
   });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
@@ -57,7 +57,7 @@ export default function Configuracoes() {
     api.configWhatsApp()
       .then((d) => {
         setDados(d);
-        setForm({ setup: {}, templates: {}, alerta: {} });
+        setForm({ setup: {}, templates: {}, alerta: {}, meta: {} });
       })
       .catch((e) => setErro(e.message));
   }
@@ -75,6 +75,7 @@ export default function Configuracoes() {
       setup: { ...form.setup },
       templates: { ...form.templates },
       alerta: { ...form.alerta },
+      meta: { ...form.meta },
     };
     for (const k of CAMPOS_SECRETOS) {
       if (body.setup[k] === '') delete body.setup[k];
@@ -83,7 +84,7 @@ export default function Configuracoes() {
     try {
       const atualizado = await api.salvarConfigWhatsApp(body);
       setDados(atualizado);
-      setForm({ setup: {}, templates: {}, alerta: {} });
+      setForm({ setup: {}, templates: {}, alerta: {}, meta: {} });
       setOk('Configurações salvas.');
     } catch (err) {
       setErro(err.message);
@@ -237,6 +238,24 @@ export default function Configuracoes() {
                 value={v('alerta', 'hora')}
                 onChange={(e) => set('alerta', 'hora')(e.target.value)}
                 placeholder="8" />
+            </Campo>
+          </div>
+        </div>
+
+        {/* Grupo 4: Meta de faturamento */}
+        <div className="card p-5">
+          <h2 className="titulo-secao">Meta de faturamento mensal</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Aparece no Painel como barra de progresso com projeção do fechamento
+            baseada no ritmo atual. Deixe vazio pra esconder o bloco.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo label="Meta mensal (R$)"
+              ajuda="Ex.: 20000 = R$ 20.000">
+              <input type="number" min="0" step="100" className="input tnum"
+                value={v('meta', 'mensal')}
+                onChange={(e) => set('meta', 'mensal')(e.target.value)}
+                placeholder="20000" />
             </Campo>
           </div>
         </div>

@@ -12,6 +12,7 @@ import Financeiro from './pages/Financeiro';
 import Retornos from './pages/Retornos';
 import Agenda from './pages/Agenda';
 import Configuracoes from './pages/Configuracoes';
+import ImprimirOS from './pages/ImprimirOS';
 
 function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -22,6 +23,9 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Views "papel" — sem Layout, pra não vir cabeçalho colorido na impressão */}
+        <Route path="/os/:id/imprimir"
+          element={<Protegida><ImprimirOS /></Protegida>} />
         <Route path="/" element={<Protegida><Layout /></Protegida>}>
           <Route index element={<Dashboard />} />
           <Route path="ordens" element={<Ordens />} />

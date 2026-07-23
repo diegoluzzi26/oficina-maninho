@@ -9,10 +9,13 @@ const osService = require('./os.service');
  * Isso desmembra a intenção (agenda) do registro fiscal (OS).
  */
 
-async function comServicos(id) {
+async function comServicos(id, client) {
+  // client opcional: quando chamado dentro de uma transação, precisa
+  // ler pelo mesmo client pra enxergar INSERTs ainda não commitados.
+  const q = client || db;
   const [ag, itens] = await Promise.all([
-    db.query('SELECT * FROM vw_agendamentos WHERE id = $1', [id]),
-    db.query('SELECT * FROM agendamento_servicos WHERE agendamento_id = $1 ORDER BY criado_em', [id]),
+    q.query('SELECT * FROM vw_agendamentos WHERE id = $1', [id]),
+    q.query('SELECT * FROM agendamento_servicos WHERE agendamento_id = $1 ORDER BY criado_em', [id]),
   ]);
   if (!ag.rows[0]) throw AppError.notFound('Agendamento não encontrado');
   return { ...ag.rows[0], servicos: itens.rows };
@@ -53,12 +56,43 @@ async function buscarPorId(id) { return comServicos(id); }
  * Cria agendamento com serviços numa transação.
  * `servicos`: [{ servico_id?, nome_servico }]. Se servico_id vier
  * mas nome_servico não, usa o nome do catálogo.
+ *
+ * Cliente/carro inline: se vier `novo_cliente` no lugar de `cliente_id`,
+ * cria o cliente antes (mesmo padrão de os.service.criar). Análogo para
+ * `novo_carro`. Assim o atendente marca alguém que ligou pela primeira
+ * vez sem sair do modal.
  */
 async function criar(dados, userId) {
-  const { cliente_id, carro_id, data_agendada, duracao_min,
-          observacoes, servicos = [] } = dados;
+  let { cliente_id, carro_id } = dados;
+  const { data_agendada, duracao_min, observacoes, servicos = [],
+          novo_cliente, novo_carro } = dados;
 
   return db.withTransaction(async (client) => {
+    if (!cliente_id && novo_cliente) {
+      const c = await client.query(
+        `INSERT INTO clientes (nome, telefone, cpf_cnpj, email, endereco, observacoes)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [novo_cliente.nome, novo_cliente.telefone,
+         novo_cliente.cpf_cnpj || null, novo_cliente.email || null,
+         novo_cliente.endereco || null, novo_cliente.observacoes || null],
+      );
+      cliente_id = c.rows[0].id;
+    }
+
+    if (!carro_id && novo_carro) {
+      const ca = await client.query(
+        `INSERT INTO carros (cliente_id, placa, marca, modelo, ano, cor, km_atual, chassi)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [cliente_id, novo_carro.placa, novo_carro.marca, novo_carro.modelo,
+         novo_carro.ano || null, novo_carro.cor || null,
+         novo_carro.km_atual || null, novo_carro.chassi || null],
+      );
+      carro_id = ca.rows[0].id;
+    }
+
+    if (!cliente_id) throw new AppError('Informe cliente_id ou novo_cliente', 422);
+    if (!carro_id)   throw new AppError('Informe carro_id ou novo_carro', 422);
+
     const { rows } = await client.query(
       `INSERT INTO agendamentos (cliente_id, carro_id, data_agendada,
                                   duracao_min, observacoes, criado_por)
@@ -83,7 +117,7 @@ async function criar(dados, userId) {
         [id, s.servico_id || null, nome],
       );
     }
-    return comServicos(id);
+    return comServicos(id, client);
   });
 }
 
@@ -121,7 +155,7 @@ async function atualizar(id, dados) {
       }
     }
 
-    return comServicos(id);
+    return comServicos(id, client);
   });
 }
 

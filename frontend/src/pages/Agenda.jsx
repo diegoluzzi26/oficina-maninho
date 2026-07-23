@@ -44,6 +44,10 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
   const [clienteId, setClienteId] = useState('');
   const [carros, setCarros] = useState([]);
   const [carroId, setCarroId] = useState('');
+  const [modoCliente, setModoCliente] = useState('existente'); // 'existente' | 'novo'
+  const [modoCarro, setModoCarro] = useState('existente');
+  const [novoCliente, setNovoCliente] = useState({ nome: '', telefone: '', cpf_cnpj: '', email: '' });
+  const [novoCarro, setNovoCarro] = useState({ placa: '', marca: '', modelo: '', ano: '', cor: '', km_atual: '' });
   const [dataHora, setDataHora] = useState('');
   const [duracao, setDuracao] = useState(60);
   const [obs, setObs] = useState('');
@@ -85,6 +89,10 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
     } else {
       setClienteId('');
       setCarroId('');
+      setModoCliente('existente');
+      setModoCarro('existente');
+      setNovoCliente({ nome: '', telefone: '', cpf_cnpj: '', email: '' });
+      setNovoCarro({ placa: '', marca: '', modelo: '', ano: '', cor: '', km_atual: '' });
       setDataHora(dataInicial ? `${dataInicial}T08:00` : '');
       setDuracao(60);
       setObs('');
@@ -94,12 +102,13 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
   }, [aberto, editando, dataInicial]);
 
   useEffect(() => {
-    if (!clienteId) { setCarros([]); return; }
+    if (modoCliente !== 'existente' || !clienteId) { setCarros([]); return; }
     api.cliente(clienteId).then((c) => {
       setCarros(c.carros || []);
       if (!editando && c.carros?.length === 1) setCarroId(c.carros[0].id);
+      setModoCarro(c.carros?.length ? 'existente' : 'novo');
     }).catch(() => {});
-  }, [clienteId, editando]);
+  }, [clienteId, modoCliente, editando]);
 
   function addServicoCatalogo() {
     const s = servicos[0];
@@ -125,13 +134,23 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
     setErro(''); setSalvando(true);
     try {
       const body = {
-        cliente_id: clienteId,
-        carro_id: carroId,
         data_agendada: dataHora,
         duracao_min: Number(duracao),
         observacoes: obs || null,
         servicos: itens.filter((i) => i.servico_id || i.nome_servico.trim()),
       };
+      // Edição sempre usa IDs existentes; criação pode mandar novo_*
+      if (editando) {
+        body.cliente_id = clienteId;
+        body.carro_id = carroId;
+      } else {
+        if (modoCliente === 'existente') body.cliente_id = clienteId;
+        else body.novo_cliente = novoCliente;
+
+        if (modoCliente === 'novo' || modoCarro === 'novo') body.novo_carro = novoCarro;
+        else body.carro_id = carroId;
+      }
+
       const salvo = editando
         ? await api.atualizarAgendamento(editando.id, body)
         : await api.criarAgendamento(body);
@@ -143,35 +162,130 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
     }
   }
 
+  const clientePronto = modoCliente === 'existente' ? !!clienteId
+    : !!(novoCliente.nome && novoCliente.telefone);
+  const carroPronto = (modoCliente === 'novo' || modoCarro === 'novo')
+    ? !!(novoCarro.placa && novoCarro.marca && novoCarro.modelo)
+    : !!carroId;
+
   return (
     <Modal aberto={aberto} titulo={editando ? `Editar agendamento` : 'Novo agendamento'}
       largura="max-w-2xl" onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-4">
         {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Campo label="Cliente" obrigatorio>
-            <input className="input mb-2" placeholder="Buscar cliente…"
-              value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} />
-            <select className="input" value={clienteId} required
-              onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">Selecione…</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>#{c.numero_cliente} — {c.nome}</option>
-              ))}
-            </select>
-          </Campo>
+        {/* Cliente — toggle existente/novo (só na criação, edição sempre usa o já vinculado) */}
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="label">Cliente</span>
+            {!editando && (
+              <div className="flex rounded border border-slate-300 p-0.5">
+                {[['existente', 'Existente'], ['novo', 'Cadastrar novo']].map(([k, t]) => (
+                  <button key={k} type="button" onClick={() => setModoCliente(k)}
+                    className={`rounded px-2.5 py-1 text-xs font-semibold transition
+                      ${modoCliente === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <Campo label="Veículo" obrigatorio>
-            <select className="input" value={carroId} required disabled={!clienteId}
+          {modoCliente === 'existente' || editando ? (
+            <div className="space-y-2">
+              <input className="input" placeholder="Buscar cliente…"
+                value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} />
+              <select className="input" value={clienteId} required
+                disabled={!!editando}
+                onChange={(e) => setClienteId(e.target.value)}>
+                <option value="">Selecione…</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>#{c.numero_cliente} — {c.nome}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo label="Nome" obrigatorio>
+                <input className="input" value={novoCliente.nome} required
+                  onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })} />
+              </Campo>
+              <Campo label="Telefone" obrigatorio ajuda="(51) 99888-7777">
+                <input className="input" value={novoCliente.telefone} required
+                  onChange={(e) => setNovoCliente({ ...novoCliente, telefone: e.target.value })} />
+              </Campo>
+              <Campo label="CPF/CNPJ">
+                <input className="input" value={novoCliente.cpf_cnpj}
+                  onChange={(e) => setNovoCliente({ ...novoCliente, cpf_cnpj: e.target.value })} />
+              </Campo>
+              <Campo label="E-mail">
+                <input type="email" className="input" value={novoCliente.email}
+                  onChange={(e) => setNovoCliente({ ...novoCliente, email: e.target.value })} />
+              </Campo>
+            </div>
+          )}
+        </div>
+
+        {/* Veículo */}
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="label">Veículo</span>
+            {!editando && modoCliente === 'existente' && carros.length > 0 && (
+              <div className="flex rounded border border-slate-300 p-0.5">
+                {[['existente', 'Existente'], ['novo', 'Cadastrar novo']].map(([k, t]) => (
+                  <button key={k} type="button" onClick={() => setModoCarro(k)}
+                    className={`rounded px-2.5 py-1 text-xs font-semibold transition
+                      ${modoCarro === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!editando && (modoCliente === 'novo' || modoCarro === 'novo') ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Campo label="Placa" obrigatorio>
+                <input className="input font-mono uppercase" value={novoCarro.placa} required
+                  placeholder="ABC1D23"
+                  onChange={(e) => setNovoCarro({ ...novoCarro, placa: e.target.value.toUpperCase() })} />
+              </Campo>
+              <Campo label="Marca" obrigatorio>
+                <input className="input" value={novoCarro.marca} required
+                  onChange={(e) => setNovoCarro({ ...novoCarro, marca: e.target.value })} />
+              </Campo>
+              <Campo label="Modelo" obrigatorio>
+                <input className="input" value={novoCarro.modelo} required
+                  onChange={(e) => setNovoCarro({ ...novoCarro, modelo: e.target.value })} />
+              </Campo>
+              <Campo label="Ano">
+                <input type="number" min="1900" max="2100" className="input" value={novoCarro.ano}
+                  onChange={(e) => setNovoCarro({ ...novoCarro, ano: e.target.value })} />
+              </Campo>
+              <Campo label="Cor">
+                <input className="input" value={novoCarro.cor}
+                  onChange={(e) => setNovoCarro({ ...novoCarro, cor: e.target.value })} />
+              </Campo>
+              <Campo label="KM atual">
+                <input type="number" min="0" className="input" value={novoCarro.km_atual}
+                  onChange={(e) => setNovoCarro({ ...novoCarro, km_atual: e.target.value })} />
+              </Campo>
+            </div>
+          ) : (
+            <select className="input" value={carroId} required
+              disabled={modoCliente === 'existente' && !clienteId}
               onChange={(e) => setCarroId(e.target.value)}>
-              <option value="">{clienteId ? 'Selecione…' : 'Escolha o cliente antes'}</option>
+              <option value="">
+                {modoCliente === 'existente' && !clienteId ? 'Escolha o cliente antes' : 'Selecione…'}
+              </option>
               {carros.map((c) => (
                 <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
               ))}
             </select>
-          </Campo>
+          )}
+        </div>
 
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Data e hora" obrigatorio>
             <input type="datetime-local" className="input" value={dataHora} required
               onChange={(e) => setDataHora(e.target.value)} />
@@ -233,7 +347,7 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
           <button type="submit" className="btn-primary"
-            disabled={salvando || !clienteId || !carroId || !dataHora}>
+            disabled={salvando || !clientePronto || !carroPronto || !dataHora}>
             {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : (editando ? 'Salvar' : 'Agendar')}
           </button>
         </div>
