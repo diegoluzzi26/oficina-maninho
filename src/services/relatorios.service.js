@@ -161,7 +161,7 @@ async function painelMes({ ano, mes } = {}) {
   const inicio = `${y}-${String(m).padStart(2, '0')}-01`;
   const proxMes = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 
-  const [fatQ, despQ, pipelineQ, formaQ, servicosQ, comparativoQ] = await Promise.all([
+  const [fatQ, despQ, pipelineQ, formaQ, servicosQ, marcasQ, modelosQ, comparativoQ] = await Promise.all([
     db.query(
       `SELECT COALESCE(sum(valor_total),0)::numeric AS receita,
               count(*)::int AS qtd_os,
@@ -199,6 +199,27 @@ async function painelMes({ ano, mes } = {}) {
         GROUP BY i.nome_servico
         ORDER BY receita DESC
         LIMIT 5`, [inicio, proxMes],
+    ),
+    // Top marcas: conta OS abertas no mês (não só pagas — visão de fluxo)
+    db.query(
+      `SELECT c.marca, count(*)::int AS qtd_os,
+              count(DISTINCT c.id)::int AS qtd_carros
+         FROM ordens_servico o
+         JOIN carros c ON c.id = o.carro_id
+        WHERE o.aberta_em >= $1::date AND o.aberta_em < $2::date
+        GROUP BY c.marca
+        ORDER BY qtd_os DESC, marca
+        LIMIT 5`, [inicio, proxMes],
+    ),
+    // Top modelos: marca + modelo, mesmo critério
+    db.query(
+      `SELECT c.marca, c.modelo, count(*)::int AS qtd_os
+         FROM ordens_servico o
+         JOIN carros c ON c.id = o.carro_id
+        WHERE o.aberta_em >= $1::date AND o.aberta_em < $2::date
+        GROUP BY c.marca, c.modelo
+        ORDER BY qtd_os DESC, marca, modelo
+        LIMIT 8`, [inicio, proxMes],
     ),
     comparativoMensal(),
   ]);
@@ -240,6 +261,8 @@ async function painelMes({ ano, mes } = {}) {
       quantidade: r.quantidade,
       receita: Number(r.receita),
     })),
+    top_marcas: marcasQ.rows,
+    top_modelos: modelosQ.rows,
     comparativo: comparativoQ,
   };
 }

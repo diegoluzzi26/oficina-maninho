@@ -279,8 +279,85 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Frota atendida no mês */}
+      {(painel.top_marcas.length > 0 || painel.top_modelos.length > 0) && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Top marcas */}
+          <div className="card anima p-5" style={{ animationDelay: '460ms' }}>
+            <h2 className="titulo-secao">Marcas mais atendidas</h2>
+            <p className="mb-4 text-xs text-slate-500">Por número de ordens em {nomeMes(painel.referencia.mes)}</p>
+
+            {painel.top_marcas.length === 0 ? (
+              <Vazio titulo="Nenhuma OS neste mês" />
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(180, painel.top_marcas.length * 40)}>
+                <BarChart data={painel.top_marcas} layout="vertical"
+                  margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false}
+                    tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="marca" width={120}
+                    tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0].payload;
+                    return (
+                      <div className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-lift">
+                        <p className="text-sm font-semibold text-maninho-700">{d.marca}</p>
+                        <p className="text-xs text-slate-600">
+                          {d.qtd_os} {d.qtd_os === 1 ? 'ordem' : 'ordens'} · {d.qtd_carros} {d.qtd_carros === 1 ? 'carro' : 'carros'}
+                        </p>
+                      </div>
+                    );
+                  }} cursor={{ fill: '#2B3D8F', fillOpacity: 0.05 }} />
+                  <Bar dataKey="qtd_os" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                    {painel.top_marcas.map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? OURO : AZUL} fillOpacity={i === 0 ? 1 : 0.82} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Top modelos */}
+          <div className="card anima p-5" style={{ animationDelay: '500ms' }}>
+            <h2 className="titulo-secao">Modelos mais atendidos</h2>
+            <p className="mb-4 text-xs text-slate-500">Top {painel.top_modelos.length} do mês</p>
+
+            {painel.top_modelos.length === 0 ? (
+              <Vazio titulo="Sem dados neste mês" />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {painel.top_modelos.map((m, i) => (
+                  <li key={`${m.marca}-${m.modelo}-${i}`}
+                    className="flex items-center gap-3 py-2">
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full
+                                      text-[11px] font-bold
+                      ${i === 0 ? 'bg-ouro-500 text-maninho-800' : 'bg-maninho-50 text-maninho-600'}`}>
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {m.marca} <span className="font-normal text-slate-600">{m.modelo}</span>
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="tnum text-sm font-bold text-maninho-700">{m.qtd_os}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {m.qtd_os === 1 ? 'ordem' : 'ordens'}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top serviços do mês */}
-      <div className="card anima p-5" style={{ animationDelay: '480ms' }}>
+      <div className="card anima p-5" style={{ animationDelay: '540ms' }}>
         <h2 className="titulo-secao">Serviços que mais renderam</h2>
         <p className="mb-4 text-xs text-slate-500">Top 5 no mês por receita</p>
 
