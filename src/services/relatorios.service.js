@@ -163,10 +163,11 @@ async function painelMes({ ano, mes } = {}) {
 
   const [fatQ, despQ, pipelineQ, formaQ, servicosQ, marcasQ, modelosQ, comparativoQ] = await Promise.all([
     db.query(
-      `SELECT COALESCE(sum(valor_total),0)::numeric AS receita,
-              count(*)::int AS qtd_os,
-              COALESCE(avg(valor_total),0)::numeric AS ticket_medio,
-              count(DISTINCT cliente_id)::int AS clientes
+      `SELECT COALESCE(sum(valor_total),0)::numeric     AS receita,
+              COALESCE(sum(desconto_dado),0)::numeric   AS desconto_total,
+              count(*)::int                             AS qtd_os,
+              COALESCE(avg(valor_total),0)::numeric     AS ticket_medio,
+              count(DISTINCT cliente_id)::int           AS clientes
          FROM vw_faturamento
         WHERE paga_em >= $1::date AND paga_em < $2::date`, [inicio, proxMes],
     ),
@@ -244,6 +245,7 @@ async function painelMes({ ano, mes } = {}) {
     receita,
     despesa,
     lucro: Number((receita - despesa).toFixed(2)),
+    desconto_total_mes: Number(fatQ.rows[0].desconto_total || 0),
     meta: metaMensal,
     projecao_fechamento: projecao,
     dias_restantes: diasRestantes,

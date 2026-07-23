@@ -186,10 +186,17 @@ export default function Dashboard() {
           atraso={180} />
       </div>
 
-      {/* Ticket + comparativo + variação */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Ticket + descontos + comparativo + variação */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi titulo="Ticket médio" valor={brl(painel.ticket_medio)}
           sub={`${painel.clientes_atendidos} clientes atendidos`} atraso={240} />
+        <Kpi titulo="Desconto dado"
+          valor={brl(painel.desconto_total_mes || 0)}
+          tomValor={painel.desconto_total_mes > 0 ? 'vermelho' : 'normal'}
+          sub={painel.desconto_total_mes > 0
+            ? 'Diferença entre cobrado e recebido'
+            : 'Nenhum desconto no mês'}
+          atraso={260} />
         <Kpi titulo="Mês anterior" valor={brl(painel.comparativo.mes_anterior)}
           sub={`${painel.comparativo.qtd_anterior} OS pagas`} atraso={280} />
         <Kpi titulo="Variação vs anterior"
