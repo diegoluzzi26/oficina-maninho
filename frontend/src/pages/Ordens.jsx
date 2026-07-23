@@ -543,7 +543,10 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
 
         <div className="flex flex-wrap items-center gap-3">
           <Badge status={os.status} />
-          <span className="text-xs text-slate-500">Aberta em {dataHora(os.aberta_em)}</span>
+          <span className="text-xs text-slate-500">
+            Aberta em {dataHora(os.aberta_em)}
+            {os.criado_por_nome && <> · por <b className="text-slate-700">{os.criado_por_nome}</b></>}
+          </span>
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
               · Paga em {data(os.paga_em)} · {rotuloForma(os.forma_pagamento)}
@@ -838,7 +841,12 @@ export default function Ordens() {
                       <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
                       <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
                     </td>
-                    <td className="td text-xs text-slate-500">{data(o.aberta_em)}</td>
+                    <td className="td text-xs text-slate-500">
+                      <p>{data(o.aberta_em)}</p>
+                      {o.criado_por_nome && (
+                        <p className="text-[10px] text-slate-400">por {o.criado_por_nome.split(' ')[0]}</p>
+                      )}
+                    </td>
                     <td className="td"><Badge status={o.status} /></td>
                     <td className="td tnum text-right font-semibold text-slate-800">{brl(o.valor_total)}</td>
                   </tr>

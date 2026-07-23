@@ -5,10 +5,12 @@ const AppError = require('../utils/AppError');
 const SELECT_OS = `
   SELECT o.*,
          c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.numero_cliente,
-         ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor
+         ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor,
+         u.nome AS criado_por_nome
     FROM ordens_servico o
     JOIN clientes c ON c.id = o.cliente_id
     JOIN carros  ca ON ca.id = o.carro_id
+    LEFT JOIN users u ON u.id = o.criado_por
 `;
 
 async function comItens(client, os) {
