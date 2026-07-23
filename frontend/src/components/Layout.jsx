@@ -11,6 +11,7 @@ const MENU = [
   { para: '/despesas', texto: 'Despesas', badge: true },
   { para: '/fornecedores', texto: 'Fornecedores' },
   { para: '/financeiro', texto: 'Financeiro' },
+  { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true },
   { para: '/retornos', texto: 'Retornos' },
   { para: '/servicos', texto: 'Catálogo' },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true },

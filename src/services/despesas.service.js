@@ -108,6 +108,10 @@ async function listarDespesas(f = {}) {
   const params = [];
   const where = [];
 
+  // Escopo padrão é 'oficina' — aba pessoal tem que pedir explicitamente
+  const escopo = f.escopo || 'oficina';
+  params.push(escopo); where.push(`escopo = $${params.length}`);
+
   if (f.status) { params.push(f.status); where.push(`status = $${params.length}`); }
   if (f.categoria_id) { params.push(f.categoria_id); where.push(`categoria_id = $${params.length}`); }
   if (f.fornecedor_id) { params.push(f.fornecedor_id); where.push(`fornecedor_id = $${params.length}`); }
@@ -167,15 +171,15 @@ async function criarDespesa(d, userId) {
   const { rows } = await db.query(
     `INSERT INTO despesas
        (descricao, categoria_id, fornecedor_id, valor, forma, vencimento, competencia,
-        status, pago_em, valor_pago, codigo_barras, numero_doc, observacoes, recorrente, criado_por)
+        status, pago_em, valor_pago, codigo_barras, numero_doc, observacoes, recorrente, escopo, criado_por)
      VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, date_trunc('month', now())::date),
-             $8,$9,$10,$11,$12,$13,$14,$15)
+             $8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING id`,
     [d.descricao, d.categoria_id || null, d.fornecedor_id || null, d.valor, d.forma,
       d.vencimento || null, d.competencia || null,
       d.status || 'pendente', d.pago_em || null, d.valor_pago ?? null,
       d.codigo_barras || null, d.numero_doc || null, d.observacoes || null,
-      d.recorrente || false, userId || null],
+      d.recorrente || false, d.escopo || 'oficina', userId || null],
   );
   return buscarDespesa(rows[0].id);
 }
@@ -183,7 +187,7 @@ async function criarDespesa(d, userId) {
 async function atualizarDespesa(id, d) {
   const permitidos = ['descricao', 'categoria_id', 'fornecedor_id', 'valor', 'forma',
     'vencimento', 'competencia', 'status', 'pago_em', 'valor_pago',
-    'codigo_barras', 'numero_doc', 'observacoes', 'recorrente'];
+    'codigo_barras', 'numero_doc', 'observacoes', 'recorrente', 'escopo'];
 
   const campos = [];
   const params = [];
@@ -250,10 +254,70 @@ async function proximosVencimentos(dias = 7) {
   };
 }
 
+/**
+ * Painel de despesas pessoais — mesmo espírito de painelMes mas
+ * SÓ despesas com escopo='pessoal', sem receita. Só o dono deve
+ * enxergar (a rota exige admin).
+ */
+async function painelPessoal({ ano, mes } = {}) {
+  const hoje = new Date();
+  const y = Number(ano) || hoje.getUTCFullYear();
+  const m = Number(mes) || hoje.getUTCMonth() + 1;
+  const inicio = `${y}-${String(m).padStart(2, '0')}-01`;
+  const proxMes = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+  const [resumoQ, catQ, formaQ] = await Promise.all([
+    db.query(
+      `SELECT COALESCE(sum(valor),0)::numeric AS total_previsto,
+              COALESCE(sum(CASE WHEN status='paga' THEN COALESCE(valor_pago, valor) END),0)::numeric AS total_pago,
+              count(*) FILTER (WHERE status='atrasada')::int AS qtd_atrasada,
+              count(*) FILTER (WHERE status='pendente')::int AS qtd_pendente,
+              count(*)::int AS qtd
+         FROM despesas
+        WHERE escopo = 'pessoal'
+          AND competencia >= $1::date AND competencia < $2::date`,
+      [inicio, proxMes],
+    ),
+    db.query(
+      `SELECT cd.nome AS categoria, cd.cor,
+              count(*)::int AS qtd,
+              COALESCE(sum(d.valor),0)::numeric AS total
+         FROM despesas d
+         LEFT JOIN categorias_despesa cd ON cd.id = d.categoria_id
+        WHERE d.escopo = 'pessoal'
+          AND d.competencia >= $1::date AND d.competencia < $2::date
+        GROUP BY cd.nome, cd.cor
+        ORDER BY total DESC`,
+      [inicio, proxMes],
+    ),
+    db.query(
+      `SELECT forma, count(*)::int AS qtd,
+              COALESCE(sum(COALESCE(valor_pago, valor)),0)::numeric AS total
+         FROM despesas
+        WHERE escopo = 'pessoal' AND status = 'paga'
+          AND pago_em >= $1::date AND pago_em < $2::date
+        GROUP BY forma
+        ORDER BY total DESC`,
+      [inicio, proxMes],
+    ),
+  ]);
+  const r = resumoQ.rows[0];
+  return {
+    referencia: { ano: y, mes: m, inicio, fim: proxMes },
+    total_previsto: Number(r.total_previsto),
+    total_pago: Number(r.total_pago),
+    qtd: r.qtd,
+    qtd_pendente: r.qtd_pendente,
+    qtd_atrasada: r.qtd_atrasada,
+    por_categoria: catQ.rows.map((c) => ({ ...c, total: Number(c.total) })),
+    por_forma: formaQ.rows.map((f) => ({ ...f, total: Number(f.total) })),
+  };
+}
+
 module.exports = {
   sincronizarAtrasos,
   listarFornecedores, buscarFornecedor, criarFornecedor, atualizarFornecedor, desativarFornecedor,
   listarCategorias, criarCategoria,
   listarDespesas, buscarDespesa, criarDespesa, atualizarDespesa, pagarDespesa, removerDespesa,
-  proximosVencimentos,
+  proximosVencimentos, painelPessoal,
 };

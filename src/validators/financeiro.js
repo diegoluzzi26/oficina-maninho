@@ -42,6 +42,7 @@ const criarDespesa = z.object({
   numero_doc: z.string().optional().nullable(),
   observacoes: z.string().optional().nullable(),
   recorrente: z.boolean().default(false),
+  escopo: z.enum(['oficina', 'pessoal']).default('oficina'),
 });
 
 const atualizarDespesa = criarDespesa.partial();
@@ -52,6 +53,7 @@ const pagar = z.object({
 });
 
 const filtroDespesas = z.object({
+  escopo: z.enum(['oficina', 'pessoal']).optional(),
   status: z.enum(['pendente', 'paga', 'atrasada', 'cancelada']).optional(),
   categoria_id: uuid.optional(),
   fornecedor_id: uuid.optional(),

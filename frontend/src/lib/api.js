@@ -103,6 +103,7 @@ export const api = {
   // --- financeiro ---
   despesas: (params) => request('/despesas', { params }),
   boletos: (params) => request('/despesas/boletos', { params }),
+  painelPessoal: (params) => request('/despesas/pessoal/painel', { params }),
   despesa: (id) => request(`/despesas/${id}`),
   criarDespesa: (body) => request('/despesas', { method: 'POST', body }),
   atualizarDespesa: (id, body) => request(`/despesas/${id}`, { method: 'PUT', body }),

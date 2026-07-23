@@ -31,7 +31,7 @@ function Vencimento({ dias, vencimento }) {
   );
 }
 
-function FormDespesa({ aberto, despesa, onFechar, onSalvo }) {
+function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo }) {
   const vazio = {
     descricao: '', categoria_id: '', fornecedor_id: '', valor: '',
     forma: 'boleto', vencimento: '', competencia: '', status: 'pendente',
@@ -81,6 +81,7 @@ function FormDespesa({ aberto, despesa, onFechar, onSalvo }) {
         numero_doc: form.numero_doc || null,
         codigo_barras: form.codigo_barras || null,
         observacoes: form.observacoes || null,
+        escopo,
       };
       const salvo = despesa
         ? await api.atualizarDespesa(despesa.id, body)
@@ -251,7 +252,7 @@ function ModalPagar({ despesa, onFechar, onPago }) {
   );
 }
 
-export default function Despesas() {
+export default function Despesas({ escopo = 'oficina' } = {}) {
   const hoje = new Date();
   const [aba, setAba] = useState('todas');
   const [lista, setLista] = useState(null);
@@ -277,7 +278,7 @@ export default function Despesas() {
 
   const carregar = useCallback(() => {
     setErro('');
-    const params = { busca, status: filtroStatus || undefined, por_pagina: 100 };
+    const params = { escopo, busca, status: filtroStatus || undefined, por_pagina: 100 };
     if (fornecedorId) params.fornecedor_id = fornecedorId;
     if (categoriaId)  params.categoria_id  = categoriaId;
     if (forma)        params.forma         = forma;
@@ -293,7 +294,7 @@ export default function Despesas() {
     Promise.all([req, api.alertas(7)])
       .then(([l, a]) => { setLista(l); setAlertas(a); })
       .catch((e) => setErro(e.message));
-  }, [aba, busca, filtroStatus, fornecedorId, categoriaId, forma,
+  }, [escopo, aba, busca, filtroStatus, fornecedorId, categoriaId, forma,
        ref.ano, ref.mes, ref.todos]);
 
   function limparFiltros() {
@@ -323,9 +324,13 @@ export default function Despesas() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Despesas</h1>
+          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
+            {escopo === 'pessoal' ? 'Despesas pessoais' : 'Despesas'}
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Contas da oficina, boletos e pagamentos
+            {escopo === 'pessoal'
+              ? 'Gastos do dono, separados da contabilidade da oficina'
+              : 'Contas da oficina, boletos e pagamentos'}
           </p>
         </div>
         <button className="btn-primary" onClick={() => { setEditando(null); setFormAberto(true); }}>
@@ -538,7 +543,7 @@ export default function Despesas() {
         )}
       </div>
 
-      <FormDespesa aberto={formAberto} despesa={editando}
+      <FormDespesa aberto={formAberto} despesa={editando} escopo={escopo}
         onFechar={() => { setFormAberto(false); setEditando(null); }}
         onSalvo={() => { setFormAberto(false); setEditando(null); carregar(); }} />
 

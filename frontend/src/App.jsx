@@ -12,6 +12,7 @@ import Financeiro from './pages/Financeiro';
 import Retornos from './pages/Retornos';
 import Agenda from './pages/Agenda';
 import Configuracoes from './pages/Configuracoes';
+import Pessoal from './pages/Pessoal';
 import ImprimirOS from './pages/ImprimirOS';
 
 function Protegida({ children }) {
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="ordens" element={<Ordens />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="despesas" element={<Despesas />} />
+          <Route path="pessoal" element={<Pessoal />} />
           <Route path="fornecedores" element={<Fornecedores />} />
           <Route path="financeiro" element={<Financeiro />} />
           <Route path="retornos" element={<Retornos />} />

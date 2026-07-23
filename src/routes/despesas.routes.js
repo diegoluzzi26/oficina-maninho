@@ -22,6 +22,10 @@ router.get('/alertas', h(async (req, res) => {
 router.post('/alertas/enviar', requireRole('admin'),
   h(async (req, res) => res.json(await alertas.verificarEEnviar({ forcar: req.body?.forcar === true }))));
 
+// Painel de despesas PESSOAIS — só admin (dono da oficina)
+router.get('/pessoal/painel', requireRole('admin'),
+  h(async (req, res) => res.json(await svc.painelPessoal(req.query))));
+
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarDespesa(req.params.id))));
 
