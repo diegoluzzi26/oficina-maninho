@@ -104,6 +104,15 @@ export const api = {
   despesas: (params) => request('/despesas', { params }),
   boletos: (params) => request('/despesas/boletos', { params }),
   painelPessoal: (params) => request('/despesas/pessoal/painel', { params }),
+
+  // --- funcionários + vales ---
+  funcionarios: () => request('/funcionarios'),
+  fichaFuncionario: (id) => request(`/funcionarios/${id}/ficha`),
+  criarFuncionario: (body) => request('/funcionarios', { method: 'POST', body }),
+  atualizarFuncionario: (id, body) => request(`/funcionarios/${id}`, { method: 'PUT', body }),
+  desativarFuncionario: (id) => request(`/funcionarios/${id}`, { method: 'DELETE' }),
+  darVale: (body) => request('/funcionarios/vales', { method: 'POST', body }),
+  removerVale: (id) => request(`/funcionarios/vales/${id}`, { method: 'DELETE' }),
   despesa: (id) => request(`/despesas/${id}`),
   criarDespesa: (body) => request('/despesas', { method: 'POST', body }),
   atualizarDespesa: (id, body) => request(`/despesas/${id}`, { method: 'PUT', body }),
