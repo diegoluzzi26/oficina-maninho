@@ -120,4 +120,8 @@ router.delete('/:id/pecas/:itemId',
   validate({ params: z.object({ id: v.uuid, itemId: v.uuid }) }),
   h(async (req, res) => res.json(await svc.removerPeca(req.params.id, req.params.itemId))));
 
+// Exclui OS inteira (bloqueado se paga)
+router.delete('/:id', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.remover(req.params.id))));
+
 module.exports = router;

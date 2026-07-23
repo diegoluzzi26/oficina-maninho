@@ -344,7 +344,23 @@ async function garantirEditavel(osId) {
   }
 }
 
+/**
+ * Apaga a OS por inteiro (junto com os_servicos, os_pecas, os_anexos
+ * via ON DELETE CASCADE). Bloqueia se já foi paga — nesse caso é
+ * registro fiscal e só admite ser "corrigida", não removida.
+ */
+async function remover(osId) {
+  const { rows } = await db.query('SELECT status, numero_os FROM ordens_servico WHERE id=$1', [osId]);
+  if (!rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+  if (rows[0].status === 'paga') {
+    throw new AppError('OS já paga não pode ser excluída — é registro fiscal', 422);
+  }
+  await db.query('DELETE FROM ordens_servico WHERE id=$1', [osId]);
+  return { removida: true, numero_os: rows[0].numero_os };
+}
+
 module.exports = {
   listar, buscarPorId, criar, atualizar, mudarStatus,
   adicionarServico, adicionarPeca, removerServico, removerPeca,
+  remover,
 };

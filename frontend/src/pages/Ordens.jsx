@@ -554,7 +554,7 @@ function PagarOS({ os, onFechar, onPago }) {
 // ---------------------------------------------------------------------
 // Modal detalhe da OS
 // ---------------------------------------------------------------------
-function DetalheOS({ os, onFechar, onMudou, onPagar }) {
+function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -904,15 +904,35 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
           </div>
         </div>
 
-        {PROXIMOS[os.status].length > 0 && (
-          <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-            <span className="self-center text-xs text-slate-500">Mudar para:</span>
-            {PROXIMOS[os.status].map((s) => (
-              <button key={s} onClick={() => mudar(s)} disabled={carregando}
-                className={s === 'paga' ? 'btn-ouro' : 'btn-ghost'}>
-                {carregando ? <Spinner className="h-4 w-4" /> : STATUS[s].texto}
+        {(PROXIMOS[os.status].length > 0 || os.status !== 'paga') && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
+            {PROXIMOS[os.status].length > 0 && (
+              <>
+                <span className="self-center text-xs text-slate-500">Mudar para:</span>
+                {PROXIMOS[os.status].map((s) => (
+                  <button key={s} onClick={() => mudar(s)} disabled={carregando}
+                    className={s === 'paga' ? 'btn-ouro' : 'btn-ghost'}>
+                    {carregando ? <Spinner className="h-4 w-4" /> : STATUS[s].texto}
+                  </button>
+                ))}
+              </>
+            )}
+            {/* Excluir só quando ainda não paga (registro fiscal não some) */}
+            {os.status !== 'paga' && (
+              <button onClick={async () => {
+                if (!confirm(`Excluir a OS nº ${os.numero_os}? Serviços, peças e fotos vão junto.`)) return;
+                setCarregando(true); setErro('');
+                try {
+                  await api.excluirOS(os.id);
+                  onExcluida?.(os);
+                } catch (e) { setErro(e.message); }
+                finally { setCarregando(false); }
+              }}
+              disabled={carregando}
+              className="ml-auto rounded bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                🗑 Excluir OS
               </button>
-            ))}
+            )}
           </div>
         )}
         {os.status === 'paga' && (
@@ -1139,7 +1159,8 @@ export default function Ordens() {
 
       <DetalheOS os={detalhe} onFechar={() => setDetalhe(null)}
         onMudou={(nova) => { setDetalhe(nova); carregar(); }}
-        onPagar={(o) => { setDetalhe(null); setPagando(o); }} />
+        onPagar={(o) => { setDetalhe(null); setPagando(o); }}
+        onExcluida={() => { setDetalhe(null); carregar(); }} />
 
       <PagarOS os={pagando} onFechar={() => setPagando(null)}
         onPago={() => { setPagando(null); carregar(); }} />

@@ -90,6 +90,7 @@ export const api = {
     request(`/os/${id}/status`, { method: 'PATCH',
       body: { status, notificar_whatsapp: notificar, ...(pagamento || {}) } }),
   atualizarOS: (id, body) => request(`/os/${id}`, { method: 'PUT', body }),
+  excluirOS: (id) => request(`/os/${id}`, { method: 'DELETE' }),
   addServicoOS: (id, body) => request(`/os/${id}/servicos`, { method: 'POST', body }),
   addPecaOS: (id, body) => request(`/os/${id}/pecas`, { method: 'POST', body }),
   removerServicoOS: (id, itemId) => request(`/os/${id}/servicos/${itemId}`, { method: 'DELETE' }),
