@@ -277,200 +277,94 @@ datada pelo campo `paga_em`. Uma OS finalizada mas não paga aparece em
 
 ---
 
-## 6. Configurar o WhatsApp (Meta Cloud API)
+## 6. WhatsApp (Evolution API — self-hosted)
 
-### 6.1 Criar o app na Meta
+O sistema usa **Evolution API** — um servidor open-source (via Baileys) que
+fala com o WhatsApp Web como se fosse um celular. Isso substitui a Meta
+Cloud API oficial, com trade-offs:
 
-1. Acesse [developers.facebook.com](https://developers.facebook.com) → **Meus apps** → **Criar app**
-2. Tipo: **Empresa** (Business)
-3. No painel do app, adicione o produto **WhatsApp**
-4. Em **WhatsApp → Configuração da API**, anote:
-   - **ID do número de telefone** → `PHONE_NUMBER_ID`
-   - **ID da conta do WhatsApp Business** → `WABA_ID`
+|  | Meta Cloud (antigo) | Evolution (agora) |
+|---|---|---|
+| Custo | Por conversa iniciada | Só hospedagem |
+| Templates | Obrigatório fora da janela de 24h | Não existe — texto livre sempre |
+| Cadastro | Business Manager, CNPJ, aprovação | Só escanear QR |
+| Risco de ban | Zero (oficial) | Baixo se não spammar |
+| Mídia | Complicado | POST simples |
 
-### 6.2 Gerar um token permanente
+### 6.1 Sobe junto com o resto
 
-O token que aparece na tela de setup **expira em 24 horas** e serve só para teste.
-Para produção:
-
-1. [business.facebook.com](https://business.facebook.com) → **Configurações do negócio**
-2. **Usuários → Usuários do sistema** → **Adicionar** (função: Admin)
-3. **Adicionar ativos** → selecione seu app do WhatsApp → permissão de controle total
-4. **Gerar novo token** → selecione o app → marque `whatsapp_business_messaging`
-   e `whatsapp_business_management`
-5. Copie o token para `WHATSAPP_TOKEN` (aparece uma única vez)
-
-### 6.3 Definir o VERIFY_TOKEN
-
-É uma senha que **você inventa** — não vem da Meta. Ela só serve para provar,
-na hora de configurar o webhook, que a URL pertence a você. Coloque no `.env`:
-
-```
-VERIFY_TOKEN=maninho-webhook-2026
-```
-
-### 6.4 Expor o webhook
-
-A Meta exige uma URL **pública e com HTTPS**. Em desenvolvimento, use ngrok:
+O container `evolution` já está no `docker-compose.yml`. `docker compose up -d`
+sobe API, DB, web, evolution e backup juntos. A primeira vez:
 
 ```bash
-npm install -g ngrok
-ngrok http 3000
+# Se o volume pgdata é novo, o database `evolution` é criado sozinho.
+# Se você já rodava a app antes, cria manualmente:
+docker compose exec db psql -U oficina -c 'CREATE DATABASE evolution;'
+docker compose up -d evolution
 ```
 
-Copie a URL gerada (ex: `https://a1b2c3.ngrok-free.app`).
+Painel administrativo do Evolution em [http://localhost:8081/manager](http://localhost:8081/manager).
+Usa a chave `EVOLUTION_API_KEY` do `.env` como login.
 
-Na Meta: **WhatsApp → Configuração → Webhooks → Editar**
+### 6.2 Conectar seu número (uma vez)
 
-| Campo | Valor |
+1. Entre no sistema como admin
+2. Menu **Config** → seção **Conexão do WhatsApp**
+3. Clique **Conectar WhatsApp**
+4. No celular: WhatsApp → **Aparelhos conectados** → **Conectar aparelho** →
+   escaneie o QR code que apareceu na tela
+5. Assim que o WhatsApp confirmar, o QR some e o status vira **Conectado**
+
+A sessão fica guardada no volume `evolution_instances` — sobrevive a
+reboots. Se o celular perder a conexão (bateria, sinal), pode precisar
+reconectar; se o número é removido dos aparelhos no celular, precisa
+escanear de novo.
+
+### 6.3 Quem recebe o quê
+
+| Papel | Recebe |
 |---|---|
-| URL de callback | `https://a1b2c3.ngrok-free.app/api/whatsapp/webhook` |
-| Token de verificação | o mesmo `VERIFY_TOKEN` do `.env` |
+| **Número da oficina** (conectado no Evolution) | Envia mensagens pros clientes |
+| **`ALERTA_WHATSAPP`** (seu celular pessoal) | Recebe alertas internos de contas a pagar |
 
-Clique em **Verificar e salvar**. A Meta faz um GET; se o token bater, salva.
+Como Evolution não tem template, tudo é texto livre — o próprio texto da
+notificação é montado no código (não precisa aprovar nada em lugar nenhum).
 
-Depois, em **Gerenciar**, assine o campo **messages** — sem isso você não
-recebe mensagens nem status de entrega.
+### 6.4 O que dispara mensagem automaticamente
 
-Em produção, aponte um domínio próprio com HTTPS para a API no lugar do ngrok.
-
-### 6.5 Criar os templates
-
-Mensagem de texto livre só é permitida **dentro de 24h** após o cliente escrever
-para você. Para iniciar conversa fora dessa janela, é obrigatório usar template
-aprovado.
-
-Em **WhatsApp → Modelos de mensagem → Criar modelo**:
-
-**Template `os_aberta`** (categoria: Utilidade, idioma: Português BR)
-```
-Olá, {{1}}! Recebemos seu veículo aqui na Auto Elétrica Maninho.
-Sua ordem de serviço nº {{2}} foi aberta para o {{3}}.
-Qualquer novidade a gente avisa por aqui.
-```
-
-**Template `os_finalizada`** (categoria: Utilidade)
-```
-Olá, {{1}}! Seu veículo está pronto.
-Ordem de serviço nº {{2}} — {{3}}.
-Pode retirar no nosso horário de funcionamento.
-```
-
-A aprovação leva de minutos a algumas horas. Se você usar outros nomes,
-ajuste `WHATSAPP_TEMPLATE_ABERTURA` e `WHATSAPP_TEMPLATE_FINALIZADA` no `.env`.
-
-### 6.6 Endpoints do WhatsApp
-
-```
-GET  /api/whatsapp/webhook        # verificação da Meta (público)
-POST /api/whatsapp/webhook        # eventos da Meta (público)
-POST /api/whatsapp/enviar/texto        # exige janela de 24h aberta
-POST /api/whatsapp/enviar/template     # funciona sempre
-GET  /api/whatsapp/mensagens?telefone=+5551998887777
-GET  /api/whatsapp/janela/:telefone    # consulta se a janela está aberta
-```
-
-Toda mensagem enviada e recebida fica registrada na tabela `wa_messages`, com
-status de entrega atualizado pelo webhook (`sent` → `delivered` → `read`).
-
-### 6.7 Alertas de contas a pagar
-
-Configure seu número no `.env` para receber os avisos:
-
-```
-ALERTA_WHATSAPP=+5551999999999
-ALERTA_HORA=8
-```
-
-O sistema verifica diariamente e manda **um resumo** com o que está atrasado,
-vence hoje ou vence em até 3 dias. Cada conta gera no máximo um aviso por
-estágio, então não há repetição.
-
-Sem `ALERTA_WHATSAPP` configurado, os alertas continuam funcionando **dentro do
-sistema**: contador vermelho no menu Despesas e aviso no topo da tela.
-
-Para disparar manualmente (útil para testar):
-
-```bash
-curl -X POST http://localhost:8080/api/despesas/alertas/enviar \
-  -H "Authorization: Bearer SEU_TOKEN"
-```
-
-Template sugerido, nome `alerta_contas`:
-```
-Você tem {{1}} conta(s) a pagar, totalizando {{2}}.
-Confira no sistema da oficina.
-```
-
-### 6.8 Notificações automáticas
-
-Passe `"notificar_whatsapp": true` ao criar uma OS ou ao mudar o status para
-`finalizada` ou `paga`. O sistema tenta texto livre se a janela estiver aberta
-e cai para template caso contrário.
-
-Se o envio falhar, **a operação principal não é desfeita** — a OS é criada
-normalmente e o motivo da falha vem no campo `whatsapp` da resposta:
-
-```json
-{ "numero_os": 61, "status": "aberta",
-  "whatsapp": { "enviado": false, "motivo": "Janela de 24h fechada..." } }
-```
-
-### 6.9 Quem recebe o quê
-
-Duas variáveis definem os dois papéis diferentes que o WhatsApp desempenha:
-
-| Variável | Quem é | Recebe o quê |
+| Quando | Pra quem | Texto |
 |---|---|---|
-| `PHONE_NUMBER_ID` | Número da **oficina** cadastrado na Meta | Envia mensagens para os **clientes** |
-| `ALERTA_WHATSAPP` | Seu **celular pessoal** (do dono) | Recebe os **alertas internos** (contas a pagar) |
+| OS criada com `notificar_whatsapp:true` | cliente | "Recebemos seu carro, OS nº X aberta…" |
+| Status vira `finalizada` com notificar | cliente | "Seu carro está pronto, total R$ X…" |
+| Status vira `paga` com "Enviar recibo" | cliente | "Obrigado, pagamento de R$ X recebido…" |
+| Botão "WhatsApp" na aba Retornos | cliente | "Está na hora de agendar [serviço]…" |
+| 1x/dia, agendamentos de amanhã | cliente | "Lembrando do seu agendamento amanhã às X…" |
+| 1x/dia às `ALERTA_HORA` | dono (`ALERTA_WHATSAPP`) | Resumo de contas a pagar |
 
-A separação é importante: o número da oficina fala com cliente, o seu
-pessoal recebe os avisos de gestão. Como você não conversa consigo mesmo
-pelo número da oficina, a janela de 24h nunca abre entre esses dois, e
-por isso o alerta de contas **sempre** usa template.
+### 6.5 Endpoints da API
 
-**Todos os templates que podem ser enviados:**
-
-| Template | Para quem | Quando |
-|---|---|---|
-| `os_aberta` | cliente | OS criada com `notificar_whatsapp:true` |
-| `os_finalizada` | cliente | status vira `finalizada` com `notificar_whatsapp:true` |
-| `os_paga` | cliente | status vira `paga` com "Enviar recibo por WhatsApp" marcado |
-| `retorno_agendado` | cliente | você clica em "WhatsApp" na aba Retornos |
-| `lembrete_agendamento` | cliente | 1x/dia às `ALERTA_HORA`, para agendamentos de amanhã |
-| `alerta_contas` | dono (`ALERTA_WHATSAPP`) | 1x/dia às `ALERTA_HORA`, se há contas vencendo |
-
-Os nomes são configuráveis via `WHATSAPP_TEMPLATE_*` no `.env` — use os
-defaults acima ou aprove os seus próprios na Meta e sobrescreva.
-
-### 6.10 Webhook local sem ngrok — Cloudflare Tunnel
-
-A Meta exige URL **pública com HTTPS** pro webhook. Como o sistema roda
-no seu PC, você precisa de um túnel. O README menciona `ngrok`, mas
-recomendo **Cloudflare Tunnel** — grátis, sem cadastro, e a URL não muda
-enquanto o processo estiver rodando:
-
-```powershell
-# Windows: instala uma vez
-winget install --id Cloudflare.cloudflared
-
-# Sobe o túnel apontando pra sua API
-cloudflared tunnel --url http://localhost:3000
+```
+POST /api/whatsapp/webhook              (público, recebe eventos do Evolution)
+POST /api/whatsapp/enviar/texto         (auth)
+GET  /api/whatsapp/mensagens?telefone=+5551...
+GET  /api/whatsapp/janela/:telefone     (retorna sempre true — mantido por compat)
+GET  /api/whatsapp/conexao              (admin) — estado da sessão
+POST /api/whatsapp/conexao/qrcode       (admin) — gera QR pra conectar
+POST /api/whatsapp/conexao/desconectar  (admin) — desliga a sessão
 ```
 
-Copia a URL `https://xxx.trycloudflare.com` que aparece e usa
-`https://xxx.trycloudflare.com/api/whatsapp/webhook` na configuração da
-Meta (seção 6.4).
+### 6.6 Risco de ban do WhatsApp
 
-Deixe o `cloudflared` rodando em background enquanto quiser receber
-eventos. Sem ele:
-- Envio outbound **funciona** (só chama API da Meta)
-- Não recebe status de entrega (`sent → delivered → read`)
-- Não recebe respostas do cliente
-- A janela de 24h nunca abre, forçando o uso de template em toda mensagem
-  (cada template inicia uma conversa cobrada — cliente respondendo abriria
-  a janela e o texto livre é grátis por 24h)
+Evolution usa WhatsApp Web via engenharia reversa (Baileys). O WhatsApp
+não proíbe, mas pode banir números se detectar padrão de spam:
+
+- Mandar avisos individuais pra clientes que já conhecem a oficina — normal
+- Responder mensagens que chegam — normal
+- Disparar centenas de mensagens iguais em minutos — arriscado
+- Comprar lista de números e mandar promoção — banimento certo
+
+Pra uma oficina que manda ~50 mensagens/dia de OS e retorno, o risco é
+próximo de zero. Se for escalar pra marketing em massa, aí sim reconsiderar.
 
 ---
 

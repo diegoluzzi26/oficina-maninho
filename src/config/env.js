@@ -3,7 +3,11 @@ require('dotenv').config();
 
 /**
  * Valida as variáveis no boot. Falhar aqui é melhor do que descobrir
- * token faltando na hora de enviar mensagem pro cliente.
+ * config faltando quando alguém tenta enviar mensagem.
+ *
+ * Nota: WhatsApp aqui vira só o DEFAULT — o valor efetivo é resolvido
+ * em runtime por `services/config.service.js` (banco > env). Isso
+ * permite editar sem reiniciar o container.
  */
 function required(name, fallback) {
   const v = process.env[name] ?? fallback;
@@ -22,16 +26,12 @@ const env = {
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
 
+  // Evolution API (WhatsApp self-hosted via Baileys)
   whatsapp: {
-    token: process.env.WHATSAPP_TOKEN || '',
-    phoneNumberId: process.env.PHONE_NUMBER_ID || '',
-    verifyToken: process.env.VERIFY_TOKEN || '',
-    wabaId: process.env.WABA_ID || '',
-    apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
-    defaultLang: process.env.WHATSAPP_DEFAULT_LANG || 'pt_BR',
+    url:      process.env.EVOLUTION_URL      || 'http://evolution:8080',
+    apiKey:   process.env.EVOLUTION_API_KEY  || '',
+    instance: process.env.EVOLUTION_INSTANCE || 'oficina',
   },
 };
-
-env.whatsapp.enabled = Boolean(env.whatsapp.token && env.whatsapp.phoneNumberId);
 
 module.exports = env;

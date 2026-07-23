@@ -11,6 +11,10 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Cria o database `evolution` no primeiro up (junto com `oficina`).
+      # Se o volume pgdata já existe, criar manualmente:
+      #   docker compose exec db psql -U oficina -c 'CREATE DATABASE evolution;'
+      - ./db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # A API não pode subir antes do banco aceitar conexão
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oficina} -d ${POSTGRES_DB:-oficina}"]
@@ -31,17 +35,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-oficina}:${POSTGRES_PASSWORD:-oficina}@db:5432/${POSTGRES_DB:-oficina}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
-      PHONE_NUMBER_ID: ${PHONE_NUMBER_ID:-}
-      VERIFY_TOKEN: ${VERIFY_TOKEN:-}
-      WABA_ID: ${WABA_ID:-}
-      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
-      WHATSAPP_TEMPLATE_ABERTURA: ${WHATSAPP_TEMPLATE_ABERTURA:-os_aberta}
-      WHATSAPP_TEMPLATE_FINALIZADA: ${WHATSAPP_TEMPLATE_FINALIZADA:-os_finalizada}
-      WHATSAPP_TEMPLATE_PAGA: ${WHATSAPP_TEMPLATE_PAGA:-os_paga}
-      WHATSAPP_TEMPLATE_RETORNO: ${WHATSAPP_TEMPLATE_RETORNO:-retorno_agendado}
-      WHATSAPP_TEMPLATE_LEMBRETE: ${WHATSAPP_TEMPLATE_LEMBRETE:-lembrete_agendamento}
-      WHATSAPP_TEMPLATE_ALERTA: ${WHATSAPP_TEMPLATE_ALERTA:-alerta_contas}
+      # Evolution API (default aponta pro container `evolution` deste compose)
+      EVOLUTION_URL: ${EVOLUTION_URL:-http://evolution:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-oficina}
       ALERTA_WHATSAPP: ${ALERTA_WHATSAPP:-}
       ALERTA_HORA: ${ALERTA_HORA:-8}
     ports:
@@ -60,6 +57,52 @@ services:
       - api
     ports:
       - "${WEB_PORT:-8080}:80"
+
+  # Evolution API — WhatsApp Web self-hosted via Baileys.
+  # Substitui o Meta Cloud API: sem template obrigatório, sem janela de
+  # 24h, sem custo por conversa. Requer QR code inicial (uma vez) e o
+  # container precisa ficar de pé pra manter a sessão.
+  evolution:
+    image: evoapicloud/evolution-api:latest
+    container_name: oficina-evolution
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Porta do host mapeada pra 8080 interno da Evolution
+      - "${EVOLUTION_PORT:-8081}:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_URL:-http://evolution:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      LANGUAGE: pt-BR
+      CONFIG_SESSION_PHONE_CLIENT: "Auto Elétrica Maninho"
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      # Postgres compartilhado, banco separado
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-oficina}:${POSTGRES_PASSWORD:-oficina}@db:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      # Cache local (sem Redis; volume simples pra uso de 1 número)
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      # Webhook global — TODA mensagem/status vai pro nosso backend
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: http://api:3000/api/whatsapp/webhook
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_SEND_MESSAGE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
 
   # Backup diário do banco -> Google Drive via rclone.
   # A configuração do rclone (rclone.conf) mora num volume nomeado
@@ -90,3 +133,4 @@ services:
 volumes:
   pgdata:
   rclone-config:
+  evolution_instances:

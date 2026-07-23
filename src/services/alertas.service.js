@@ -97,8 +97,6 @@ async function verificarEEnviar({ forcar = false } = {}) {
     const msg = await wa.notificar({
       telefone: destino,
       mensagem: montarMensagem(novas),
-      template: w.templates.alerta,
-      parametros: [String(novas.length), moeda(novas.reduce((s, d) => s + Number(d.valor), 0))],
     });
 
     for (const d of novas) {
@@ -153,8 +151,6 @@ async function enviarLembretesDeAmanha() {
       await wa.notificar({
         telefone: a.cliente_telefone,
         mensagem,
-        template: w.templates.lembrete,
-        parametros: [a.cliente_nome, hora, servicos],
         cliente_id: a.cliente_id,
       });
       enviados += 1;

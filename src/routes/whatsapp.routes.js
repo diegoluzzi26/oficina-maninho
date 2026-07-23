@@ -8,21 +8,12 @@ const auth = require('../middleware/auth');
 const h = require('../utils/asyncHandler');
 
 /**
- * WEBHOOK — sem autenticação JWT (a Meta não envia token nosso).
- * Montado antes do middleware de auth em app.js.
+ * Webhook global do Evolution API. Sem auth JWT porque a Evolution
+ * chama do próprio container, sem passar por header. Se um dia expor
+ * externamente, adicione um segredo compartilhado via header.
  */
-
-// GET: verificação exigida pela Meta ao salvar a URL do webhook
-router.get('/webhook', (req, res) => {
-  const challenge = wa.verificarWebhook(req.query);
-  if (challenge) return res.status(200).send(challenge);
-  res.sendStatus(403);
-});
-
-// POST: eventos (mensagens recebidas e status de entrega)
 router.post('/webhook', h(async (req, res) => {
-  // Responder 200 rápido é obrigatório: a Meta reenvia se demorarmos,
-  // gerando eventos duplicados. Processamos depois de responder.
+  // Responde 200 rápido pra Evolution não repetir o evento
   res.sendStatus(200);
   try {
     await wa.processarWebhook(req.body);
@@ -35,8 +26,17 @@ router.post('/webhook', h(async (req, res) => {
 router.post('/enviar/texto', auth, validate({ body: v.enviarTexto }),
   h(async (req, res) => res.status(201).json(await wa.enviarTexto(req.body))));
 
+// Retrocompat: rota /enviar/template existia com Meta. Com Evolution,
+// tudo vira texto livre. Mantida pra não quebrar integração antiga.
 router.post('/enviar/template', auth, validate({ body: v.enviarTemplate }),
-  h(async (req, res) => res.status(201).json(await wa.enviarTemplate(req.body))));
+  h(async (req, res) => {
+    const { telefone, mensagem, parametros, cliente_id, os_id } = req.body;
+    // Se o cliente veio no formato template + parametros mas sem mensagem,
+    // monta um texto simples juntando os parâmetros pra não perder informação.
+    const texto = mensagem
+      || (Array.isArray(parametros) ? parametros.join(' — ') : String(parametros || ''));
+    res.status(201).json(await wa.enviarTexto({ telefone, mensagem: texto, cliente_id, os_id }));
+  }));
 
 router.get('/mensagens', auth, h(async (req, res) => {
   const { telefone, cliente_id, os_id, limite = 50 } = req.query;
@@ -61,5 +61,17 @@ router.get('/janela/:telefone', auth, h(async (req, res) => {
   const tel = toE164(req.params.telefone);
   res.json({ telefone: tel, janela_aberta: await wa.janelaAberta(tel) });
 }));
+
+// --- Conexão / QR code (só admin) ---
+const requireRole = require('../middleware/requireRole');
+
+router.get('/conexao', auth, requireRole('admin'),
+  h(async (_req, res) => res.json(await wa.estadoConexao())));
+
+router.post('/conexao/qrcode', auth, requireRole('admin'),
+  h(async (_req, res) => res.json(await wa.qrCode())));
+
+router.post('/conexao/desconectar', auth, requireRole('admin'),
+  h(async (_req, res) => res.json(await wa.desconectar())));
 
 module.exports = router;

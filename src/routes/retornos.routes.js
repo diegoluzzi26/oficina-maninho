@@ -75,8 +75,6 @@ router.post('/:id/whatsapp', validate({ params: v.idParam }), h(async (req, res)
   const msg = await wa.notificar({
     telefone: r.cliente_telefone,
     mensagem,
-    template: w.templates.retorno,
-    parametros: [r.cliente_nome, nomeServico],
     cliente_id: r.cliente_id,
   });
 

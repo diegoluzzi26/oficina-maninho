@@ -47,28 +47,19 @@ async function set(chave, valor, userId = null) {
 }
 
 /**
- * Retorna a config efetiva do WhatsApp, na mesma "shape" que `env.whatsapp`
- * tinha antes — para call sites migrarem sem ter que aprender API nova.
+ * Config efetiva do WhatsApp (provider: Evolution API).
+ * Shape mantida como `whatsapp()` pra os call sites continuarem
+ * funcionando sem alteração — só o interior muda.
  */
 function whatsapp() {
-  const token          = get('whatsapp.token',            env.whatsapp.token);
-  const phoneNumberId  = get('whatsapp.phone_number_id',  env.whatsapp.phoneNumberId);
-  const verifyToken    = get('whatsapp.verify_token',     env.whatsapp.verifyToken);
-  const wabaId         = get('whatsapp.waba_id',          env.whatsapp.wabaId);
-  const apiVersion     = get('whatsapp.api_version',      env.whatsapp.apiVersion);
-  const defaultLang    = get('whatsapp.default_lang',     env.whatsapp.defaultLang);
+  const url      = get('whatsapp.evolution_url',      env.whatsapp.url);
+  const apiKey   = get('whatsapp.evolution_api_key',  env.whatsapp.apiKey);
+  const instance = get('whatsapp.evolution_instance', env.whatsapp.instance);
 
   return {
-    token, phoneNumberId, verifyToken, wabaId, apiVersion, defaultLang,
-    templates: {
-      abertura:   get('whatsapp.template_abertura',   process.env.WHATSAPP_TEMPLATE_ABERTURA   || 'os_aberta'),
-      finalizada: get('whatsapp.template_finalizada', process.env.WHATSAPP_TEMPLATE_FINALIZADA || 'os_finalizada'),
-      paga:       get('whatsapp.template_paga',       process.env.WHATSAPP_TEMPLATE_PAGA       || 'os_paga'),
-      retorno:    get('whatsapp.template_retorno',    process.env.WHATSAPP_TEMPLATE_RETORNO    || 'retorno_agendado'),
-      lembrete:   get('whatsapp.template_lembrete',   process.env.WHATSAPP_TEMPLATE_LEMBRETE   || 'lembrete_agendamento'),
-      alerta:     get('whatsapp.template_alerta',     process.env.WHATSAPP_TEMPLATE_ALERTA     || 'alerta_contas'),
-    },
-    enabled: Boolean(token && phoneNumberId),
+    url, apiKey, instance,
+    provider: 'evolution',
+    enabled: Boolean(url && apiKey && instance),
   };
 }
 

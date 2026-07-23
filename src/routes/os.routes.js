@@ -26,34 +26,19 @@ const listaQuery = v.paginacao.extend({
  * a OS já foi criada/atualizada e o erro vai apenas no campo `whatsapp`.
  */
 /**
- * Configuração de cada tipo de notificação de OS num só lugar —
- * facilita adicionar novos tipos sem espalhar hardcoded pela função.
+ * Textos por tipo de notificação. Como Evolution API manda texto livre
+ * sempre, é só um switch simples.
  */
-const NOTIFICACOES_OS = {
-  abertura: {
-    chaveTemplate: 'abertura',
-    texto: (os) => `Olá, ${os.cliente_nome}! Recebemos seu ${os.marca} ${os.modelo} (${os.placa}). `
-      + `Sua OS nº ${os.numero_os} foi aberta. Qualquer novidade avisamos por aqui. — Auto Elétrica Maninho`,
-    parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
-  },
-  finalizada: {
-    chaveTemplate: 'finalizada',
-    texto: (os) => `Olá, ${os.cliente_nome}! Seu ${os.marca} ${os.modelo} (${os.placa}) está pronto. `
-      + `OS nº ${os.numero_os} — total R$ ${Number(os.valor_total).toFixed(2).replace('.', ',')}. `
-      + `Pode retirar no horário de funcionamento. — Auto Elétrica Maninho`,
-    parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
-  },
-  paga: {
-    chaveTemplate: 'paga',
-    texto: (os) => {
-      const valor = `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`;
-      return `Obrigado, ${os.cliente_nome}! Recebemos o pagamento de ${valor} `
-        + `referente à OS nº ${os.numero_os} (${os.marca} ${os.modelo}). — Auto Elétrica Maninho`;
-    },
-    parametros: (os) => [
-      os.cliente_nome, String(os.numero_os),
-      `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`,
-    ],
+const TEXTO_OS = {
+  abertura: (os) => `Olá, ${os.cliente_nome}! Recebemos seu ${os.marca} ${os.modelo} (${os.placa}). `
+    + `Sua OS nº ${os.numero_os} foi aberta. Qualquer novidade avisamos por aqui. — Auto Elétrica Maninho`,
+  finalizada: (os) => `Olá, ${os.cliente_nome}! Seu ${os.marca} ${os.modelo} (${os.placa}) está pronto. `
+    + `OS nº ${os.numero_os} — total R$ ${Number(os.valor_total).toFixed(2).replace('.', ',')}. `
+    + `Pode retirar no horário de funcionamento. — Auto Elétrica Maninho`,
+  paga: (os) => {
+    const valor = `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`;
+    return `Obrigado, ${os.cliente_nome}! Recebemos o pagamento de ${valor} `
+      + `referente à OS nº ${os.numero_os} (${os.marca} ${os.modelo}). — Auto Elétrica Maninho`;
   },
 };
 
@@ -61,15 +46,13 @@ async function notificarSeguro(os, tipo) {
   const w = config.whatsapp();
   if (!w.enabled) return { enviado: false, motivo: 'WhatsApp não configurado' };
 
-  const cfg = NOTIFICACOES_OS[tipo];
-  if (!cfg) return { enviado: false, motivo: `Tipo de notificação desconhecido: ${tipo}` };
+  const monta = TEXTO_OS[tipo];
+  if (!monta) return { enviado: false, motivo: `Tipo de notificação desconhecido: ${tipo}` };
 
   try {
     const msg = await wa.notificar({
       telefone: os.cliente_telefone,
-      mensagem: cfg.texto(os),
-      template: w.templates[cfg.chaveTemplate],
-      parametros: cfg.parametros(os),
+      mensagem: monta(os),
       cliente_id: os.cliente_id,
       os_id: os.id,
     });

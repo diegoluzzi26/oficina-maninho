@@ -3,44 +3,83 @@ const db = require('../config/db');
 const config = require('./config.service');
 const AppError = require('../utils/AppError');
 
-const GRAPH = 'https://graph.facebook.com';
+/**
+ * Provider: Evolution API (self-hosted, WhatsApp Web via Baileys).
+ *
+ * Diferenças em relação ao antigo Meta Cloud API:
+ *   - Sem "template". Envia texto livre pra qualquer contato, sempre.
+ *   - Sem janela de 24h. `janelaAberta()` retorna sempre true (mantido
+ *     na assinatura pra não quebrar chamadas antigas).
+ *   - Sem custo por mensagem — só custo de hospedar o container.
+ *   - Requer sessão do WhatsApp Web ativa (QR code lido uma vez).
+ *
+ * Endpoints usados:
+ *   POST {url}/instance/create            — cria instância se não existe
+ *   GET  {url}/instance/connect/{name}    — QR code / status
+ *   GET  {url}/instance/connectionState/{name}
+ *   POST {url}/message/sendText/{name}    — envia texto
+ *   POST {url}/message/sendMedia/{name}   — envia mídia (foto/PDF/áudio)
+ *
+ * Webhook global aponta pra /api/whatsapp/webhook — Evolution manda
+ * MESSAGES_UPSERT (novas), MESSAGES_UPDATE (delivered/read),
+ * SEND_MESSAGE (nossas mensagens saindo), CONNECTION_UPDATE, QRCODE_UPDATED.
+ */
 
-function apiUrl(path) {
-  return `${GRAPH}/${config.whatsapp().apiVersion}/${path}`;
-}
+const GRAPH_ERRO_500 = 'Evolution API respondeu 500 — checar logs do container evolution';
+
+function evo() { return config.whatsapp(); }
 
 function ensureEnabled() {
-  if (!config.whatsapp().enabled) {
+  const e = evo();
+  if (!e.enabled) {
     throw new AppError(
-      'WhatsApp não configurado. Defina WHATSAPP_TOKEN e PHONE_NUMBER_ID no .env',
+      'WhatsApp não configurado. Preencha URL, API key e instância em Configurações.',
       503,
     );
+  }
+  return e;
+}
+
+/** Chama a Evolution API com timeout. Sem timeout uma queda no container trava a request. */
+async function evolutionRequest(path, { method = 'GET', body } = {}) {
+  const e = ensureEnabled();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${e.url}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: e.apiKey,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, json };
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new AppError('Evolution API não respondeu em 15s', 504);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * A Meta só permite mensagem de texto livre nas 24h seguintes à última
- * mensagem RECEBIDA do cliente. Fora dessa janela, só template aprovado.
- * Checamos antes de gastar a chamada e levar erro 131047 da API.
+ * Evolution não tem "janela de 24h" — texto livre funciona sempre.
+ * Mantido pra compatibilidade com quem já chama.
  */
-async function janelaAberta(telefone) {
-  const { rows } = await db.query(
-    `SELECT max(criado_em) AS ultima
-       FROM wa_messages
-      WHERE telefone = $1 AND direction = 'inbound'`,
-    [telefone],
-  );
-  const ultima = rows[0]?.ultima;
-  if (!ultima) return false;
-  return Date.now() - new Date(ultima).getTime() < 24 * 60 * 60 * 1000;
+async function janelaAberta(_telefone) {
+  return true;
 }
 
 async function logMensagem(dados) {
   const {
     wa_message_id = null, direction, kind = 'text', status = 'queued',
     telefone, cliente_id = null, os_id = null,
-    template_name = null, body = null, payload = null, erro = null,
-    enviado_em = null,
+    body = null, payload = null, erro = null, enviado_em = null,
   } = dados;
 
   const { rows } = await db.query(
@@ -51,228 +90,210 @@ async function logMensagem(dados) {
      ON CONFLICT (wa_message_id) DO NOTHING
      RETURNING *`,
     [wa_message_id, direction, kind, status, telefone, cliente_id, os_id,
-      template_name, body, payload, erro, enviado_em],
+      null, body, payload, erro, enviado_em],
   );
   return rows[0] || null;
 }
 
-/** POST para a Graph API com timeout — sem isso a requisição pode pendurar. */
-async function postGraph(path, payload) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch(apiUrl(path), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.whatsapp().token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const json = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, json };
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      return { ok: false, status: 504, json: { error: { message: 'Timeout na Meta Cloud API' } } };
-    }
-    return { ok: false, status: 502, json: { error: { message: err.message } } };
-  } finally {
-    clearTimeout(timeout);
-  }
+/** Normaliza telefone E.164 pra formato aceito pela Evolution: só dígitos. */
+function digitos(telefone) {
+  return String(telefone || '').replace(/\D/g, '');
 }
 
+/**
+ * Envia texto pelo WhatsApp via Evolution.
+ * `mensagem` é texto puro — Evolution suporta \n e emoji nativos.
+ */
 async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
-  ensureEnabled();
+  const e = ensureEnabled();
+  const numero = digitos(telefone);
 
-  if (!(await janelaAberta(telefone))) {
-    throw new AppError(
-      'Janela de 24h fechada para este número. Use um template aprovado para iniciar a conversa.',
-      409,
-    );
-  }
-
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: telefone,
-    type: 'text',
-    text: { preview_url: false, body: mensagem },
-  };
-
-  const { ok, json } = await postGraph(`${config.whatsapp().phoneNumberId}/messages`, payload);
-  const waId = json?.messages?.[0]?.id || null;
-
-  const registro = await logMensagem({
-    wa_message_id: waId,
-    direction: 'outbound',
-    kind: 'text',
-    status: ok ? 'sent' : 'failed',
-    telefone, cliente_id, os_id,
-    body: mensagem,
-    payload,
-    erro: ok ? null : json,
-    enviado_em: ok ? new Date() : null,
-  });
+  const { ok, status, json } = await evolutionRequest(
+    `/message/sendText/${e.instance}`,
+    { method: 'POST', body: { number: numero, text: mensagem } },
+  );
 
   if (!ok) {
-    throw new AppError(
-      json?.error?.message || 'Falha ao enviar mensagem pelo WhatsApp',
-      502,
-      json?.error,
-    );
+    const motivo = json?.response?.message || json?.message || `HTTP ${status}`;
+    await logMensagem({
+      direction: 'outbound', kind: 'text', status: 'failed',
+      telefone, cliente_id, os_id, body: mensagem,
+      payload: json, erro: { motivo, status },
+    });
+    throw new AppError(`Falha ao enviar WhatsApp: ${motivo}`, status === 500 ? 502 : status);
   }
-  return registro;
-}
 
-async function enviarTemplate({ telefone, template, idioma, parametros = [], cliente_id, os_id }) {
-  ensureEnabled();
-
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: telefone,
-    type: 'template',
-    template: {
-      name: template,
-      language: { code: idioma || config.whatsapp().defaultLang },
-      ...(parametros.length
-        ? {
-          components: [{
-            type: 'body',
-            parameters: parametros.map((p) => ({ type: 'text', text: String(p) })),
-          }],
-        }
-        : {}),
-    },
-  };
-
-  const { ok, json } = await postGraph(`${config.whatsapp().phoneNumberId}/messages`, payload);
-  const waId = json?.messages?.[0]?.id || null;
-
-  const registro = await logMensagem({
+  // Evolution devolve key.id (wa_message_id) na resposta
+  const waId = json?.key?.id || json?.messageId || json?.id || null;
+  const rec = await logMensagem({
     wa_message_id: waId,
-    direction: 'outbound',
-    kind: 'template',
-    status: ok ? 'sent' : 'failed',
-    telefone, cliente_id, os_id,
-    template_name: template,
-    body: parametros.join(' | '),
-    payload,
-    erro: ok ? null : json,
-    enviado_em: ok ? new Date() : null,
+    direction: 'outbound', kind: 'text', status: 'sent',
+    telefone, cliente_id, os_id, body: mensagem,
+    payload: json, enviado_em: new Date(),
   });
-
-  if (!ok) {
-    throw new AppError(
-      json?.error?.message || 'Falha ao enviar template pelo WhatsApp',
-      502,
-      json?.error,
-    );
-  }
-  return registro;
+  return { id: waId, wa_message_id: waId, registro: rec };
 }
 
 /**
- * Envia texto se a janela estiver aberta, senão cai para template.
- * Usado nas notificações automáticas de OS, onde não dá pra saber
- * de antemão se o cliente escreveu nas últimas 24h.
+ * Retrocompat: alguns call sites antigos chamavam `enviarTemplate` ou
+ * passavam `template` como fallback. Evolution não tem essa diferença;
+ * usamos sempre `enviarTexto` com o texto que já vinha montado.
  */
-async function notificar({ telefone, mensagem, template, parametros, cliente_id, os_id }) {
-  if (await janelaAberta(telefone)) {
-    return enviarTexto({ telefone, mensagem, cliente_id, os_id });
-  }
-  if (!template) {
-    throw new AppError(
-      'Janela de 24h fechada e nenhum template informado para esta notificação',
-      409,
-    );
-  }
-  return enviarTemplate({
-    telefone, template, idioma: config.whatsapp().defaultLang, parametros, cliente_id, os_id,
-  });
+async function enviarTemplate({ telefone, mensagem, cliente_id, os_id }) {
+  return enviarTexto({ telefone, mensagem, cliente_id, os_id });
 }
 
-/**
- * Processa o corpo do webhook da Meta.
- * Um POST pode trazer várias entries; cada uma com mensagens recebidas
- * e/ou atualizações de status (sent/delivered/read/failed).
- */
+async function notificar({ telefone, mensagem, cliente_id, os_id }) {
+  return enviarTexto({ telefone, mensagem, cliente_id, os_id });
+}
+
+// ---------------------------------------------------------------------
+// Webhook: Evolution manda vários tipos de evento pro nosso endpoint.
+// ---------------------------------------------------------------------
+
+const MAPA_STATUS = {
+  PENDING: 'queued',
+  SERVER_ACK: 'sent',
+  DELIVERY_ACK: 'delivered',
+  READ: 'read',
+  PLAYED: 'read',
+  ERROR: 'failed',
+};
+
 async function processarWebhook(body) {
-  const resultado = { recebidas: 0, statusAtualizados: 0 };
+  const evento = body?.event;
+  const dados  = body?.data;
+  if (!evento || !dados) return { ignorado: true };
 
-  for (const entry of body?.entry || []) {
-    for (const change of entry?.changes || []) {
-      const value = change?.value || {};
+  const resultado = { evento, tratado: 0 };
 
-      // 1) Mensagens recebidas — abrem a janela de 24h
-      for (const msg of value.messages || []) {
-        const telefone = msg.from?.startsWith('+') ? msg.from : `+${msg.from}`;
-        const texto = msg.text?.body
-          || msg.button?.text
-          || msg.interactive?.list_reply?.title
-          || msg.interactive?.button_reply?.title
-          || null;
+  // Mensagens novas (recebidas OU nossas próprias enviadas — dependendo de fromMe)
+  if (evento === 'messages.upsert' || evento === 'MESSAGES_UPSERT') {
+    const messages = Array.isArray(dados) ? dados : [dados];
+    for (const msg of messages) {
+      const fromMe   = msg?.key?.fromMe || false;
+      const remoteJid = msg?.key?.remoteJid || '';
+      const numero   = remoteJid.replace(/@.*/, '');
+      if (!numero) continue;
+      const telefone = numero.startsWith('+') ? numero : `+${numero}`;
+      const texto    = msg?.message?.conversation
+                    || msg?.message?.extendedTextMessage?.text
+                    || '';
+      const waId     = msg?.key?.id || null;
 
-        const { rows } = await db.query(
-          'SELECT id FROM clientes WHERE telefone = $1 LIMIT 1', [telefone],
-        );
+      // Amarra a cliente_id se o telefone bate
+      const c = await db.query('SELECT id FROM clientes WHERE telefone = $1', [telefone]);
+      const clienteId = c.rows[0]?.id || null;
 
-        await logMensagem({
-          wa_message_id: msg.id,
-          direction: 'inbound',
-          kind: msg.type === 'text' ? 'text' : 'other',
-          status: 'delivered',
-          telefone,
-          cliente_id: rows[0]?.id || null,
-          body: texto,
-          payload: msg,
-        });
-        resultado.recebidas += 1;
-      }
-
-      // 2) Status de entrega das mensagens que enviamos
-      for (const st of value.statuses || []) {
-        const mapa = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' };
-        const novo = mapa[st.status];
-        if (!novo) continue;
-
-        // Ordem dos estados: só avança, nunca regride (um 'sent' atrasado
-        // não pode sobrescrever um 'read' já registrado).
-        const peso = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
-
-        await db.query(
-          `UPDATE wa_messages
-              SET status      = CASE WHEN $2 = 'failed' THEN 'failed'::wa_status
-                                     WHEN $3 > (CASE status
-                                                  WHEN 'queued' THEN 0 WHEN 'sent' THEN 1
-                                                  WHEN 'delivered' THEN 2 WHEN 'read' THEN 3
-                                                  ELSE 4 END)
-                                     THEN $2::wa_status ELSE status END,
-                  entregue_em = COALESCE(entregue_em, CASE WHEN $2 IN ('delivered','read') THEN now() END),
-                  lido_em     = COALESCE(lido_em,     CASE WHEN $2 = 'read' THEN now() END),
-                  erro        = COALESCE($4::jsonb, erro)
-            WHERE wa_message_id = $1`,
-          [st.id, novo, peso[novo], st.errors ? JSON.stringify(st.errors) : null],
-        );
-        resultado.statusAtualizados += 1;
-      }
+      await logMensagem({
+        wa_message_id: waId,
+        direction: fromMe ? 'outbound' : 'inbound',
+        kind: 'text',
+        status: fromMe ? 'sent' : 'delivered',
+        telefone, cliente_id: clienteId, body: texto,
+        payload: msg,
+      });
+      resultado.tratado += 1;
     }
   }
+
+  // Atualização de status (delivered → read → failed)
+  if (evento === 'messages.update' || evento === 'MESSAGES_UPDATE') {
+    const messages = Array.isArray(dados) ? dados : [dados];
+    for (const upd of messages) {
+      const waId = upd?.key?.id;
+      const statusMeta = upd?.update?.status || upd?.status;
+      const status = MAPA_STATUS[statusMeta] || null;
+      if (!waId || !status) continue;
+
+      // Progressão monotônica: nunca "regride" de read pra sent
+      const OrdemStatus = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
+      await db.query(
+        `UPDATE wa_messages
+            SET status = $1,
+                entregue_em = CASE WHEN $1 = 'delivered' THEN now() ELSE entregue_em END,
+                lido_em     = CASE WHEN $1 = 'read'      THEN now() ELSE lido_em     END
+          WHERE wa_message_id = $2
+            AND $3 > COALESCE((
+              SELECT CASE status
+                WHEN 'queued' THEN 0 WHEN 'sent' THEN 1
+                WHEN 'delivered' THEN 2 WHEN 'read' THEN 3
+                WHEN 'failed' THEN 4 END
+              FROM wa_messages WHERE wa_message_id = $2
+            ), -1)`,
+        [status, waId, OrdemStatus[status]],
+      );
+      resultado.tratado += 1;
+    }
+  }
+
   return resultado;
 }
 
-/** Verificação do webhook (GET) exigida pela Meta ao configurar a URL. */
-function verificarWebhook(query) {
-  const mode = query['hub.mode'];
-  const token = query['hub.verify_token'];
-  const challenge = query['hub.challenge'];
-  if (mode === 'subscribe' && token === config.whatsapp().verifyToken) return challenge;
-  return null;
+// ---------------------------------------------------------------------
+// Instância: criar, checar estado, pegar QR code.
+// Usados pela UI de Configurações pra o dono conectar o número.
+// ---------------------------------------------------------------------
+
+async function garantirInstancia() {
+  const e = ensureEnabled();
+  // fetchInstances retorna array — se o nome não está lá, cria
+  const listaResp = await evolutionRequest('/instance/fetchInstances');
+  const existe = Array.isArray(listaResp.json)
+    && listaResp.json.some((i) => i?.name === e.instance || i?.instance?.instanceName === e.instance);
+  if (existe) return { criada: false };
+
+  const cria = await evolutionRequest('/instance/create', {
+    method: 'POST',
+    body: {
+      instanceName: e.instance,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS',
+    },
+  });
+  if (!cria.ok) throw new AppError(`Falha ao criar instância: ${cria.json?.message || cria.status}`, 502);
+  return { criada: true, resposta: cria.json };
+}
+
+async function estadoConexao() {
+  const e = ensureEnabled();
+  const r = await evolutionRequest(`/instance/connectionState/${e.instance}`);
+  if (!r.ok) return { conectado: false, estado: 'nao_encontrada', erro: r.json };
+  const estado = r.json?.instance?.state || r.json?.state || 'desconhecido';
+  return { conectado: estado === 'open', estado, bruto: r.json };
+}
+
+async function qrCode() {
+  const e = ensureEnabled();
+  await garantirInstancia();
+  const r = await evolutionRequest(`/instance/connect/${e.instance}`);
+  // Evolution devolve base64 do QR em `.base64` ou `.qrcode`
+  const base64 = r.json?.base64 || r.json?.qrcode?.base64 || null;
+  const pairingCode = r.json?.pairingCode || null;
+  return {
+    ok: r.ok,
+    conectado: r.json?.instance?.state === 'open',
+    base64,
+    pairingCode,
+    bruto: r.json,
+  };
+}
+
+async function desconectar() {
+  const e = ensureEnabled();
+  const r = await evolutionRequest(`/instance/logout/${e.instance}`, { method: 'DELETE' });
+  if (!r.ok) throw new AppError(`Falha ao desconectar: ${r.json?.message || r.status}`, 502);
+  return r.json;
 }
 
 module.exports = {
-  enviarTexto, enviarTemplate, notificar,
-  processarWebhook, verificarWebhook,
-  janelaAberta, logMensagem,
+  janelaAberta,
+  enviarTexto,
+  enviarTemplate,
+  notificar,
+  processarWebhook,
+  garantirInstancia,
+  estadoConexao,
+  qrCode,
+  desconectar,
 };

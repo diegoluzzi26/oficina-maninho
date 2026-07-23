@@ -144,6 +144,11 @@ export const api = {
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),
 
+  // --- Evolution: conexão do WhatsApp ---
+  waConexao: () => request('/whatsapp/conexao'),
+  waQrCode: () => request('/whatsapp/conexao/qrcode', { method: 'POST', body: {} }),
+  waDesconectar: () => request('/whatsapp/conexao/desconectar', { method: 'POST', body: {} }),
+
   // --- anexos ---
   anexosDaOS: (osId) => request(`/os/${osId}/anexos`),
   removerAnexo: (id) => request(`/anexos/${id}`, { method: 'DELETE' }),
