@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { api } from '../lib/api';
 import { nomeMes, telefone } from '../lib/format';
 import { Alerta, Modal, Campo, Spinner, Skeleton, Vazio } from '../components/ui';
+import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 
 // ---------------------------------------------------------------------
 // Utilidades de data (evita depender de moment/dayjs)
@@ -250,14 +251,8 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
                   placeholder="ABC1D23"
                   onChange={(e) => setNovoCarro({ ...novoCarro, placa: e.target.value.toUpperCase() })} />
               </Campo>
-              <Campo label="Marca" obrigatorio>
-                <input className="input" value={novoCarro.marca} required
-                  onChange={(e) => setNovoCarro({ ...novoCarro, marca: e.target.value })} />
-              </Campo>
-              <Campo label="Modelo" obrigatorio>
-                <input className="input" value={novoCarro.modelo} required
-                  onChange={(e) => setNovoCarro({ ...novoCarro, modelo: e.target.value })} />
-              </Campo>
+              <SeletorMarcaModelo marca={novoCarro.marca} modelo={novoCarro.modelo} obrigatorio
+                onChange={({ marca, modelo }) => setNovoCarro({ ...novoCarro, marca, modelo })} />
               <Campo label="Ano">
                 <input type="number" min="1900" max="2100" className="input" value={novoCarro.ano}
                   onChange={(e) => setNovoCarro({ ...novoCarro, ano: e.target.value })} />

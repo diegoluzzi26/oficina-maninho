@@ -3,6 +3,7 @@ import { api, getToken } from '../lib/api';
 import { brl, data, dataHora, telefone, STATUS, nomeMes,
   FORMAS_PAGAMENTO, rotuloForma, hojeISO } from '../lib/format';
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
+import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 
 /**
  * Anexo protegido por JWT: baixa via fetch (com Authorization) e
@@ -241,14 +242,8 @@ function NovaOS({ aberto, onFechar, onCriada }) {
                   placeholder="ABC1D23"
                   onChange={(e) => setNovoCarro({ ...novoCarro, placa: e.target.value.toUpperCase() })} />
               </Campo>
-              <Campo label="Marca" obrigatorio>
-                <input className="input" value={novoCarro.marca} required
-                  onChange={(e) => setNovoCarro({ ...novoCarro, marca: e.target.value })} />
-              </Campo>
-              <Campo label="Modelo" obrigatorio>
-                <input className="input" value={novoCarro.modelo} required
-                  onChange={(e) => setNovoCarro({ ...novoCarro, modelo: e.target.value })} />
-              </Campo>
+              <SeletorMarcaModelo marca={novoCarro.marca} modelo={novoCarro.modelo} obrigatorio
+                onChange={({ marca, modelo }) => setNovoCarro({ ...novoCarro, marca, modelo })} />
               <Campo label="Ano">
                 <input type="number" min="1900" max="2100" className="input"
                   value={novoCarro.ano}

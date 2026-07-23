@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api, getUser } from '../lib/api';
 import { brl, data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Badge } from '../components/ui';
+import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 
 function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   const vazio = { nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '' };
@@ -132,14 +133,8 @@ function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
             <input type="number" className="input" value={form.ano} onChange={set('ano')}
               placeholder="2015" min="1900" max="2100" />
           </Campo>
-          <Campo label="Marca" obrigatorio>
-            <input className="input" value={form.marca} onChange={set('marca')} required
-              placeholder="Volkswagen" />
-          </Campo>
-          <Campo label="Modelo" obrigatorio>
-            <input className="input" value={form.modelo} onChange={set('modelo')} required
-              placeholder="Jetta" />
-          </Campo>
+          <SeletorMarcaModelo marca={form.marca} modelo={form.modelo} obrigatorio
+            onChange={({ marca, modelo }) => setForm((f) => ({ ...f, marca, modelo }))} />
           <Campo label="Cor">
             <input className="input" value={form.cor} onChange={set('cor')} placeholder="Branco" />
           </Campo>
