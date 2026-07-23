@@ -44,12 +44,56 @@ const PROXIMOS = {
   paga: [],
 };
 
+/**
+ * Dropdown de status inline — usado na tabela pra o atendente
+ * mudar status sem precisar abrir o detalhe.
+ * Se escolher "paga", delega pro modal PagarOS (que pede forma/data/valor).
+ */
+function StatusInline({ os, onMudar, onPagar }) {
+  const [aberto, setAberto] = useState(false);
+  const proximos = PROXIMOS[os.status] || [];
+
+  if (!proximos.length) return <Badge status={os.status} />;
+
+  return (
+    <div className="relative inline-block"
+      onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setAberto((v) => !v)}
+        className="group inline-flex items-center gap-1"
+        title="Mudar status">
+        <Badge status={os.status} />
+        <span className="text-[10px] text-slate-400 group-hover:text-slate-700">▾</span>
+      </button>
+
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setAberto(false)} />
+          <div className="absolute left-0 top-full z-40 mt-1 min-w-[140px] rounded-md border border-slate-200 bg-white p-1 shadow-lg">
+            {proximos.map((s) => (
+              <button key={s}
+                onClick={() => {
+                  setAberto(false);
+                  if (s === 'paga') onPagar(os);
+                  else onMudar(os, s);
+                }}
+                className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-maninho-50">
+                → {STATUS[s].texto}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------
 // Modal nova OS — cliente existente OU novo
 // ---------------------------------------------------------------------
 function NovaOS({ aberto, onFechar, onCriada }) {
   const [clientes, setClientes] = useState([]);
   const [servicos, setServicos] = useState([]);
+  const [pecasCatalogo, setPecasCatalogo] = useState([]);
   const [modoCliente, setModoCliente] = useState('existente'); // 'existente' | 'novo'
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clienteId, setClienteId] = useState('');
@@ -70,11 +114,11 @@ function NovaOS({ aberto, onFechar, onCriada }) {
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
-  // Serviços do catálogo: carrega uma vez quando o modal abre.
+  // Catálogos (serviços + peças): carrega uma vez quando o modal abre.
   useEffect(() => {
     if (!aberto) return;
-    api.servicos()
-      .then(setServicos)
+    Promise.all([api.servicos(), api.pecas()])
+      .then(([s, p]) => { setServicos(s); setPecasCatalogo(p); })
       .catch((e) => setErro(`Erro ao carregar catálogo: ${e.message}`));
   }, [aberto]);
 
@@ -110,17 +154,25 @@ function NovaOS({ aberto, onFechar, onCriada }) {
   }
 
   function addServico() {
-    const s = servicos[0];
-    if (!s) return;
     setItens((v) => [...v, {
-      servico_id: s.id, nome: s.nome, quantidade: 1, valor_unit: Number(s.valor_padrao),
+      servico_id: null, nome_servico: '', quantidade: 1, valor_unit: '',
     }]);
   }
-  function trocarServico(idx, servicoId) {
-    const s = servicos.find((x) => x.id === servicoId);
-    setItens((v) => v.map((it, i) => (i === idx
-      ? { ...it, servico_id: s.id, nome: s.nome, valor_unit: Number(s.valor_padrao) }
-      : it)));
+  /** Quando o usuário digita/escolhe o nome do serviço.
+   * Se bater case-insensitive com um do catálogo, herda o valor_padrão. */
+  function atualizarNomeServico(idx, nome) {
+    setItens((v) => v.map((it, i) => {
+      if (i !== idx) return it;
+      const hit = servicos.find((s) => s.nome.toLowerCase() === nome.trim().toLowerCase());
+      return {
+        ...it,
+        servico_id: hit ? hit.id : null,
+        nome_servico: nome,
+        valor_unit: (it.valor_unit === '' || it.valor_unit === null) && hit
+          ? Number(hit.valor_padrao)
+          : it.valor_unit,
+      };
+    }));
   }
 
   const totalServicos = itens.reduce((s, i) => s + (Number(i.valor_unit) || 0) * (Number(i.quantidade) || 0), 0);
@@ -133,8 +185,13 @@ function NovaOS({ aberto, onFechar, onCriada }) {
       const body = {
         km_entrada: km ? Number(km) : null,
         observacoes: obs || null,
+        // Cada item envia servico_id se existir (do datalist) OU nome_servico
+        // (livre — backend cria no catálogo automático).
         servicos: itens.map((i) => ({
-          servico_id: i.servico_id, quantidade: Number(i.quantidade), valor_unit: Number(i.valor_unit),
+          servico_id: i.servico_id || undefined,
+          nome_servico: i.nome_servico,
+          quantidade: Number(i.quantidade),
+          valor_unit: Number(i.valor_unit),
         })),
         pecas: pecas.map((p) => ({
           descricao: p.descricao, quantidade: Number(p.quantidade), valor_unit: Number(p.valor_unit),
@@ -296,21 +353,31 @@ function NovaOS({ aberto, onFechar, onCriada }) {
             <p className="py-3 text-center text-xs text-slate-400">Nenhum serviço adicionado</p>
           ) : (
             <div className="space-y-2">
+              <datalist id="datalist-servicos">
+                {servicos.map((s) => (
+                  <option key={s.id} value={s.nome}>{`R$ ${Number(s.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
               {itens.map((it, idx) => (
                 <div key={idx} className="flex flex-wrap items-center gap-2">
-                  <select className="input flex-1 min-w-[180px] py-1.5 text-xs"
-                    value={it.servico_id} onChange={(e) => trocarServico(idx, e.target.value)}>
-                    {servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                  </select>
+                  <input list="datalist-servicos"
+                    className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                    placeholder="Ex: Troca de bateria (do catálogo ou novo)"
+                    value={it.nome_servico}
+                    onChange={(e) => atualizarNomeServico(idx, e.target.value)} />
                   <input type="number" min="1" className="input w-16 py-1.5 text-xs" value={it.quantidade}
                     onChange={(e) => setItens((v) => v.map((x, i) => (i === idx ? { ...x, quantidade: e.target.value } : x)))} />
                   <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum"
+                    placeholder="valor"
                     value={it.valor_unit}
                     onChange={(e) => setItens((v) => v.map((x, i) => (i === idx ? { ...x, valor_unit: e.target.value } : x)))} />
                   <button type="button" onClick={() => setItens((v) => v.filter((_, i) => i !== idx))}
                     className="px-1.5 text-slate-400 transition hover:text-rose-600" title="Remover">✕</button>
                 </div>
               ))}
+              <p className="text-[11px] text-slate-500">
+                Ao lançar um serviço novo (fora do catálogo), ele é cadastrado automaticamente.
+              </p>
             </div>
           )}
         </div>
@@ -327,11 +394,27 @@ function NovaOS({ aberto, onFechar, onCriada }) {
             <p className="py-3 text-center text-xs text-slate-400">Nenhuma peça adicionada</p>
           ) : (
             <div className="space-y-2">
+              <datalist id="datalist-pecas">
+                {pecasCatalogo.map((p) => (
+                  <option key={p.id} value={p.nome}>{`R$ ${Number(p.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
               {pecas.map((p, idx) => (
                 <div key={idx} className="flex flex-wrap items-center gap-2">
-                  <input className="input flex-1 min-w-[180px] py-1.5 text-xs" placeholder="Descrição da peça"
+                  <input list="datalist-pecas"
+                    className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                    placeholder="Descrição da peça (do catálogo ou nova)"
                     value={p.descricao}
-                    onChange={(e) => setPecas((v) => v.map((x, i) => (i === idx ? { ...x, descricao: e.target.value } : x)))} />
+                    onChange={(e) => {
+                      const nome = e.target.value;
+                      const hit = pecasCatalogo.find(
+                        (x) => x.nome.toLowerCase() === nome.trim().toLowerCase());
+                      setPecas((v) => v.map((x, i) => (i === idx
+                        ? { ...x, descricao: nome,
+                            valor_unit: (x.valor_unit === '' || x.valor_unit == null) && hit
+                              ? Number(hit.valor_padrao) : x.valor_unit }
+                        : x)));
+                    }} />
                   <input type="number" min="0.01" step="0.01" className="input w-16 py-1.5 text-xs" value={p.quantidade}
                     onChange={(e) => setPecas((v) => v.map((x, i) => (i === idx ? { ...x, quantidade: e.target.value } : x)))} />
                   <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum" placeholder="0,00"
@@ -341,6 +424,9 @@ function NovaOS({ aberto, onFechar, onCriada }) {
                     className="px-1.5 text-slate-400 transition hover:text-rose-600" title="Remover">✕</button>
                 </div>
               ))}
+              <p className="text-[11px] text-slate-500">
+                Ao lançar uma peça nova (fora do catálogo), ela é cadastrada automaticamente.
+              </p>
             </div>
           )}
         </div>
@@ -473,7 +559,7 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [servicos, setServicos] = useState([]);
-  const [novoSvc, setNovoSvc] = useState({ servico_id: '', quantidade: 1, valor_unit: '' });
+  const [novoSvc, setNovoSvc] = useState({ servico_id: '', nome_servico: '', quantidade: 1, valor_unit: '' });
   const [novaPeca, setNovaPeca] = useState({ descricao: '', quantidade: 1, valor_unit: '' });
   const [addAberto, setAddAberto] = useState(null); // 'servico' | 'peca' | null
   const [fotos, setFotos] = useState([]);
@@ -483,9 +569,13 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
 
   const editavel = os && os.status !== 'paga';
 
+  const [pecasCatalogo, setPecasCatalogo] = useState([]);
+
   useEffect(() => {
     if (!os || !editavel) return;
-    api.servicos().then(setServicos).catch(() => {});
+    Promise.all([api.servicos(), api.pecas()])
+      .then(([s, p]) => { setServicos(s); setPecasCatalogo(p); })
+      .catch(() => {});
   }, [os?.id, editavel]);
 
   useEffect(() => {
@@ -537,15 +627,16 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
   }
 
   async function adicionarServico() {
-    if (!novoSvc.servico_id) return;
+    if (!novoSvc.servico_id && !novoSvc.nome_servico) return;
     setCarregando(true); setErro('');
     try {
       const atualizada = await api.addServicoOS(os.id, {
-        servico_id: novoSvc.servico_id,
+        servico_id: novoSvc.servico_id || undefined,
+        nome_servico: novoSvc.nome_servico,
         quantidade: Number(novoSvc.quantidade) || 1,
         valor_unit: novoSvc.valor_unit === '' ? undefined : Number(novoSvc.valor_unit),
       });
-      setNovoSvc({ servico_id: '', quantidade: 1, valor_unit: '' });
+      setNovoSvc({ servico_id: '', nome_servico: '', quantidade: 1, valor_unit: '' });
       setAddAberto(null);
       onMudou(atualizada);
     } catch (e) { setErro(e.message); }
@@ -580,10 +671,15 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
     finally { setCarregando(false); }
   }
 
-  function trocarServicoNovo(sid) {
-    const s = servicos.find((x) => x.id === sid);
-    setNovoSvc({ servico_id: sid, quantidade: 1,
-      valor_unit: s ? String(s.valor_padrao) : '' });
+  function atualizarNomeNovoSvc(nome) {
+    const hit = servicos.find((x) => x.nome.toLowerCase() === nome.trim().toLowerCase());
+    setNovoSvc((v) => ({
+      ...v,
+      servico_id: hit ? hit.id : '',
+      nome_servico: nome,
+      valor_unit: (v.valor_unit === '' || v.valor_unit == null) && hit
+        ? String(hit.valor_padrao) : v.valor_unit,
+    }));
   }
 
   return (
@@ -700,17 +796,23 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
 
           {editavel && addAberto === 'servico' && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-              <select className="input flex-1 min-w-[180px] py-1.5 text-xs"
-                value={novoSvc.servico_id} onChange={(e) => trocarServicoNovo(e.target.value)}>
-                <option value="">Selecione…</option>
-                {servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-              </select>
+              <datalist id="datalist-servicos-detalhe">
+                {servicos.map((s) => (
+                  <option key={s.id} value={s.nome}>{`R$ ${Number(s.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
+              <input list="datalist-servicos-detalhe"
+                className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                placeholder="Nome do serviço (catálogo ou novo)"
+                value={novoSvc.nome_servico}
+                onChange={(e) => atualizarNomeNovoSvc(e.target.value)} />
               <input type="number" min="1" className="input w-16 py-1.5 text-xs" value={novoSvc.quantidade}
                 onChange={(e) => setNovoSvc((v) => ({ ...v, quantidade: e.target.value }))} />
               <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum"
                 value={novoSvc.valor_unit} placeholder="valor"
                 onChange={(e) => setNovoSvc((v) => ({ ...v, valor_unit: e.target.value }))} />
-              <button onClick={adicionarServico} disabled={!novoSvc.servico_id || carregando}
+              <button onClick={adicionarServico}
+                disabled={(!novoSvc.servico_id && !novoSvc.nome_servico) || carregando}
                 className="btn-primary px-3 py-1 text-xs">Adicionar</button>
               <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
             </div>
@@ -752,9 +854,25 @@ function DetalheOS({ os, onFechar, onMudou, onPagar }) {
 
           {editavel && addAberto === 'peca' && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-              <input className="input flex-1 min-w-[180px] py-1.5 text-xs" placeholder="Descrição da peça"
+              <datalist id="datalist-pecas-detalhe">
+                {pecasCatalogo.map((p) => (
+                  <option key={p.id} value={p.nome}>{`R$ ${Number(p.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
+              <input list="datalist-pecas-detalhe"
+                className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                placeholder="Peça (catálogo ou nova)"
                 value={novaPeca.descricao}
-                onChange={(e) => setNovaPeca((v) => ({ ...v, descricao: e.target.value }))} />
+                onChange={(e) => {
+                  const nome = e.target.value;
+                  const hit = pecasCatalogo.find(
+                    (x) => x.nome.toLowerCase() === nome.trim().toLowerCase());
+                  setNovaPeca((v) => ({
+                    ...v, descricao: nome,
+                    valor_unit: (v.valor_unit === '' || v.valor_unit == null) && hit
+                      ? String(hit.valor_padrao) : v.valor_unit,
+                  }));
+                }} />
               <input type="number" min="0.01" step="0.01" className="input w-16 py-1.5 text-xs" value={novaPeca.quantidade}
                 onChange={(e) => setNovaPeca((v) => ({ ...v, quantidade: e.target.value }))} />
               <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum" placeholder="valor"
@@ -991,7 +1109,16 @@ export default function Ordens() {
                         <p className="text-[10px] text-slate-400">por {o.criado_por_nome.split(' ')[0]}</p>
                       )}
                     </td>
-                    <td className="td"><Badge status={o.status} /></td>
+                    <td className="td">
+                      <StatusInline os={o}
+                        onMudar={async (osAlvo, novoStatus) => {
+                          try {
+                            await api.mudarStatus(osAlvo.id, novoStatus, false);
+                            carregar();
+                          } catch (e) { setErro(e.message); }
+                        }}
+                        onPagar={(osAlvo) => setPagando(osAlvo)} />
+                    </td>
                     <td className="td tnum text-right font-semibold text-slate-800">{brl(o.valor_total)}</td>
                   </tr>
                 ))}

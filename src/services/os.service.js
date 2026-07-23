@@ -2,6 +2,59 @@
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 
+/**
+ * Se o item veio como `servico_id`, apenas retorna esse id.
+ * Se veio só `nome_servico`, procura no catálogo (case-insensitive):
+ *   - Encontrou → reusa o id.
+ *   - Não encontrou → cria com o valor_unit como valor_padrao.
+ *
+ * Ideia: o usuário nunca precisa "cadastrar antes de usar" — bate o
+ * nome e o catálogo cresce sozinho conforme a oficina atende.
+ */
+async function garantirServicoNoCatalogo(client, item) {
+  if (item.servico_id) return item.servico_id;
+
+  const nome = (item.nome_servico || '').trim();
+  if (!nome) return null;
+
+  const existe = await client.query(
+    'SELECT id FROM servicos WHERE lower(nome) = lower($1) AND ativo',
+    [nome],
+  );
+  if (existe.rows[0]) return existe.rows[0].id;
+
+  const criado = await client.query(
+    `INSERT INTO servicos (nome, valor_padrao)
+     VALUES ($1, $2) RETURNING id`,
+    [nome, Number(item.valor_unit) || 0],
+  );
+  return criado.rows[0].id;
+}
+
+/**
+ * Mesmo padrão pra peças. Como o backend antigo só tinha `descricao`
+ * texto livre nas OS, aqui é onde o catálogo de peças ganha vida.
+ */
+async function garantirPecaNoCatalogo(client, item) {
+  if (item.peca_id) return item.peca_id;
+
+  const nome = (item.descricao || '').trim();
+  if (!nome) return null;
+
+  const existe = await client.query(
+    'SELECT id FROM pecas WHERE lower(nome) = lower($1) AND ativo',
+    [nome],
+  );
+  if (existe.rows[0]) return existe.rows[0].id;
+
+  const criado = await client.query(
+    `INSERT INTO pecas (nome, valor_padrao)
+     VALUES ($1, $2) RETURNING id`,
+    [nome, Number(item.valor_unit) || 0],
+  );
+  return criado.rows[0].id;
+}
+
 const SELECT_OS = `
   SELECT o.*,
          c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.numero_cliente,
@@ -123,8 +176,6 @@ async function criar(dados, userId) {
     const os = rows[0];
 
     for (const item of servicos) {
-      // Valor não informado: puxa do catálogo como sugestão inicial.
-      // A partir daqui o valor vive na OS e não muda se o catálogo mudar.
       let nome = item.nome_servico;
       let valor = item.valor_unit;
 
@@ -139,18 +190,23 @@ async function criar(dados, userId) {
       if (valor === undefined || valor === null) {
         throw new AppError(`Informe o valor do serviço "${nome}"`, 422);
       }
+      // Garante que o item vira entrada de catálogo (cria se não existe)
+      const servicoId = await garantirServicoNoCatalogo(client,
+        { ...item, nome_servico: nome, valor_unit: valor });
 
       await client.query(
         `INSERT INTO os_servicos (os_id, servico_id, nome_servico, quantidade, valor_unit)
          VALUES ($1,$2,$3,$4,$5)`,
-        [os.id, item.servico_id ?? null, nome, item.quantidade, valor],
+        [os.id, servicoId, nome, item.quantidade, valor],
       );
     }
 
     for (const p of pecas) {
+      const pecaId = await garantirPecaNoCatalogo(client, p);
       await client.query(
-        `INSERT INTO os_pecas (os_id, descricao, quantidade, valor_unit) VALUES ($1,$2,$3,$4)`,
-        [os.id, p.descricao, p.quantidade, p.valor_unit],
+        `INSERT INTO os_pecas (os_id, peca_id, descricao, quantidade, valor_unit)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [os.id, pecaId, p.descricao, p.quantidade, p.valor_unit],
       );
     }
 
@@ -224,31 +280,45 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
 
 async function adicionarServico(osId, item) {
   await garantirEditavel(osId);
-  let { nome_servico: nome, valor_unit: valor } = item;
 
-  if (item.servico_id) {
-    const s = await db.query('SELECT nome, valor_padrao FROM servicos WHERE id=$1', [item.servico_id]);
-    if (!s.rows[0]) throw AppError.notFound('Serviço não encontrado');
-    nome = nome || s.rows[0].nome;
-    valor = valor ?? Number(s.rows[0].valor_padrao);
-  }
-  if (valor === undefined || valor === null) throw new AppError('Informe o valor do serviço', 422);
+  return db.withTransaction(async (client) => {
+    let { nome_servico: nome, valor_unit: valor } = item;
 
-  await db.query(
-    `INSERT INTO os_servicos (os_id, servico_id, nome_servico, quantidade, valor_unit)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [osId, item.servico_id ?? null, nome, item.quantidade, valor],
-  );
-  return buscarPorId(osId);
+    if (item.servico_id) {
+      const s = await client.query('SELECT nome, valor_padrao FROM servicos WHERE id=$1', [item.servico_id]);
+      if (!s.rows[0]) throw AppError.notFound('Serviço não encontrado');
+      nome = nome || s.rows[0].nome;
+      valor = valor ?? Number(s.rows[0].valor_padrao);
+    }
+    if (valor === undefined || valor === null) throw new AppError('Informe o valor do serviço', 422);
+
+    const servicoId = await garantirServicoNoCatalogo(client,
+      { ...item, nome_servico: nome, valor_unit: valor });
+
+    await client.query(
+      `INSERT INTO os_servicos (os_id, servico_id, nome_servico, quantidade, valor_unit)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [osId, servicoId, nome, item.quantidade, valor],
+    );
+
+    const { rows } = await client.query(`${SELECT_OS} WHERE o.id = $1`, [osId]);
+    return comItens(client, rows[0]);
+  });
 }
 
 async function adicionarPeca(osId, peca) {
   await garantirEditavel(osId);
-  await db.query(
-    'INSERT INTO os_pecas (os_id, descricao, quantidade, valor_unit) VALUES ($1,$2,$3,$4)',
-    [osId, peca.descricao, peca.quantidade, peca.valor_unit],
-  );
-  return buscarPorId(osId);
+
+  return db.withTransaction(async (client) => {
+    const pecaId = await garantirPecaNoCatalogo(client, peca);
+    await client.query(
+      `INSERT INTO os_pecas (os_id, peca_id, descricao, quantidade, valor_unit)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [osId, pecaId, peca.descricao, peca.quantidade, peca.valor_unit],
+    );
+    const { rows } = await client.query(`${SELECT_OS} WHERE o.id = $1`, [osId]);
+    return comItens(client, rows[0]);
+  });
 }
 
 async function removerServico(osId, itemId) {

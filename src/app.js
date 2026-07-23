@@ -27,6 +27,7 @@ app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/clientes',   auth, require('./routes/clientes.routes'));
 app.use('/api/carros',     auth, require('./routes/carros.routes'));
 app.use('/api/servicos',   auth, require('./routes/servicos.routes'));
+app.use('/api/pecas',      auth, require('./routes/pecas.routes'));
 app.use('/api/os',         auth, require('./routes/os.routes'));
 app.use('/api/relatorios', auth, require('./routes/relatorios.routes'));
 app.use('/api/despesas',     auth, require('./routes/despesas.routes'));

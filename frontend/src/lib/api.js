@@ -78,6 +78,8 @@ export const api = {
   servicos: () => request('/servicos'),
   criarServico: (body) => request('/servicos', { method: 'POST', body }),
 
+  pecas: () => request('/pecas'),
+
   ordens: (params) => request('/os', { params }),
   ordem: (id) => request(`/os/${id}`),
   criarOS: (body) => request('/os', { method: 'POST', body }),
