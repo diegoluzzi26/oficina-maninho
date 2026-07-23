@@ -27,4 +27,7 @@ router.get('/:id', validate({ params: v.idParam }),
 router.put('/:id', requireRole('admin'), validate({ params: v.idParam, body: atualizarPeca }),
   h(async (req, res) => res.json(await svc.atualizar(req.params.id, req.body))));
 
+router.delete('/:id', requireRole('admin'), validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.desativar(req.params.id))));
+
 module.exports = router;

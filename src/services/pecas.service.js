@@ -40,4 +40,13 @@ async function atualizar(id, d) {
   return rows[0];
 }
 
-module.exports = { listar, buscarPorId, atualizar };
+/** Desativa em vez de apagar: OS antigas referenciam a peça via peca_id. */
+async function desativar(id) {
+  const { rows } = await db.query(
+    'UPDATE pecas SET ativo = FALSE WHERE id = $1 RETURNING *', [id],
+  );
+  if (!rows[0]) throw AppError.notFound('Peça não encontrada');
+  return rows[0];
+}
+
+module.exports = { listar, buscarPorId, atualizar, desativar };

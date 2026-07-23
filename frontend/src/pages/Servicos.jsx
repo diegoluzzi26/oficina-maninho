@@ -3,6 +3,14 @@ import { api, getUser } from '../lib/api';
 import { brl } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 
+/**
+ * Catálogo (serviços + peças) numa mesma página, alternada por aba.
+ * Formato de LISTA compacta em vez de cards — cada linha ocupa pouca
+ * altura, edição inline dos campos que mais mudam (valor, tempo,
+ * intervalo de retorno) e botão de excluir (que desativa, mantendo o
+ * histórico das OS antigas intacto).
+ */
+
 function tempoLegivel(min) {
   if (!min) return '—';
   if (min < 60) return `${min} min`;
@@ -11,6 +19,7 @@ function tempoLegivel(min) {
   return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
 }
 
+// ------------------ Modal: Novo serviço ------------------
 function FormServico({ aberto, onFechar, onSalvo }) {
   const vazio = { nome: '', descricao: '', valor_padrao: '',
     tempo_estimado_min: '', intervalo_retorno_meses: '' };
@@ -33,11 +42,8 @@ function FormServico({ aberto, onFechar, onSalvo }) {
         intervalo_retorno_meses: form.intervalo_retorno_meses ? Number(form.intervalo_retorno_meses) : null,
       });
       onSalvo(salvo);
-    } catch (err) {
-      setErro(err.message);
-    } finally {
-      setSalvando(false);
-    }
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
   }
 
   return (
@@ -51,7 +57,7 @@ function FormServico({ aberto, onFechar, onSalvo }) {
         </Campo>
 
         <Campo label="Descrição">
-          <textarea className="input min-h-[70px] resize-y" value={form.descricao}
+          <textarea className="input min-h-[60px] resize-y" value={form.descricao}
             onChange={set('descricao')} placeholder="Remoção, teste e instalação do alternador" />
         </Campo>
 
@@ -71,12 +77,6 @@ function FormServico({ aberto, onFechar, onSalvo }) {
           </Campo>
         </div>
 
-        <p className="rounded-md bg-maninho-50 px-3 py-2 text-xs text-slate-600">
-          <b>Retorno em meses:</b> se preenchido, o sistema cria automaticamente um
-          lembrete quando este serviço for lançado numa OS finalizada — para chamar
-          o cliente de volta no prazo. Deixe vazio para não gerar lembrete.
-        </p>
-
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando}>
@@ -88,15 +88,12 @@ function FormServico({ aberto, onFechar, onSalvo }) {
   );
 }
 
-/**
- * Card do serviço com edição inline dos 3 campos que mais mudam:
- * valor, tempo estimado, intervalo de retorno.
- */
-function CardServico({ servico, ehAdmin, onSalvo }) {
+// ------------------ Linha de serviço ------------------
+function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido }) {
   const [modo, setModo] = useState('ver');
-  const [valor, setValor]   = useState(String(servico.valor_padrao ?? ''));
-  const [tempo, setTempo]   = useState(String(servico.tempo_estimado_min ?? ''));
-  const [ret, setRet]       = useState(String(servico.intervalo_retorno_meses ?? ''));
+  const [valor, setValor] = useState(String(servico.valor_padrao ?? ''));
+  const [tempo, setTempo] = useState(String(servico.tempo_estimado_min ?? ''));
+  const [ret, setRet]     = useState(String(servico.intervalo_retorno_meses ?? ''));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -110,153 +107,288 @@ function CardServico({ servico, ehAdmin, onSalvo }) {
       });
       setModo('ver');
       onSalvo(atualizado);
-    } catch (e) {
-      setErro(e.message);
-    } finally {
-      setSalvando(false);
-    }
+    } catch (e) { setErro(e.message); }
+    finally { setSalvando(false); }
   }
 
   function cancelar() {
     setValor(String(servico.valor_padrao ?? ''));
     setTempo(String(servico.tempo_estimado_min ?? ''));
     setRet(String(servico.intervalo_retorno_meses ?? ''));
+    setErro(''); setModo('ver');
+  }
+
+  async function excluir() {
+    if (!confirm(`Excluir o serviço "${servico.nome}"? OS antigas continuam com o nome/valor congelado, mas ele some do catálogo.`)) return;
     setErro('');
-    setModo('ver');
+    try {
+      await api.desativarServico(servico.id);
+      onExcluido(servico.id);
+    } catch (e) { setErro(e.message); }
   }
 
   return (
-    <div className="card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-display text-[15px] font-semibold uppercase tracking-wide leading-snug text-maninho-800">
-          {servico.nome}
-        </h3>
-        {ehAdmin && modo === 'ver' && (
-          <button onClick={() => setModo('editar')}
-            className="text-xs font-semibold text-maninho-600 hover:underline">
-            editar
-          </button>
+    <li className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 hover:bg-slate-50/60">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-800">{servico.nome}</p>
+        {servico.descricao && (
+          <p className="truncate text-[11px] text-slate-500">{servico.descricao}</p>
         )}
+        {erro && <p className="text-[11px] font-semibold text-rose-600">{erro}</p>}
       </div>
-      {servico.descricao && (
-        <p className="mt-1 line-clamp-2 text-xs text-slate-500">{servico.descricao}</p>
-      )}
-
-      {erro && <p className="mt-2 text-xs font-semibold text-rose-600">{erro}</p>}
 
       {modo === 'ver' ? (
-        <div className="mt-3 flex items-end justify-between">
-          <div>
-            <p className="label">Valor padrão</p>
-            <p className="numero text-xl text-maninho-600">{brl(servico.valor_padrao)}</p>
+        <>
+          <div className="w-24 text-right">
+            <p className="tnum font-semibold text-maninho-700">{brl(servico.valor_padrao)}</p>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-              {tempoLegivel(servico.tempo_estimado_min)}
-            </span>
+          <div className="hidden w-20 text-right sm:block">
+            <p className="text-xs text-slate-500">{tempoLegivel(servico.tempo_estimado_min)}</p>
+          </div>
+          <div className="hidden w-24 text-right sm:block">
             {servico.intervalo_retorno_meses ? (
-              <span className="rounded bg-ouro-100 px-2 py-1 text-[11px] font-semibold text-ouro-700">
-                retorno · {servico.intervalo_retorno_meses} {servico.intervalo_retorno_meses === 1 ? 'mês' : 'meses'}
+              <span className="rounded bg-ouro-100 px-1.5 py-0.5 text-[10px] font-semibold text-ouro-700">
+                {servico.intervalo_retorno_meses}m retorno
               </span>
             ) : (
-              <span className="text-[10px] text-slate-400">sem retorno</span>
+              <span className="text-[10px] text-slate-400">—</span>
             )}
           </div>
-        </div>
+          {ehAdmin && (
+            <div className="flex gap-1">
+              <button onClick={() => setModo('editar')}
+                className="rounded px-2 py-1 text-[11px] font-semibold text-maninho-600 hover:bg-maninho-50">
+                Editar
+              </button>
+              <button onClick={excluir}
+                className="rounded px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">
+                Excluir
+              </button>
+            </div>
+          )}
+        </>
       ) : (
-        <div className="mt-3 space-y-2">
-          <div className="grid grid-cols-3 gap-2">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Valor
-              <input type="number" step="0.01" min="0" className="input mt-0.5 py-1.5 text-sm tnum"
-                value={valor} onChange={(e) => setValor(e.target.value)} autoFocus />
-            </label>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Tempo (min)
-              <input type="number" min="1" className="input mt-0.5 py-1.5 text-sm"
-                value={tempo} onChange={(e) => setTempo(e.target.value)} />
-            </label>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Retorno (m)
-              <input type="number" min="1" max="120" className="input mt-0.5 py-1.5 text-sm"
-                value={ret} onChange={(e) => setRet(e.target.value)} placeholder="—" />
-            </label>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={cancelar} className="btn-ghost px-3 py-1 text-xs" disabled={salvando}>
-              Cancelar
-            </button>
-            <button onClick={salvar} className="btn-primary px-3 py-1 text-xs" disabled={salvando}>
-              {salvando ? '…' : 'Salvar'}
-            </button>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="number" step="0.01" min="0" placeholder="Valor"
+            className="input w-24 py-1 text-xs tnum"
+            value={valor} onChange={(e) => setValor(e.target.value)} />
+          <input type="number" min="1" placeholder="Tempo"
+            className="input w-20 py-1 text-xs"
+            value={tempo} onChange={(e) => setTempo(e.target.value)} />
+          <input type="number" min="1" max="120" placeholder="Ret m"
+            className="input w-20 py-1 text-xs"
+            value={ret} onChange={(e) => setRet(e.target.value)} />
+          <button onClick={salvar} disabled={salvando}
+            className="btn-primary px-2 py-1 text-xs">
+            {salvando ? '…' : 'Salvar'}
+          </button>
+          <button onClick={cancelar} disabled={salvando}
+            className="btn-ghost px-2 py-1 text-xs">
+            Cancelar
+          </button>
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
+// ------------------ Linha de peça ------------------
+function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
+  const [modo, setModo] = useState('ver');
+  const [nome, setNome] = useState(peca.nome);
+  const [valor, setValor] = useState(String(peca.valor_padrao ?? ''));
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setErro(''); setSalvando(true);
+    try {
+      const atualizado = await api.atualizarPeca(peca.id, {
+        nome: nome.trim(), valor_padrao: Number(valor || 0),
+      });
+      setModo('ver');
+      onSalvo(atualizado);
+    } catch (e) { setErro(e.message); }
+    finally { setSalvando(false); }
+  }
+
+  function cancelar() {
+    setNome(peca.nome); setValor(String(peca.valor_padrao ?? ''));
+    setErro(''); setModo('ver');
+  }
+
+  async function excluir() {
+    if (!confirm(`Excluir a peça "${peca.nome}"?`)) return;
+    setErro('');
+    try {
+      await api.desativarPeca(peca.id);
+      onExcluido(peca.id);
+    } catch (e) { setErro(e.message); }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 hover:bg-slate-50/60">
+      <div className="min-w-0 flex-1">
+        {modo === 'ver' ? (
+          <p className="truncate text-sm font-semibold text-slate-800">{peca.nome}</p>
+        ) : (
+          <input className="input py-1 text-sm" value={nome}
+            onChange={(e) => setNome(e.target.value)} />
+        )}
+        {erro && <p className="text-[11px] font-semibold text-rose-600">{erro}</p>}
+      </div>
+
+      {modo === 'ver' ? (
+        <>
+          <div className="w-24 text-right">
+            <p className="tnum font-semibold text-maninho-700">{brl(peca.valor_padrao)}</p>
+          </div>
+          {ehAdmin && (
+            <div className="flex gap-1">
+              <button onClick={() => setModo('editar')}
+                className="rounded px-2 py-1 text-[11px] font-semibold text-maninho-600 hover:bg-maninho-50">
+                Editar
+              </button>
+              <button onClick={excluir}
+                className="rounded px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">
+                Excluir
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="flex items-center gap-2">
+          <input type="number" step="0.01" min="0" placeholder="Valor"
+            className="input w-24 py-1 text-xs tnum"
+            value={valor} onChange={(e) => setValor(e.target.value)} />
+          <button onClick={salvar} disabled={salvando}
+            className="btn-primary px-2 py-1 text-xs">
+            {salvando ? '…' : 'Salvar'}
+          </button>
+          <button onClick={cancelar} disabled={salvando}
+            className="btn-ghost px-2 py-1 text-xs">
+            Cancelar
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+// ------------------ Página ------------------
 export default function Servicos() {
-  const [lista, setLista] = useState(null);
+  const [aba, setAba] = useState('servicos'); // 'servicos' | 'pecas'
+  const [servicos, setServicos] = useState(null);
+  const [pecas, setPecas] = useState(null);
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
   const [aberto, setAberto] = useState(false);
+
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
 
   const carregar = useCallback(() => {
     setErro('');
-    api.servicos().then(setLista).catch((e) => setErro(e.message));
+    Promise.all([api.servicos(), api.pecas()])
+      .then(([s, p]) => { setServicos(s); setPecas(p); })
+      .catch((e) => setErro(e.message));
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  const filtrada = (lista || []).filter((s) =>
-    !busca || s.nome.toLowerCase().includes(busca.toLowerCase())
-    || (s.descricao || '').toLowerCase().includes(busca.toLowerCase()));
+  const lista = aba === 'servicos' ? servicos : pecas;
+  const filtrada = (lista || []).filter((x) =>
+    !busca
+    || (x.nome || '').toLowerCase().includes(busca.toLowerCase())
+    || (x.descricao || '').toLowerCase().includes(busca.toLowerCase()));
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Catálogo de serviços</h1>
+          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Catálogo</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            {lista ? `${filtrada.length} de ${lista.length} serviços` : 'Carregando…'}
+            {lista ? `${filtrada.length} ${aba === 'servicos' ? 'serviços' : 'peças'} de ${lista.length}` : 'Carregando…'}
           </p>
         </div>
-        {ehAdmin && (
-          <button className="btn-primary" onClick={() => setAberto(true)}>+ Novo serviço</button>
+        {ehAdmin && aba === 'servicos' && (
+          <button className="btn-primary" onClick={() => setAberto(true)}>
+            + Novo serviço
+          </button>
         )}
       </div>
 
-      <input className="input max-w-sm" placeholder="Buscar serviço…"
-        value={busca} onChange={(e) => setBusca(e.target.value)} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+          {[['servicos', 'Serviços', servicos?.length], ['pecas', 'Peças', pecas?.length]].map(([k, t, qtd]) => (
+            <button key={k} onClick={() => setAba(k)}
+              className={`rounded px-3.5 py-1.5 text-xs font-semibold transition
+                ${aba === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              {t} {qtd !== undefined && (
+                <span className={`ml-1 tnum text-[10px]
+                  ${aba === k ? 'text-white/80' : 'text-slate-400'}`}>
+                  {qtd}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <input className="input max-w-sm" placeholder={`Buscar ${aba === 'servicos' ? 'serviço' : 'peça'}…`}
+          value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
 
       {!ehAdmin && (
         <Alerta tipo="aviso">
-          Somente administradores podem criar ou alterar serviços do catálogo.
+          Somente administradores podem criar, editar ou excluir itens do catálogo.
         </Alerta>
       )}
 
-      {erro && <Alerta tipo="erro">{erro}</Alerta>}
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
-      {!lista ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0,1,2,3,4,5].map((i) => <Skeleton key={i} className="h-28" />)}
+      {lista === null ? (
+        <div className="card">
+          <ul className="divide-y divide-slate-100">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <li key={i} className="p-3"><Skeleton className="h-6" /></li>
+            ))}
+          </ul>
         </div>
       ) : filtrada.length === 0 ? (
         <div className="card">
-          <Vazio titulo={busca ? 'Nenhum serviço bate com a busca' : 'Catálogo vazio'}
-            descricao={busca ? '' : 'Cadastre os serviços que a oficina executa.'} />
+          <Vazio titulo={busca ? 'Nada bate com a busca'
+            : aba === 'servicos' ? 'Catálogo de serviços vazio'
+            : 'Nenhuma peça no catálogo ainda'}
+            descricao={busca ? '' : (aba === 'pecas'
+              ? 'Peças aparecem aqui automaticamente conforme você lança nas OS.'
+              : '')} />
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtrada.map((s) => (
-            <CardServico key={s.id} servico={s} ehAdmin={ehAdmin}
-              onSalvo={(atualizado) => {
-                setLista((l) => l.map((x) => (x.id === atualizado.id ? atualizado : x)));
-              }} />
-          ))}
+        <div className="card overflow-hidden">
+          {/* Cabeçalho da lista */}
+          <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <div className="flex items-center gap-3">
+              <span className="flex-1">Nome</span>
+              <span className="w-24 text-right">Valor</span>
+              {aba === 'servicos' && (
+                <>
+                  <span className="hidden w-20 text-right sm:inline">Tempo</span>
+                  <span className="hidden w-24 text-right sm:inline">Retorno</span>
+                </>
+              )}
+              {ehAdmin && <span className="w-[110px]">&nbsp;</span>}
+            </div>
+          </div>
+          <ul className="divide-y-0">
+            {filtrada.map((item) => aba === 'servicos' ? (
+              <LinhaServico key={item.id} servico={item} ehAdmin={ehAdmin}
+                onSalvo={(a) => setServicos((l) => l.map((x) => x.id === a.id ? a : x))}
+                onExcluido={(id) => setServicos((l) => l.filter((x) => x.id !== id))} />
+            ) : (
+              <LinhaPeca key={item.id} peca={item} ehAdmin={ehAdmin}
+                onSalvo={(a) => setPecas((l) => l.map((x) => x.id === a.id ? a : x))}
+                onExcluido={(id) => setPecas((l) => l.filter((x) => x.id !== id))} />
+            ))}
+          </ul>
         </div>
       )}
 

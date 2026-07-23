@@ -77,8 +77,11 @@ export const api = {
 
   servicos: () => request('/servicos'),
   criarServico: (body) => request('/servicos', { method: 'POST', body }),
+  desativarServico: (id) => request(`/servicos/${id}`, { method: 'DELETE' }),
 
   pecas: () => request('/pecas'),
+  atualizarPeca: (id, body) => request(`/pecas/${id}`, { method: 'PUT', body }),
+  desativarPeca: (id) => request(`/pecas/${id}`, { method: 'DELETE' }),
 
   ordens: (params) => request('/os', { params }),
   ordem: (id) => request(`/os/${id}`),
