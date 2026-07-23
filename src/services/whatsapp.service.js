@@ -1,16 +1,16 @@
 'use strict';
-const env = require('../config/env');
 const db = require('../config/db');
+const config = require('./config.service');
 const AppError = require('../utils/AppError');
 
 const GRAPH = 'https://graph.facebook.com';
 
 function apiUrl(path) {
-  return `${GRAPH}/${env.whatsapp.apiVersion}/${path}`;
+  return `${GRAPH}/${config.whatsapp().apiVersion}/${path}`;
 }
 
 function ensureEnabled() {
-  if (!env.whatsapp.enabled) {
+  if (!config.whatsapp().enabled) {
     throw new AppError(
       'WhatsApp não configurado. Defina WHATSAPP_TOKEN e PHONE_NUMBER_ID no .env',
       503,
@@ -64,7 +64,7 @@ async function postGraph(path, payload) {
     const res = await fetch(apiUrl(path), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${env.whatsapp.token}`,
+        Authorization: `Bearer ${config.whatsapp().token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -100,7 +100,7 @@ async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
     text: { preview_url: false, body: mensagem },
   };
 
-  const { ok, json } = await postGraph(`${env.whatsapp.phoneNumberId}/messages`, payload);
+  const { ok, json } = await postGraph(`${config.whatsapp().phoneNumberId}/messages`, payload);
   const waId = json?.messages?.[0]?.id || null;
 
   const registro = await logMensagem({
@@ -135,7 +135,7 @@ async function enviarTemplate({ telefone, template, idioma, parametros = [], cli
     type: 'template',
     template: {
       name: template,
-      language: { code: idioma || env.whatsapp.defaultLang },
+      language: { code: idioma || config.whatsapp().defaultLang },
       ...(parametros.length
         ? {
           components: [{
@@ -147,7 +147,7 @@ async function enviarTemplate({ telefone, template, idioma, parametros = [], cli
     },
   };
 
-  const { ok, json } = await postGraph(`${env.whatsapp.phoneNumberId}/messages`, payload);
+  const { ok, json } = await postGraph(`${config.whatsapp().phoneNumberId}/messages`, payload);
   const waId = json?.messages?.[0]?.id || null;
 
   const registro = await logMensagem({
@@ -189,7 +189,7 @@ async function notificar({ telefone, mensagem, template, parametros, cliente_id,
     );
   }
   return enviarTemplate({
-    telefone, template, idioma: env.whatsapp.defaultLang, parametros, cliente_id, os_id,
+    telefone, template, idioma: config.whatsapp().defaultLang, parametros, cliente_id, os_id,
   });
 }
 
@@ -267,7 +267,7 @@ function verificarWebhook(query) {
   const mode = query['hub.mode'];
   const token = query['hub.verify_token'];
   const challenge = query['hub.challenge'];
-  if (mode === 'subscribe' && token === env.whatsapp.verifyToken) return challenge;
+  if (mode === 'subscribe' && token === config.whatsapp().verifyToken) return challenge;
   return null;
 }
 

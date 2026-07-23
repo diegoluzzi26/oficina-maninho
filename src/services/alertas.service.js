@@ -3,7 +3,7 @@ const db = require('../config/db');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
 const agendamentos = require('./agendamentos.service');
-const env = require('../config/env');
+const config = require('./config.service');
 
 /**
  * Alertas de vencimento para o dono da oficina.
@@ -48,7 +48,8 @@ function montarMensagem(lista) {
  * gera no máximo um aviso por estágio — sem spam se a função rodar várias vezes.
  */
 async function verificarEEnviar({ forcar = false } = {}) {
-  const destino = process.env.ALERTA_WHATSAPP;
+  const w = config.whatsapp();
+  const destino = config.alerta().whatsapp;
   const painel = await despesas.proximosVencimentos(3);
 
   const candidatas = [...painel.atrasadas, ...painel.vence_hoje, ...painel.proximas];
@@ -64,7 +65,7 @@ async function verificarEEnviar({ forcar = false } = {}) {
       despesas: candidatas,
     };
   }
-  if (!env.whatsapp.enabled) {
+  if (!w.enabled) {
     return {
       enviado: false,
       motivo: 'WhatsApp não configurado',
@@ -96,7 +97,7 @@ async function verificarEEnviar({ forcar = false } = {}) {
     const msg = await wa.notificar({
       telefone: destino,
       mensagem: montarMensagem(novas),
-      template: process.env.WHATSAPP_TEMPLATE_ALERTA || 'alerta_contas',
+      template: w.templates.alerta,
       parametros: [String(novas.length), moeda(novas.reduce((s, d) => s + Number(d.valor), 0))],
     });
 
@@ -132,7 +133,8 @@ async function verificarEEnviar({ forcar = false } = {}) {
 async function enviarLembretesDeAmanha() {
   const lista = await agendamentos.agendadosDeAmanha();
   if (!lista.length) return { enviados: 0, motivo: 'Nenhum agendamento para amanhã' };
-  if (!env.whatsapp.enabled) return { enviados: 0, motivo: 'WhatsApp não configurado' };
+  const w = config.whatsapp();
+  if (!w.enabled) return { enviados: 0, motivo: 'WhatsApp não configurado' };
 
   let enviados = 0;
   const falhas = [];
@@ -151,7 +153,7 @@ async function enviarLembretesDeAmanha() {
       await wa.notificar({
         telefone: a.cliente_telefone,
         mensagem,
-        template: process.env.WHATSAPP_TEMPLATE_LEMBRETE || 'lembrete_agendamento',
+        template: w.templates.lembrete,
         parametros: [a.cliente_nome, hora, servicos],
         cliente_id: a.cliente_id,
       });
@@ -170,10 +172,11 @@ async function enviarLembretesDeAmanha() {
  * e isso evita mais uma peça de infraestrutura para o dono manter.
  */
 function agendar() {
-  const horaAlvo = Number(process.env.ALERTA_HORA || 8);
   let ultimoDiaExecutado = null;
 
   setInterval(async () => {
+    // Lê hora do banco a cada tick — permite mudar a hora via UI sem reboot.
+    const horaAlvo = config.alerta().hora;
     const agora = new Date();
     const hoje = agora.toISOString().slice(0, 10);
 
@@ -196,7 +199,7 @@ function agendar() {
     }
   }, 10 * 60 * 1000).unref(); // a cada 10 min; unref não segura o processo
 
-  console.log(`[alertas] verificação diária agendada para ~${horaAlvo}h`);
+  console.log(`[alertas] verificação diária agendada (hora vem da config)`);
 }
 
 module.exports = { verificarEEnviar, enviarLembretesDeAmanha, agendar, montarMensagem };

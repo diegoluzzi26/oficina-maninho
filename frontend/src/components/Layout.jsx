@@ -13,6 +13,7 @@ const MENU = [
   { para: '/financeiro', texto: 'Financeiro' },
   { para: '/retornos', texto: 'Retornos' },
   { para: '/servicos', texto: 'Catálogo' },
+  { para: '/configuracoes', texto: 'Config', somenteAdmin: true },
 ];
 
 export default function Layout() {
@@ -44,7 +45,7 @@ export default function Layout() {
           <MarcaCompacta />
 
           <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto">
-            {MENU.map((m) => (
+            {MENU.filter((m) => !m.somenteAdmin || usuario?.role === 'admin').map((m) => (
               <NavLink key={m.para} to={m.para} end={m.exato}
                 className={({ isActive }) =>
                   `relative whitespace-nowrap px-3 py-4 font-display text-[13px] font-medium

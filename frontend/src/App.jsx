@@ -11,6 +11,7 @@ import Fornecedores from './pages/Fornecedores';
 import Financeiro from './pages/Financeiro';
 import Retornos from './pages/Retornos';
 import Agenda from './pages/Agenda';
+import Configuracoes from './pages/Configuracoes';
 
 function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="retornos" element={<Retornos />} />
           <Route path="agenda" element={<Agenda />} />
           <Route path="servicos" element={<Servicos />} />
+          <Route path="configuracoes" element={<Configuracoes />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

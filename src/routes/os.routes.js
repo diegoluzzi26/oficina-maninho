@@ -4,7 +4,7 @@ const { z } = require('zod');
 const svc = require('../services/os.service');
 const clientes = require('../services/clientes.service');
 const wa = require('../services/whatsapp.service');
-const env = require('../config/env');
+const config = require('../services/config.service');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const requireRole = require('../middleware/requireRole');
@@ -28,23 +28,20 @@ const listaQuery = v.paginacao.extend({
  */
 const NOTIFICACOES_OS = {
   abertura: {
-    envVarTemplate: 'WHATSAPP_TEMPLATE_ABERTURA',
-    templatePadrao: 'os_aberta',
+    chaveTemplate: 'abertura',
     texto: (os) => `Olá, ${os.cliente_nome}! Recebemos seu ${os.marca} ${os.modelo} (${os.placa}). `
       + `Sua OS nº ${os.numero_os} foi aberta. Qualquer novidade avisamos por aqui. — Auto Elétrica Maninho`,
     parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
   },
   finalizada: {
-    envVarTemplate: 'WHATSAPP_TEMPLATE_FINALIZADA',
-    templatePadrao: 'os_finalizada',
+    chaveTemplate: 'finalizada',
     texto: (os) => `Olá, ${os.cliente_nome}! Seu ${os.marca} ${os.modelo} (${os.placa}) está pronto. `
       + `OS nº ${os.numero_os} — total R$ ${Number(os.valor_total).toFixed(2).replace('.', ',')}. `
       + `Pode retirar no horário de funcionamento. — Auto Elétrica Maninho`,
     parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
   },
   paga: {
-    envVarTemplate: 'WHATSAPP_TEMPLATE_PAGA',
-    templatePadrao: 'os_paga',
+    chaveTemplate: 'paga',
     texto: (os) => {
       const valor = `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`;
       return `Obrigado, ${os.cliente_nome}! Recebemos o pagamento de ${valor} `
@@ -58,7 +55,8 @@ const NOTIFICACOES_OS = {
 };
 
 async function notificarSeguro(os, tipo) {
-  if (!env.whatsapp.enabled) return { enviado: false, motivo: 'WhatsApp não configurado' };
+  const w = config.whatsapp();
+  if (!w.enabled) return { enviado: false, motivo: 'WhatsApp não configurado' };
 
   const cfg = NOTIFICACOES_OS[tipo];
   if (!cfg) return { enviado: false, motivo: `Tipo de notificação desconhecido: ${tipo}` };
@@ -67,7 +65,7 @@ async function notificarSeguro(os, tipo) {
     const msg = await wa.notificar({
       telefone: os.cliente_telefone,
       mensagem: cfg.texto(os),
-      template: process.env[cfg.envVarTemplate] || cfg.templatePadrao,
+      template: w.templates[cfg.chaveTemplate],
       parametros: cfg.parametros(os),
       cliente_id: os.cliente_id,
       os_id: os.id,

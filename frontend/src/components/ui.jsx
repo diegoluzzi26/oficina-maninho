@@ -75,13 +75,14 @@ export function Modal({ aberto, titulo, onFechar, children, largura = 'max-w-lg'
   );
 }
 
-export function Campo({ label, erro, children, obrigatorio }) {
+export function Campo({ label, erro, children, obrigatorio, ajuda }) {
   return (
     <label className="block">
       <span className="label mb-1.5 block">
         {label} {obrigatorio && <span className="text-rose-500">*</span>}
       </span>
       {children}
+      {ajuda && !erro && <span className="mt-1 block text-[11px] text-slate-500">{ajuda}</span>}
       {erro && <span className="mt-1 block text-xs text-rose-600">{erro}</span>}
     </label>
   );

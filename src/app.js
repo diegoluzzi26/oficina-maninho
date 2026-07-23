@@ -34,6 +34,7 @@ app.use('/api/fornecedores', auth, require('./routes/fornecedores.routes'));
 app.use('/api/financeiro',   auth, require('./routes/financeiro.routes'));
 app.use('/api/retornos',     auth, require('./routes/retornos.routes'));
 app.use('/api/agendamentos', auth, require('./routes/agendamentos.routes'));
+app.use('/api/config',       auth, require('./routes/config.routes'));
 
 app.use((req, _res, next) => next(new AppError(`Rota não encontrada: ${req.method} ${req.path}`, 404)));
 app.use(errorHandler);

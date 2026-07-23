@@ -139,4 +139,8 @@ export const api = {
   removerAgendamento: (id) => request(`/agendamentos/${id}`, { method: 'DELETE' }),
   converterAgendamentoEmOS: (id, body = {}) =>
     request(`/agendamentos/${id}/converter-os`, { method: 'POST', body }),
+
+  // --- configurações (só admin) ---
+  configWhatsApp: () => request('/config/whatsapp'),
+  salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),
 };
