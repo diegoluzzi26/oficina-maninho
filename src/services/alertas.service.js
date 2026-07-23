@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
+const agendamentos = require('./agendamentos.service');
 const env = require('../config/env');
 
 /**
@@ -120,6 +121,50 @@ async function verificarEEnviar({ forcar = false } = {}) {
 }
 
 /**
+ * Manda lembrete de agendamento pra cada cliente que tem agendamento amanhã.
+ * Uma mensagem por agendamento — o cliente não deve receber uma única mensagem
+ * misturando serviços de veículos diferentes ou horários diferentes.
+ *
+ * Não deduplicamos por (agendamento, dia) porque só rodamos 1x/dia — e
+ * a idempotência natural é: se um agendamento cai duas vezes em "amanhã",
+ * é porque foi remarcado, e faz sentido lembrar de novo.
+ */
+async function enviarLembretesDeAmanha() {
+  const lista = await agendamentos.agendadosDeAmanha();
+  if (!lista.length) return { enviados: 0, motivo: 'Nenhum agendamento para amanhã' };
+  if (!env.whatsapp.enabled) return { enviados: 0, motivo: 'WhatsApp não configurado' };
+
+  let enviados = 0;
+  const falhas = [];
+
+  for (const a of lista) {
+    const hora = new Date(a.data_agendada).toLocaleTimeString('pt-BR', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+    });
+    const servicos = a.servicos.length
+      ? a.servicos.map((s) => s.nome_servico).join(', ')
+      : 'sua revisão';
+    const mensagem = `Olá, ${a.cliente_nome}! Lembrando do seu agendamento amanhã às ${hora}, `
+      + `${a.marca} ${a.modelo} (${a.placa}) — ${servicos}. Até lá! — Auto Elétrica Maninho`;
+
+    try {
+      await wa.notificar({
+        telefone: a.cliente_telefone,
+        mensagem,
+        template: process.env.WHATSAPP_TEMPLATE_LEMBRETE || 'lembrete_agendamento',
+        parametros: [a.cliente_nome, hora, servicos],
+        cliente_id: a.cliente_id,
+      });
+      enviados += 1;
+    } catch (err) {
+      falhas.push({ agendamento_id: a.id, motivo: err.message });
+    }
+  }
+
+  return { enviados, falhas: falhas.length ? falhas : undefined };
+}
+
+/**
  * Agenda a verificação diária.
  * setInterval simples em vez de cron externo — o processo já roda o dia todo,
  * e isso evita mais uma peça de infraestrutura para o dono manter.
@@ -135,15 +180,23 @@ function agendar() {
     if (agora.getHours() !== horaAlvo || ultimoDiaExecutado === hoje) return;
     ultimoDiaExecutado = hoje;
 
+    // Alerta de contas (dono) e lembrete de agendamentos (clientes)
+    // são independentes: uma falha não deve impedir a outra.
     try {
       const r = await verificarEEnviar();
-      console.log(`[alertas] verificação diária: ${JSON.stringify(r)}`);
+      console.log(`[alertas] contas: ${JSON.stringify(r)}`);
     } catch (err) {
-      console.error('[alertas] falha na verificação diária:', err.message);
+      console.error('[alertas] falha em verificarEEnviar:', err.message);
+    }
+    try {
+      const r = await enviarLembretesDeAmanha();
+      console.log(`[alertas] lembretes: ${JSON.stringify(r)}`);
+    } catch (err) {
+      console.error('[alertas] falha em enviarLembretesDeAmanha:', err.message);
     }
   }, 10 * 60 * 1000).unref(); // a cada 10 min; unref não segura o processo
 
   console.log(`[alertas] verificação diária agendada para ~${horaAlvo}h`);
 }
 
-module.exports = { verificarEEnviar, agendar, montarMensagem };
+module.exports = { verificarEEnviar, enviarLembretesDeAmanha, agendar, montarMensagem };

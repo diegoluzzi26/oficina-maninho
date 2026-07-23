@@ -2,9 +2,12 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const svc = require('../services/retornos.service');
+const wa = require('../services/whatsapp.service');
+const env = require('../config/env');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 const filtro = z.object({
   status: z.enum(['pendente', 'contatado', 'ignorado']).optional(),
@@ -51,6 +54,34 @@ router.put('/:id', validate({ params: v.idParam, body: atualizarRetorno }),
 
 router.patch('/:id/contatado', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.marcarContatado(req.params.id))));
+
+/**
+ * Envia lembrete de retorno pelo WhatsApp e já marca como contatado.
+ * O template `retorno_agendado` recebe: {{1}}=cliente, {{2}}=serviço.
+ */
+router.post('/:id/whatsapp', validate({ params: v.idParam }), h(async (req, res) => {
+  if (!env.whatsapp.enabled) throw new AppError('WhatsApp não configurado', 503);
+
+  const r = await svc.buscarPorId(req.params.id);
+  if (r.status !== 'pendente') {
+    throw new AppError(`Retorno já está ${r.status}`, 422);
+  }
+
+  const nomeServico = r.servico_nome || r.motivo || 'sua revisão';
+  const mensagem = `Olá, ${r.cliente_nome}! Está na hora de agendar ${nomeServico} `
+    + `do seu ${r.carro_descricao || 'veículo'}. Quer marcar? — Auto Elétrica Maninho`;
+
+  const msg = await wa.notificar({
+    telefone: r.cliente_telefone,
+    mensagem,
+    template: process.env.WHATSAPP_TEMPLATE_RETORNO || 'retorno_agendado',
+    parametros: [r.cliente_nome, nomeServico],
+    cliente_id: r.cliente_id,
+  });
+
+  const atualizado = await svc.marcarContatado(req.params.id, msg?.wa_message_id);
+  res.json({ ...atualizado, whatsapp: { enviado: true, id: msg?.id } });
+}));
 
 router.patch('/:id/ignorar', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.ignorar(req.params.id))));

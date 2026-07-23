@@ -122,6 +122,7 @@ export const api = {
   criarRetorno: (body) => request('/retornos', { method: 'POST', body }),
   atualizarRetorno: (id, body) => request(`/retornos/${id}`, { method: 'PUT', body }),
   marcarRetornoContatado: (id) => request(`/retornos/${id}/contatado`, { method: 'PATCH', body: {} }),
+  enviarWhatsAppRetorno: (id) => request(`/retornos/${id}/whatsapp`, { method: 'POST', body: {} }),
   ignorarRetorno: (id) => request(`/retornos/${id}/ignorar`, { method: 'PATCH', body: {} }),
   removerRetorno: (id) => request(`/retornos/${id}`, { method: 'DELETE' }),
 

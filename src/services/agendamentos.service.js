@@ -176,7 +176,30 @@ async function converterEmOS(id, extras, userId) {
   return { agendamento: await comServicos(id), os };
 }
 
+/**
+ * Retorna agendamentos com status 'agendado' que caem AMANHÃ
+ * (fuso America/Sao_Paulo). Usado pelos lembretes automáticos.
+ */
+async function agendadosDeAmanha() {
+  const { rows } = await db.query(
+    `SELECT * FROM vw_agendamentos
+      WHERE status = 'agendado'
+        AND date_trunc('day', data_agendada AT TIME ZONE 'America/Sao_Paulo')
+            = (CURRENT_DATE + INTERVAL '1 day')
+      ORDER BY data_agendada`,
+  );
+
+  // Carrega serviços de cada agendamento em paralelo — poucos por dia,
+  // não vale complicar com JOIN.
+  return Promise.all(rows.map(async (a) => {
+    const s = await db.query(
+      'SELECT nome_servico FROM agendamento_servicos WHERE agendamento_id = $1', [a.id],
+    );
+    return { ...a, servicos: s.rows };
+  }));
+}
+
 module.exports = {
-  listarPorMes, listarPorDia, buscarPorId,
+  listarPorMes, listarPorDia, buscarPorId, agendadosDeAmanha,
   criar, atualizar, cancelar, remover, converterEmOS,
 };

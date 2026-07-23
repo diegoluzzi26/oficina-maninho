@@ -358,22 +358,33 @@ function PagarOS({ os, onFechar, onPago }) {
   const [forma, setForma] = useState('dinheiro');
   const [pagoEm, setPagoEm] = useState(hojeISO());
   const [valor, setValor] = useState('');
+  const [notificarRecibo, setNotificarRecibo] = useState(false);
   const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    if (os) { setValor(String(os.valor_total || '')); setForma('dinheiro'); setPagoEm(hojeISO()); setErro(''); }
+    if (os) {
+      setValor(String(os.valor_total || ''));
+      setForma('dinheiro'); setPagoEm(hojeISO()); setNotificarRecibo(false);
+      setErro(''); setAviso('');
+    }
   }, [os?.id]);
 
   if (!os) return null;
 
   async function salvar(e) {
     e.preventDefault();
-    setErro(''); setSalvando(true);
+    setErro(''); setAviso(''); setSalvando(true);
     try {
-      const atualizada = await api.mudarStatus(os.id, 'paga', false, {
+      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, {
         forma_pagamento: forma, pago_em: pagoEm, valor_pago: Number(valor),
       });
+      if (notificarRecibo && atualizada.whatsapp && !atualizada.whatsapp.enviado) {
+        setAviso(`Pagamento registrado. Recibo por WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
+        // não fecha — dá tempo do usuário ler o aviso
+        return;
+      }
       onPago(atualizada);
     } catch (err) {
       setErro(err.message);
@@ -387,6 +398,7 @@ function PagarOS({ os, onFechar, onPago }) {
       largura="max-w-md" onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-4">
         {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+        {aviso && <Alerta tipo="aviso" onFechar={() => { setAviso(''); onPago(os); }}>{aviso}</Alerta>}
 
         <div className="rounded-md bg-maninho-50 p-3 text-center">
           <p className="text-xs text-slate-500">Total da OS</p>
@@ -411,6 +423,13 @@ function PagarOS({ os, onFechar, onPago }) {
               onChange={(e) => setValor(e.target.value)} />
           </Campo>
         </div>
+
+        <label className="flex cursor-pointer items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <input type="checkbox" checked={notificarRecibo}
+            onChange={(e) => setNotificarRecibo(e.target.checked)}
+            className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-600/30" />
+          Enviar recibo por WhatsApp ao cliente
+        </label>
 
         <p className="text-xs text-slate-500">
           Valor menor que o total é aceito (pagamento parcial). O saldo fica em aberto na OS.

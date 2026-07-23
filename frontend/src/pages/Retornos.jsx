@@ -56,6 +56,13 @@ export default function Retornos() {
       carregar();
     } catch (e) { setErro(e.message); }
   }
+  async function enviarWhatsApp(r) {
+    setErro('');
+    try {
+      await api.enviarWhatsAppRetorno(r.id);
+      carregar();
+    } catch (e) { setErro(`WhatsApp não enviado: ${e.message}`); }
+  }
   async function ignorar(r) {
     setErro('');
     try {
@@ -142,8 +149,14 @@ export default function Retornos() {
                     <td className="td text-right">
                       {aba === 'pendente' ? (
                         <div className="flex flex-wrap justify-end gap-1">
+                          <button onClick={() => enviarWhatsApp(r)}
+                            className="rounded bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-200"
+                            title="Envia lembrete e marca como contatado">
+                            WhatsApp
+                          </button>
                           <button onClick={() => contatar(r)}
-                            className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">
+                            className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                            title="Marca como contatado sem enviar mensagem">
                             ✓ Contatado
                           </button>
                           <button onClick={() => ignorar(r)}

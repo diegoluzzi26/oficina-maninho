@@ -22,27 +22,53 @@ const listaQuery = v.paginacao.extend({
  * Notificações nunca derrubam a operação principal: se o WhatsApp falhar,
  * a OS já foi criada/atualizada e o erro vai apenas no campo `whatsapp`.
  */
+/**
+ * Configuração de cada tipo de notificação de OS num só lugar —
+ * facilita adicionar novos tipos sem espalhar hardcoded pela função.
+ */
+const NOTIFICACOES_OS = {
+  abertura: {
+    envVarTemplate: 'WHATSAPP_TEMPLATE_ABERTURA',
+    templatePadrao: 'os_aberta',
+    texto: (os) => `Olá, ${os.cliente_nome}! Recebemos seu ${os.marca} ${os.modelo} (${os.placa}). `
+      + `Sua OS nº ${os.numero_os} foi aberta. Qualquer novidade avisamos por aqui. — Auto Elétrica Maninho`,
+    parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
+  },
+  finalizada: {
+    envVarTemplate: 'WHATSAPP_TEMPLATE_FINALIZADA',
+    templatePadrao: 'os_finalizada',
+    texto: (os) => `Olá, ${os.cliente_nome}! Seu ${os.marca} ${os.modelo} (${os.placa}) está pronto. `
+      + `OS nº ${os.numero_os} — total R$ ${Number(os.valor_total).toFixed(2).replace('.', ',')}. `
+      + `Pode retirar no horário de funcionamento. — Auto Elétrica Maninho`,
+    parametros: (os) => [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
+  },
+  paga: {
+    envVarTemplate: 'WHATSAPP_TEMPLATE_PAGA',
+    templatePadrao: 'os_paga',
+    texto: (os) => {
+      const valor = `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`;
+      return `Obrigado, ${os.cliente_nome}! Recebemos o pagamento de ${valor} `
+        + `referente à OS nº ${os.numero_os} (${os.marca} ${os.modelo}). — Auto Elétrica Maninho`;
+    },
+    parametros: (os) => [
+      os.cliente_nome, String(os.numero_os),
+      `R$ ${Number(os.valor_pago || os.valor_total).toFixed(2).replace('.', ',')}`,
+    ],
+  },
+};
+
 async function notificarSeguro(os, tipo) {
   if (!env.whatsapp.enabled) return { enviado: false, motivo: 'WhatsApp não configurado' };
 
-  const textos = {
-    abertura: `Olá, ${os.cliente_nome}! Recebemos seu ${os.marca} ${os.modelo} (${os.placa}). `
-      + `Sua OS nº ${os.numero_os} foi aberta. Qualquer novidade avisamos por aqui. — Auto Elétrica Maninho`,
-    finalizada: `Olá, ${os.cliente_nome}! Seu ${os.marca} ${os.modelo} (${os.placa}) está pronto. `
-      + `OS nº ${os.numero_os} — total R$ ${Number(os.valor_total).toFixed(2).replace('.', ',')}. `
-      + `Pode retirar no horário de funcionamento. — Auto Elétrica Maninho`,
-  };
-  const templates = {
-    abertura: process.env.WHATSAPP_TEMPLATE_ABERTURA || 'os_aberta',
-    finalizada: process.env.WHATSAPP_TEMPLATE_FINALIZADA || 'os_finalizada',
-  };
+  const cfg = NOTIFICACOES_OS[tipo];
+  if (!cfg) return { enviado: false, motivo: `Tipo de notificação desconhecido: ${tipo}` };
 
   try {
     const msg = await wa.notificar({
       telefone: os.cliente_telefone,
-      mensagem: textos[tipo],
-      template: templates[tipo],
-      parametros: [os.cliente_nome, String(os.numero_os), `${os.marca} ${os.modelo}`],
+      mensagem: cfg.texto(os),
+      template: process.env[cfg.envVarTemplate] || cfg.templatePadrao,
+      parametros: cfg.parametros(os),
       cliente_id: os.cliente_id,
       os_id: os.id,
     });
@@ -76,8 +102,8 @@ router.patch('/:id/status', validate({ params: v.idParam, body: v.mudarStatus })
     const os = await svc.mudarStatus(req.params.id, status,
       { forma_pagamento, pago_em, valor_pago });
     const resposta = { ...os };
-    if (notificar_whatsapp && status === 'finalizada') {
-      resposta.whatsapp = await notificarSeguro(os, 'finalizada');
+    if (notificar_whatsapp && (status === 'finalizada' || status === 'paga')) {
+      resposta.whatsapp = await notificarSeguro(os, status);
     }
     res.json(resposta);
   }));

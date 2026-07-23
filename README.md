@@ -405,8 +405,8 @@ Confira no sistema da oficina.
 ### 6.8 Notificações automáticas
 
 Passe `"notificar_whatsapp": true` ao criar uma OS ou ao mudar o status para
-`finalizada`. O sistema tenta texto livre se a janela estiver aberta e cai para
-template caso contrário.
+`finalizada` ou `paga`. O sistema tenta texto livre se a janela estiver aberta
+e cai para template caso contrário.
 
 Se o envio falhar, **a operação principal não é desfeita** — a OS é criada
 normalmente e o motivo da falha vem no campo `whatsapp` da resposta:
@@ -415,6 +415,62 @@ normalmente e o motivo da falha vem no campo `whatsapp` da resposta:
 { "numero_os": 61, "status": "aberta",
   "whatsapp": { "enviado": false, "motivo": "Janela de 24h fechada..." } }
 ```
+
+### 6.9 Quem recebe o quê
+
+Duas variáveis definem os dois papéis diferentes que o WhatsApp desempenha:
+
+| Variável | Quem é | Recebe o quê |
+|---|---|---|
+| `PHONE_NUMBER_ID` | Número da **oficina** cadastrado na Meta | Envia mensagens para os **clientes** |
+| `ALERTA_WHATSAPP` | Seu **celular pessoal** (do dono) | Recebe os **alertas internos** (contas a pagar) |
+
+A separação é importante: o número da oficina fala com cliente, o seu
+pessoal recebe os avisos de gestão. Como você não conversa consigo mesmo
+pelo número da oficina, a janela de 24h nunca abre entre esses dois, e
+por isso o alerta de contas **sempre** usa template.
+
+**Todos os templates que podem ser enviados:**
+
+| Template | Para quem | Quando |
+|---|---|---|
+| `os_aberta` | cliente | OS criada com `notificar_whatsapp:true` |
+| `os_finalizada` | cliente | status vira `finalizada` com `notificar_whatsapp:true` |
+| `os_paga` | cliente | status vira `paga` com "Enviar recibo por WhatsApp" marcado |
+| `retorno_agendado` | cliente | você clica em "WhatsApp" na aba Retornos |
+| `lembrete_agendamento` | cliente | 1x/dia às `ALERTA_HORA`, para agendamentos de amanhã |
+| `alerta_contas` | dono (`ALERTA_WHATSAPP`) | 1x/dia às `ALERTA_HORA`, se há contas vencendo |
+
+Os nomes são configuráveis via `WHATSAPP_TEMPLATE_*` no `.env` — use os
+defaults acima ou aprove os seus próprios na Meta e sobrescreva.
+
+### 6.10 Webhook local sem ngrok — Cloudflare Tunnel
+
+A Meta exige URL **pública com HTTPS** pro webhook. Como o sistema roda
+no seu PC, você precisa de um túnel. O README menciona `ngrok`, mas
+recomendo **Cloudflare Tunnel** — grátis, sem cadastro, e a URL não muda
+enquanto o processo estiver rodando:
+
+```powershell
+# Windows: instala uma vez
+winget install --id Cloudflare.cloudflared
+
+# Sobe o túnel apontando pra sua API
+cloudflared tunnel --url http://localhost:3000
+```
+
+Copia a URL `https://xxx.trycloudflare.com` que aparece e usa
+`https://xxx.trycloudflare.com/api/whatsapp/webhook` na configuração da
+Meta (seção 6.4).
+
+Deixe o `cloudflared` rodando em background enquanto quiser receber
+eventos. Sem ele:
+- Envio outbound **funciona** (só chama API da Meta)
+- Não recebe status de entrega (`sent → delivered → read`)
+- Não recebe respostas do cliente
+- A janela de 24h nunca abre, forçando o uso de template em toda mensagem
+  (cada template inicia uma conversa cobrada — cliente respondendo abriria
+  a janela e o texto livre é grátis por 24h)
 
 ---
 
