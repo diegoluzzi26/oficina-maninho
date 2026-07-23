@@ -3,6 +3,7 @@ const db = require('../config/db');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
 const agendamentos = require('./agendamentos.service');
+const recorrentes = require('./despesas-recorrentes.service');
 const config = require('./config.service');
 
 /**
@@ -178,6 +179,15 @@ function agendar() {
 
     if (agora.getHours() !== horaAlvo || ultimoDiaExecutado === hoje) return;
     ultimoDiaExecutado = hoje;
+
+    // Gera despesas recorrentes ANTES de mandar alerta de contas —
+    // assim uma conta cujo dia chegou hoje já entra no aviso.
+    try {
+      const g = await recorrentes.gerarPendentes();
+      if (g.gerados > 0) console.log(`[recorrentes] gerou ${g.gerados} despesa(s)`);
+    } catch (err) {
+      console.error('[alertas] falha em recorrentes.gerarPendentes:', err.message);
+    }
 
     // Alerta de contas (dono) e lembrete de agendamentos (clientes)
     // são independentes: uma falha não deve impedir a outra.

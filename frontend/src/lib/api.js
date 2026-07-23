@@ -113,6 +113,13 @@ export const api = {
   desativarFuncionario: (id) => request(`/funcionarios/${id}`, { method: 'DELETE' }),
   darVale: (body) => request('/funcionarios/vales', { method: 'POST', body }),
   removerVale: (id) => request(`/funcionarios/vales/${id}`, { method: 'DELETE' }),
+
+  // --- despesas recorrentes ---
+  despesasRecorrentes: () => request('/despesas-recorrentes'),
+  criarRecorrente: (body) => request('/despesas-recorrentes', { method: 'POST', body }),
+  atualizarRecorrente: (id, body) => request(`/despesas-recorrentes/${id}`, { method: 'PUT', body }),
+  desativarRecorrente: (id) => request(`/despesas-recorrentes/${id}`, { method: 'DELETE' }),
+  gerarRecorrentes: () => request('/despesas-recorrentes/gerar', { method: 'POST', body: {} }),
   despesa: (id) => request(`/despesas/${id}`),
   criarDespesa: (body) => request('/despesas', { method: 'POST', body }),
   atualizarDespesa: (id, body) => request(`/despesas/${id}`, { method: 'PUT', body }),

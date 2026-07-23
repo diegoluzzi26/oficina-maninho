@@ -13,6 +13,7 @@ const MENU = [
   { para: '/financeiro', texto: 'Financeiro' },
   { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true },
   { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true },
+  { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true },
   { para: '/retornos', texto: 'Retornos' },
   { para: '/servicos', texto: 'Catálogo' },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true },
