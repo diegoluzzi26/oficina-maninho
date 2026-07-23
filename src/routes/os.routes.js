@@ -14,6 +14,9 @@ const { formatBR } = require('../utils/phone');
 const listaQuery = v.paginacao.extend({
   status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']).optional(),
   cliente_id: v.uuid.optional(),
+  marca: z.string().trim().optional(),
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
+    'cartao_debito', 'transferencia', 'cheque', 'outro']).optional(),
   ano: z.coerce.number().int().min(2000).max(2100).optional(),
   mes: z.coerce.number().int().min(1).max(12).optional(),
 });

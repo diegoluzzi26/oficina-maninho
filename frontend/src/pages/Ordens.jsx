@@ -4,6 +4,7 @@ import { brl, data, dataHora, telefone, STATUS, nomeMes,
   FORMAS_PAGAMENTO, rotuloForma, hojeISO } from '../lib/format';
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
+import { MARCAS } from '../lib/marcas-carros';
 
 /**
  * Anexo protegido por JWT: baixa via fetch (com Authorization) e
@@ -826,17 +827,34 @@ export default function Ordens() {
   const [lista, setLista] = useState(null);
   const [status, setStatus] = useState('');
   const [busca, setBusca] = useState('');
+  const [marca, setMarca] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [formaPag, setFormaPag] = useState('');
+  const [clientes, setClientes] = useState([]);
   const [erro, setErro] = useState('');
   const [novaAberta, setNovaAberta] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
   const [pagando, setPagando] = useState(null);
 
+  // Carrega clientes uma vez pra alimentar o filtro
+  useEffect(() => {
+    api.clientes({ por_pagina: 200 }).then((c) => setClientes(c.dados)).catch(() => {});
+  }, []);
+
   const carregar = useCallback(() => {
     setErro('');
     const params = { status, busca, por_pagina: 100 };
+    if (marca)     params.marca = marca;
+    if (clienteId) params.cliente_id = clienteId;
+    if (formaPag)  params.forma_pagamento = formaPag;
     if (!ref.todos) { params.ano = ref.ano; params.mes = ref.mes; }
     api.ordens(params).then(setLista).catch((e) => setErro(e.message));
-  }, [status, busca, ref.ano, ref.mes, ref.todos]);
+  }, [status, busca, marca, clienteId, formaPag, ref.ano, ref.mes, ref.todos]);
+
+  function limparFiltros() {
+    setStatus(''); setBusca(''); setMarca(''); setClienteId(''); setFormaPag('');
+  }
+  const temFiltroAtivo = status || busca || marca || clienteId || formaPag;
 
   useEffect(() => {
     const t = setTimeout(carregar, busca ? 350 : 0);
@@ -899,6 +917,35 @@ export default function Ordens() {
         </div>
         <input className="input max-w-xs" placeholder="Buscar por cliente, placa ou nº"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
+
+      {/* Filtros extras */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="input w-auto min-w-[140px] max-w-[220px] py-1.5 text-xs"
+          value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+          <option value="">Todos os clientes</option>
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>#{c.numero_cliente} — {c.nome}</option>
+          ))}
+        </select>
+        <select className="input w-auto min-w-[120px] py-1.5 text-xs"
+          value={marca} onChange={(e) => setMarca(e.target.value)}>
+          <option value="">Todas as marcas</option>
+          {MARCAS.map((m) => <option key={m.nome} value={m.nome}>{m.nome}</option>)}
+        </select>
+        <select className="input w-auto min-w-[140px] py-1.5 text-xs"
+          value={formaPag} onChange={(e) => setFormaPag(e.target.value)}>
+          <option value="">Qualquer forma de pagto.</option>
+          {FORMAS_PAGAMENTO.map((f) => (
+            <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+          ))}
+        </select>
+        {temFiltroAtivo && (
+          <button onClick={limparFiltros}
+            className="rounded bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100">
+            ✕ Limpar filtros
+          </button>
+        )}
       </div>
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}

@@ -258,15 +258,29 @@ export default function Despesas() {
   const [alertas, setAlertas] = useState(null);
   const [filtroStatus, setFiltroStatus] = useState('');
   const [busca, setBusca] = useState('');
+  const [fornecedorId, setFornecedorId] = useState('');
+  const [categoriaId, setCategoriaId] = useState('');
+  const [forma, setForma] = useState('');
+  const [fornecedores, setFornecedores] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false });
   const [erro, setErro] = useState('');
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState(null);
   const [pagando, setPagando] = useState(null);
 
+  // Carrega fornecedores e categorias uma vez pra alimentar os filtros
+  useEffect(() => {
+    api.fornecedores().then(setFornecedores).catch(() => {});
+    api.categorias().then(setCategorias).catch(() => {});
+  }, []);
+
   const carregar = useCallback(() => {
     setErro('');
     const params = { busca, status: filtroStatus || undefined, por_pagina: 100 };
+    if (fornecedorId) params.fornecedor_id = fornecedorId;
+    if (categoriaId)  params.categoria_id  = categoriaId;
+    if (forma)        params.forma         = forma;
     if (!ref.todos) {
       // Filtra por competência do mês.
       const inicio = `${ref.ano}-${String(ref.mes).padStart(2, '0')}-01`;
@@ -279,7 +293,14 @@ export default function Despesas() {
     Promise.all([req, api.alertas(7)])
       .then(([l, a]) => { setLista(l); setAlertas(a); })
       .catch((e) => setErro(e.message));
-  }, [aba, busca, filtroStatus, ref.ano, ref.mes, ref.todos]);
+  }, [aba, busca, filtroStatus, fornecedorId, categoriaId, forma,
+       ref.ano, ref.mes, ref.todos]);
+
+  function limparFiltros() {
+    setFiltroStatus(''); setBusca(''); setFornecedorId('');
+    setCategoriaId(''); setForma('');
+  }
+  const temFiltroAtivo = filtroStatus || busca || fornecedorId || categoriaId || forma;
 
   function mudarMes(delta) {
     setRef((r) => {
@@ -387,6 +408,37 @@ export default function Despesas() {
 
         <input className="input max-w-xs" placeholder="Buscar por descrição, fornecedor ou nota"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
+
+      {/* Filtros extras */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="input w-auto min-w-[160px] max-w-[240px] py-1.5 text-xs"
+          value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
+          <option value="">Todos os fornecedores</option>
+          {fornecedores.map((f) => (
+            <option key={f.id} value={f.id}>{f.nome}</option>
+          ))}
+        </select>
+        <select className="input w-auto min-w-[140px] max-w-[220px] py-1.5 text-xs"
+          value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+          <option value="">Todas as categorias</option>
+          {categorias.map((c) => (
+            <option key={c.id} value={c.id}>{c.nome}</option>
+          ))}
+        </select>
+        <select className="input w-auto min-w-[140px] py-1.5 text-xs"
+          value={forma} onChange={(e) => setForma(e.target.value)}>
+          <option value="">Qualquer forma</option>
+          {FORMAS_PAGAMENTO.map((f) => (
+            <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+          ))}
+        </select>
+        {temFiltroAtivo && (
+          <button onClick={limparFiltros}
+            className="rounded bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100">
+            ✕ Limpar filtros
+          </button>
+        )}
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}

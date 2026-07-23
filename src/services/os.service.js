@@ -28,12 +28,18 @@ async function buscarPorId(id) {
   return comItens(null, rows[0]);
 }
 
-async function listar({ pagina, por_pagina, status, cliente_id, busca, ano, mes }) {
+async function listar({ pagina, por_pagina, status, cliente_id, busca, ano, mes,
+                         marca, forma_pagamento }) {
   const where = [];
   const params = [];
 
   if (status)     { params.push(status);     where.push(`o.status = $${params.length}`); }
   if (cliente_id) { params.push(cliente_id); where.push(`o.cliente_id = $${params.length}`); }
+  if (marca)      { params.push(marca);      where.push(`lower(ca.marca) = lower($${params.length})`); }
+  if (forma_pagamento) {
+    params.push(forma_pagamento);
+    where.push(`o.forma_pagamento = $${params.length}`);
+  }
   if (ano && mes) {
     // Data de referência = aberta_em. Padrão de UX: "OS do mês X".
     params.push(ano, mes);
