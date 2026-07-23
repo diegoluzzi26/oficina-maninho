@@ -73,6 +73,8 @@ export const api = {
   atualizarCliente: (id, body) => request(`/clientes/${id}`, { method: 'PUT', body }),
 
   carros: (params) => request('/carros', { params }),
+  carro: (id) => request(`/carros/${id}`),
+  historicoCarro: (id) => request(`/carros/${id}/historico`),
   criarCarro: (body) => request('/carros', { method: 'POST', body }),
 
   servicos: () => request('/servicos'),

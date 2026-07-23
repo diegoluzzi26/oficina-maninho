@@ -11,6 +11,9 @@ router.get('/', h(async (req, res) => res.json(await svc.listar(req.query))));
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarPorId(req.params.id))));
 
+router.get('/:id/historico', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.historico(req.params.id))));
+
 router.post('/', validate({ body: v.criarCarro }),
   h(async (req, res) => res.status(201).json(await svc.criar(req.body))));
 

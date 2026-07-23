@@ -3,6 +3,7 @@ import { api, getUser } from '../lib/api';
 import { brl, data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Badge } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
+import { HistoricoCarro } from '../components/HistoricoCarro';
 
 function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   const vazio = { nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '' };
@@ -164,6 +165,7 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
   const [cli, setCli] = useState(null);
   const [ordens, setOrdens] = useState([]);
   const [carroAberto, setCarroAberto] = useState(false);
+  const [carroHistorico, setCarroHistorico] = useState(null);
   const [erro, setErro] = useState('');
 
   const recarregar = useCallback(() => {
@@ -212,18 +214,24 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
             ) : (
               <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
                 {cli.carros.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between px-3 py-2.5">
+                  <li key={c.id}
+                    onClick={() => setCarroHistorico(c)}
+                    className="flex cursor-pointer items-center justify-between px-3 py-2.5 hover:bg-maninho-50/60"
+                    title="Ver histórico do veículo">
                     <div>
                       <p className="font-mono text-sm font-semibold text-slate-800">{c.placa}</p>
                       <p className="text-xs text-slate-500">
                         {c.marca} {c.modelo}{c.ano ? ` · ${c.ano}` : ''}{c.cor ? ` · ${c.cor}` : ''}
                       </p>
                     </div>
-                    {c.km_atual != null && (
-                      <span className="tnum text-xs text-slate-500">
-                        {Number(c.km_atual).toLocaleString('pt-BR')} km
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {c.km_atual != null && (
+                        <span className="tnum text-xs text-slate-500">
+                          {Number(c.km_atual).toLocaleString('pt-BR')} km
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-400">→</span>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -254,6 +262,15 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
 
       <FormCarro aberto={carroAberto} clienteId={id} onFechar={() => setCarroAberto(false)}
         onSalvo={() => { setCarroAberto(false); recarregar(); onAtualizado?.(); }} />
+
+      <Modal aberto={!!carroHistorico}
+        largura="max-w-2xl"
+        titulo={carroHistorico
+          ? `${carroHistorico.placa} — ${carroHistorico.marca} ${carroHistorico.modelo}`
+          : 'Histórico do veículo'}
+        onFechar={() => setCarroHistorico(null)}>
+        {carroHistorico && <HistoricoCarro carroId={carroHistorico.id} />}
+      </Modal>
     </Modal>
   );
 }
