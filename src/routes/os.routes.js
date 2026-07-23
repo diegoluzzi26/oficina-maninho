@@ -124,4 +124,7 @@ router.delete('/:id/pecas/:itemId',
 router.delete('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.remover(req.params.id))));
 
+// Checklist de inspeção visual
+router.use('/:id/checklist', require('./checklist.routes'));
+
 module.exports = router;

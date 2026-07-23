@@ -5,6 +5,7 @@ import { brl, data, dataHora, telefone, STATUS, nomeMes,
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
+import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
 
 /**
@@ -733,6 +734,20 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             <p className="text-sm text-slate-700">{os.observacoes}</p>
           </div>
         )}
+
+        {/* Checklist de inspeção visual */}
+        <details className="group rounded-md border border-slate-200 bg-slate-50/50">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-md">
+            <span>Checklist de inspeção visual</span>
+            <span className="text-xs text-slate-500 group-open:hidden">
+              (27 itens em 4 seções)
+            </span>
+            <span className="ml-auto text-xs text-slate-400 group-open:rotate-180 transition">▼</span>
+          </summary>
+          <div className="border-t border-slate-200 p-3">
+            <ChecklistOS os={os} />
+          </div>
+        </details>
 
         {/* Histórico do veículo (o que já foi feito antes) */}
         <details className="group rounded-md border border-slate-200 bg-slate-50/50">

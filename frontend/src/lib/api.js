@@ -120,6 +120,14 @@ export const api = {
   atualizarRecorrente: (id, body) => request(`/despesas-recorrentes/${id}`, { method: 'PUT', body }),
   desativarRecorrente: (id) => request(`/despesas-recorrentes/${id}`, { method: 'DELETE' }),
   gerarRecorrentes: () => request('/despesas-recorrentes/gerar', { method: 'POST', body: {} }),
+
+  // --- checklist da OS ---
+  checklistOS: (osId) => request(`/os/${osId}/checklist`),
+  criarChecklistOS: (osId) => request(`/os/${osId}/checklist`, { method: 'POST', body: {} }),
+  atualizarItemChecklist: (osId, itemId, body) =>
+    request(`/os/${osId}/checklist/itens/${itemId}`, { method: 'PATCH', body }),
+  atualizarObsChecklist: (osId, observacao_geral) =>
+    request(`/os/${osId}/checklist/observacao`, { method: 'PATCH', body: { observacao_geral } }),
   despesa: (id) => request(`/despesas/${id}`),
   criarDespesa: (body) => request('/despesas', { method: 'POST', body }),
   atualizarDespesa: (id, body) => request(`/despesas/${id}`, { method: 'PUT', body }),
