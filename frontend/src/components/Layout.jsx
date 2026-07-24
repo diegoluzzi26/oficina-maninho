@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
+  TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, Wrench, Settings,
+  Menu, X,
+} from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
 
 const MENU = [
-  { para: '/', texto: 'Painel', exato: true, icone: '◉' },
-  { para: '/agenda', texto: 'Agenda', icone: '▤' },
-  { para: '/ordens', texto: 'Ordens', icone: '≡' },
-  { para: '/clientes', texto: 'Clientes', icone: '◍' },
-  { para: '/despesas', texto: 'Despesas', badge: true, icone: '↧' },
-  { para: '/fornecedores', texto: 'Fornecedores', icone: '⌂' },
-  { para: '/financeiro', texto: 'Financeiro', icone: '↗' },
-  { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true, icone: '☰' },
-  { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, icone: '◐' },
-  { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, icone: '↻' },
-  { para: '/retornos', texto: 'Retornos', icone: '↺' },
-  { para: '/servicos', texto: 'Catálogo', icone: '⚙' },
-  { para: '/configuracoes', texto: 'Config', somenteAdmin: true, icone: '⚒' },
+  { para: '/', texto: 'Painel', exato: true, Icone: LayoutDashboard },
+  { para: '/agenda', texto: 'Agenda', Icone: Calendar },
+  { para: '/ordens', texto: 'Ordens', Icone: ClipboardList },
+  { para: '/clientes', texto: 'Clientes', Icone: Users },
+  { para: '/despesas', texto: 'Despesas', badge: true, Icone: Receipt },
+  { para: '/fornecedores', texto: 'Fornecedores', Icone: Truck },
+  { para: '/financeiro', texto: 'Financeiro', Icone: TrendingUp },
+  { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true, Icone: Wallet },
+  { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, Icone: HardHat },
+  { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, Icone: RefreshCw },
+  { para: '/retornos', texto: 'Retornos', Icone: PhoneCall },
+  { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
+  { para: '/configuracoes', texto: 'Config', somenteAdmin: true, Icone: Settings },
 ];
 
 export default function Layout() {
@@ -44,22 +49,19 @@ export default function Layout() {
   }
 
   // Bloco de links reutilizado no sidebar desktop e no drawer mobile
-  const Links = ({ compacto = false }) => (
+  const Links = () => (
     <nav className="flex flex-1 flex-col gap-0.5">
-      {itens.map((m) => (
-        <NavLink key={m.para} to={m.para} end={m.exato}
+      {itens.map(({ para, texto, exato, badge, Icone }) => (
+        <NavLink key={para} to={para} end={exato}
           className={({ isActive }) =>
             `group flex items-center gap-3 rounded-md px-3 py-2 font-display text-[13px]
              font-medium uppercase tracking-[.06em] transition
              ${isActive
                ? 'bg-maninho-600 text-white shadow-sm'
                : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
-          <span className={`grid h-5 w-5 shrink-0 place-items-center text-base
-            ${compacto ? '' : ''}`}>
-            {m.icone}
-          </span>
-          <span className="flex-1 truncate">{m.texto}</span>
-          {m.badge && pendencias > 0 && (
+          <Icone size={18} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+          <span className="flex-1 truncate">{texto}</span>
+          {badge && pendencias > 0 && (
             <span className="pulso inline-flex h-[17px] min-w-[17px] items-center justify-center
                              rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
               {pendencias}
@@ -104,9 +106,7 @@ export default function Layout() {
                             border-b border-white/10 bg-painel-900 px-4 shadow-painel lg:hidden">
           <button onClick={() => setAbertoMobile(true)}
             className="rounded p-1.5 text-white hover:bg-white/10" aria-label="Abrir menu">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-            </svg>
+            <Menu size={22} />
           </button>
           <MarcaCompacta />
           <div className="ml-auto flex items-center gap-2">
@@ -132,7 +132,9 @@ export default function Layout() {
                 <Marca variante="claro" tamanho="sm" />
                 <button onClick={() => setAbertoMobile(false)}
                   className="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white"
-                  aria-label="Fechar menu">✕</button>
+                  aria-label="Fechar menu">
+                  <X size={20} />
+                </button>
               </div>
               <div className="flex flex-1 flex-col overflow-y-auto p-3">
                 <Links />
