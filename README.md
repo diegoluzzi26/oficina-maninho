@@ -28,6 +28,92 @@ docker compose exec api node scripts/seed.js
 
 Acesse: **http://localhost:8080**
 
+## 1.5 Colocar na internet (Oracle Cloud grátis)
+
+Se quer acessar de qualquer lugar sem precisar deixar o PC ligado,
+a maneira mais barata (R$0 pra sempre) é a Oracle Cloud Always Free
+com uma VM ARM Ampere: **4 vCPU, 24GB RAM, 200GB SSD** grátis para
+sempre. Todo o setup necessário já vive no repo.
+
+### 1.5.1 Criar a VM (~15 min, sem código)
+
+1. Cadastro em [oracle.com/cloud/free](https://www.oracle.com/cloud/free).
+   Precisa de cartão de crédito (verificação — não cobra). No painel,
+   confirma que a linha diz **"Always Free"** e não trial.
+2. **Compute → Instances → Create Instance**:
+   - **Shape:** `VM.Standard.A1.Flex` — 4 OCPU, 24 GB memory
+   - **Image:** Canonical Ubuntu 24.04 (Minimal)
+   - **Networking:** aceita o VCN default
+   - **SSH keys:** cola sua chave pública (ou gera com Oracle e baixa)
+3. **Pegadinha nº 1:** entra em **Networking → VCNs → default →
+   Security Lists → Default Security List** e adiciona 3 regras
+   Ingress pra `0.0.0.0/0`:
+   - TCP `80` (HTTP)
+   - TCP `443` (HTTPS)
+   - UDP `443` (HTTP/3)
+   Sem isso, o HTTPS não sobe — o Caddy fica travado tentando pegar
+   cert do Let's Encrypt.
+4. Anota o **IP público** da instância (fica no card da VM).
+
+### 1.5.2 Instalar tudo (~10 min, roda no servidor)
+
+```bash
+# 1. SSH na VM (usuário padrão é 'ubuntu')
+ssh ubuntu@<IP>
+
+# 2. Prepara Ubuntu (Docker, firewall, swap, hardening SSH)
+curl -fsSL https://raw.githubusercontent.com/diegoluzzi26/oficina-maninho/main/deploy/setup-servidor.sh | sudo bash
+
+# 3. Clona o repo e entra
+git clone https://github.com/diegoluzzi26/oficina-maninho.git
+cd oficina-maninho
+
+# 4. Gera segredos e cria .env de produção
+cp .env.example .env
+JWT=$(openssl rand -base64 32)
+PGP=$(openssl rand -base64 24 | tr -d '/+=')
+EVK=$(openssl rand -hex 24 | tr 'a-z' 'A-Z')
+IP=$(curl -s https://api.ipify.org)
+DOM="${IP//./-}.sslip.io"
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT|; \
+        s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PGP|; \
+        s|^EVOLUTION_API_KEY=.*|EVOLUTION_API_KEY=$EVK|; \
+        s|^DATABASE_URL=.*|DATABASE_URL=postgres://oficina:$PGP@db:5432/oficina|" .env
+echo "DOMINIO=$DOM" >> .env
+
+# 5. Sobe tudo
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 6. Aguarda 30s pro Caddy pegar o certificado Let's Encrypt
+sleep 30 && curl -sI https://$DOM/health
+```
+
+Se o último `curl` retornou `HTTP/2 200`, tá pronto. Abre no browser:
+`https://<seu-ip-com-hifens>.sslip.io`
+
+### 1.5.3 Depois do primeiro up
+
+1. Login com `admin@maninho.com.br` / `admin123` → **troca a senha
+   imediatamente** em Configurações
+2. Configurações → **Conexão do WhatsApp** → escanea QR
+3. (Opcional) Backup pro Google Drive:
+   `sudo docker compose run --rm -it backup rclone config` — segue
+   roteiro na [seção 6](#6-whatsapp-evolution-api--self-hosted)
+
+### 1.5.4 Domínio próprio (opcional, ~R$40/ano)
+
+Se comprou um domínio depois (`autoeletricamaninho.com.br`), aponta
+um subdomínio A pro IP da VM e troca no `.env`:
+
+```bash
+sed -i "s|^DOMINIO=.*|DOMINIO=sistema.autoeletricamaninho.com.br|" .env
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d caddy
+```
+
+Caddy pega o cert novo automaticamente em ~15 segundos.
+
+---
+
 ## 2. Rodar em desenvolvimento (sem Docker)
 
 Requer Node 18+ e PostgreSQL 14+.
