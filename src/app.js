@@ -11,7 +11,30 @@ const AppError = require('./utils/AppError');
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+
+/**
+ * CORS restrito por whitelist quando CORS_ORIGINS está setado.
+ * Em dev (sem a var), aceita qualquer origem pra facilitar teste local.
+ * Em prod (frontend hospedado à parte, ex: Vercel), listar cada origem
+ * separada por vírgula: "https://oficina.vercel.app,https://sistema.dominio.com"
+ * Também aceita padrão *.vercel.app (previews de PR).
+ */
+const origensPermitidas = (process.env.CORS_ORIGINS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+app.use(cors({
+  origin(origin, cb) {
+    if (!origensPermitidas.length) return cb(null, true); // dev
+    if (!origin) return cb(null, true); // curl, mobile apps, mesmo origem
+    const ok = origensPermitidas.some((o) => {
+      if (o === '*') return true;
+      if (o.startsWith('*.')) return origin.endsWith(o.slice(1));
+      return o === origin;
+    });
+    cb(ok ? null : new Error(`Origem não permitida: ${origin}`), ok);
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '1mb' }));
 if (env.nodeEnv !== 'test') app.use(morgan('dev'));
 

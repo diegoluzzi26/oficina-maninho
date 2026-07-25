@@ -1,26 +1,25 @@
-# Caddy fica na frente de tudo: pega HTTPS de graça no Let's Encrypt,
-# proxa /api -> API Node e o resto -> web (nginx que serve o React).
+# Caddy fica na frente do backend em produção. Frontend não roda aqui —
+# vive no Vercel (deploy separado). Este servidor só serve /api/*.
 #
 # {$DOMINIO} vem do docker-compose (ex: 5-161-42-10.sslip.io).
-# Se um dia trocarmos por dominio.com.br, muda só a variável e o Caddy
-# revalida automaticamente com Let's Encrypt.
+# HTTPS grátis via Let's Encrypt.
 
 {$DOMINIO} {
 	encode gzip
 
-	# API: tudo em /api vai pro backend Node
+	# Endpoint de healthcheck (usado no smoke test do deploy)
+	handle /health {
+		reverse_proxy api:3000
+	}
+
+	# API do sistema
 	handle /api/* {
 		reverse_proxy api:3000
 	}
 
-	# WhatsApp webhook precisa ser público (a Meta chama sem token)
-	handle /api/whatsapp/webhook {
-		reverse_proxy api:3000
-	}
-
-	# Frontend estático (build do Vite servido pelo nginx do container `web`)
+	# Qualquer outra rota volta 404 informativo — o frontend está no Vercel
 	handle {
-		reverse_proxy web:80
+		respond "Este é o backend da Auto Elétrica Maninho. O sistema vive em https://{$FRONTEND_URL}" 404
 	}
 
 	# Cabeçalhos básicos de segurança. Nada rígido demais pra não

@@ -14,8 +14,9 @@ services:
   api:
     ports: !override []   # nem 3000
 
+  # Frontend vive no Vercel — container web não sobe em prod
   web:
-    ports: !override []   # nem 8080
+    profiles: ["desabilitado"]
 
   caddy:
     image: caddy:2-alpine
@@ -23,13 +24,13 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-      - web
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"     # HTTP/3
     environment:
       DOMINIO: ${DOMINIO:?defina DOMINIO no .env (ex: 5-161-42-10.sslip.io)}
+      FRONTEND_URL: ${FRONTEND_URL:-oficina-maninho.vercel.app}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

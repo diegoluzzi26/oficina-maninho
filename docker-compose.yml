@@ -44,6 +44,10 @@ services:
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-oficina}
       ALERTA_WHATSAPP: ${ALERTA_WHATSAPP:-}
       ALERTA_HORA: ${ALERTA_HORA:-8}
+      # Origens permitidas pelo CORS. Vazio em dev = aceita qualquer.
+      # Em prod, listar frontend Vercel + custom domain, ex:
+      # "https://oficina-maninho.vercel.app,*.vercel.app,https://sistema.dominio.com.br"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
