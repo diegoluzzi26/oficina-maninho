@@ -62,4 +62,28 @@ sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_
 sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
 systemctl restart ssh
 
-log "Pronto. Próximo passo: subir o projeto e rodar docker compose up -d."
+log "Git"
+apt-get install -yqq git
+
+log "Clonando o repositório em /opt/oficina"
+if [ ! -d /opt/oficina/.git ]; then
+  git clone https://github.com/diegoluzzi26/oficina-maninho.git /opt/oficina
+else
+  git -C /opt/oficina pull --ff-only
+fi
+
+log "Pronto!"
+cat <<MSG
+
+Próximos passos:
+  1. cd /opt/oficina
+  2. cp .env.example .env
+  3. nano .env
+     — troque JWT_SECRET, POSTGRES_PASSWORD, EVOLUTION_API_KEY
+     — adicione DOMINIO=autoeletricamaninho.com.br
+  4. Aponte DNS do seu domínio pro IP deste servidor (A record)
+  5. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+O Caddy vai pegar o certificado HTTPS automaticamente nos primeiros
+segundos. Acompanhe com: docker compose logs -f caddy
+MSG

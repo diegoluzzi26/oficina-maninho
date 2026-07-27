@@ -1,29 +1,29 @@
-# Caddy fica na frente do backend em produção. Frontend não roda aqui —
-# vive no Vercel (deploy separado). Este servidor só serve /api/*.
+# Caddy fica na frente do sistema em produção. Serve:
+#   /api/*       → backend Node (container `api`, porta 3000)
+#   qualquer /   → frontend React (container `web`, nginx porta 80)
 #
-# {$DOMINIO} vem do docker-compose (ex: 5-161-42-10.sslip.io).
-# HTTPS grátis via Let's Encrypt.
+# {$DOMINIO} vem do .env (ex: autoeletricamaninho.com.br).
+# HTTPS grátis via Let's Encrypt, HTTP/3 ativo.
 
 {$DOMINIO} {
-	encode gzip
+	encode gzip zstd
 
-	# Endpoint de healthcheck (usado no smoke test do deploy)
+	# Healthcheck (usado no smoke test do deploy)
 	handle /health {
 		reverse_proxy api:3000
 	}
 
-	# API do sistema
+	# API do sistema (inclui webhook do WhatsApp, upload de fotos, tudo)
 	handle /api/* {
 		reverse_proxy api:3000
 	}
 
-	# Qualquer outra rota volta 404 informativo — o frontend está no Vercel
+	# Frontend estático (build do Vite servido pelo nginx do container web)
 	handle {
-		respond "Este é o backend da Auto Elétrica Maninho. O sistema vive em https://{$FRONTEND_URL}" 404
+		reverse_proxy web:80
 	}
 
-	# Cabeçalhos básicos de segurança. Nada rígido demais pra não
-	# quebrar o React (evita CSP muito estrita que precisaria nonces).
+	# Cabeçalhos básicos de segurança
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options    "nosniff"
@@ -32,6 +32,7 @@
 		-Server
 	}
 
+	# Log em formato humano no stdout (visível em `docker compose logs caddy`)
 	log {
 		output stdout
 		format console

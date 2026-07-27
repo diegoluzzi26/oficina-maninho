@@ -2,21 +2,27 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
 # Diferenças em relação ao dev:
-#   - Nenhuma porta do banco ou da API exposta no host
+#   - db, api, evolution, web não expõem porta no host — só Caddy
 #   - Caddy na frente pegando 80/443 e fazendo HTTPS via Let's Encrypt
-#   - Web (nginx) só ouve internamente
+#   - Roteamento: / e /assets/* → web (React), /api/* → api (Node)
 #   - DOMINIO controla o certificado emitido pelo Caddy
 
 services:
   db:
-    ports: !override []   # não expõe 5432 pra fora
+    ports: !override []
 
   api:
-    ports: !override []   # nem 3000
+    ports: !override []
 
-  # Frontend vive no Vercel — container web não sobe em prod
   web:
-    profiles: ["desabilitado"]
+    ports: !override []
+
+  evolution:
+    # Continua acessível na rede interna do compose (http://evolution:8080)
+    # mas não expõe pro mundo — quem precisar acessar o painel dele
+    # usa SSH tunnel: ssh -L 8081:localhost:8081 user@servidor
+    ports:
+      - "127.0.0.1:8081:8080"
 
   caddy:
     image: caddy:2-alpine
@@ -24,13 +30,13 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+      - web
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"     # HTTP/3
     environment:
-      DOMINIO: ${DOMINIO:?defina DOMINIO no .env (ex: 5-161-42-10.sslip.io)}
-      FRONTEND_URL: ${FRONTEND_URL:-oficina-maninho.vercel.app}
+      DOMINIO: ${DOMINIO:?defina DOMINIO no .env (ex: autoeletricamaninho.com.br)}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
