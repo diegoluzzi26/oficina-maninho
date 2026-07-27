@@ -1,0 +1,19 @@
+eletricamaninho.duckdns.org {
+    encode gzip zstd
+
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+
+    handle /webhook* {
+        reverse_proxy api:3000
+    }
+
+    handle /anexos/* {
+        reverse_proxy api:3000
+    }
+
+    handle {
+        reverse_proxy web:80
+    }
+}

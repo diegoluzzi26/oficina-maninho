@@ -138,7 +138,24 @@ services:
       # tarballzar junto do pg_dump
       - ./anexos:/anexos:ro
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: oficina-caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   pgdata:
   rclone-config:
   evolution_instances:
+  caddy_data:
+  caddy_config:
