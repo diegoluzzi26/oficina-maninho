@@ -45,10 +45,10 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
 
   useEffect(() => {
     if (!aberto) return;
-    Promise.all([api.categorias(), api.fornecedores()])
+    Promise.all([api.categorias({ escopo }), api.fornecedores()])
       .then(([c, f]) => { setCategorias(c); setFornecedores(f); })
       .catch((e) => setErro(e.message));
-  }, [aberto]);
+  }, [aberto, escopo]);
 
   useEffect(() => {
     setErro('');
@@ -270,11 +270,12 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
   const [editando, setEditando] = useState(null);
   const [pagando, setPagando] = useState(null);
 
-  // Carrega fornecedores e categorias uma vez pra alimentar os filtros
+  // Carrega fornecedores e categorias pra alimentar os filtros.
+  // Categorias vêm filtradas pelo escopo da aba (oficina/pessoal).
   useEffect(() => {
     api.fornecedores().then(setFornecedores).catch(() => {});
-    api.categorias().then(setCategorias).catch(() => {});
-  }, []);
+    api.categorias({ escopo }).then(setCategorias).catch(() => {});
+  }, [escopo]);
 
   const carregar = useCallback(() => {
     setErro('');

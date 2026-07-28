@@ -27,9 +27,16 @@ router.get('/evolucao', validate({ query: v.periodo }),
 router.get('/fluxo-caixa', validate({ query: v.periodo }),
   h(async (req, res) => res.json(await fin.fluxoCaixa(req.query))));
 
-router.get('/categorias', h(async (_req, res) => res.json(await desp.listarCategorias())));
+router.get('/categorias', validate({ query: v.filtroCategorias }),
+  h(async (req, res) => res.json(await desp.listarCategorias(req.query))));
 
 router.post('/categorias', validate({ body: v.criarCategoria }),
   h(async (req, res) => res.status(201).json(await desp.criarCategoria(req.body))));
+
+router.patch('/categorias/:id', validate({ params: v.idParam, body: v.atualizarCategoria }),
+  h(async (req, res) => res.json(await desp.atualizarCategoria(req.params.id, req.body))));
+
+router.delete('/categorias/:id', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await desp.desativarCategoria(req.params.id))));
 
 module.exports = router;

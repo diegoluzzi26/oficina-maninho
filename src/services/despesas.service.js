@@ -85,18 +85,84 @@ async function desativarFornecedor(id) {
 
 // ---------------------------------------------------------------- categorias
 
-async function listarCategorias() {
+/**
+ * Lista categorias. Se `escopo` for informado, retorna as do escopo pedido
+ * mais as marcadas como 'ambos'. Sem escopo, retorna tudo (usado no
+ * gerenciamento em Configurações).
+ * `incluir_inativas` só pra tela de gerenciamento.
+ */
+async function listarCategorias({ escopo, incluir_inativas } = {}) {
+  const where = [];
+  const params = [];
+  if (!incluir_inativas) where.push('ativo');
+  if (escopo) {
+    params.push(escopo);
+    where.push(`(escopo = $${params.length} OR escopo = 'ambos')`);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const { rows } = await db.query(
-    'SELECT * FROM categorias_despesa WHERE ativo ORDER BY ordem, nome',
+    `SELECT * FROM categorias_despesa ${clause} ORDER BY ordem, nome`,
+    params,
   );
   return rows;
 }
 
-async function criarCategoria({ nome, cor }) {
+async function criarCategoria({ nome, cor, escopo, ordem }) {
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO categorias_despesa (nome, cor, escopo, ordem)
+       VALUES ($1, $2, $3, COALESCE($4, 100))
+       RETURNING *`,
+      [nome, cor || '#64748b', escopo || 'ambos', ordem ?? null],
+    );
+    return rows[0];
+  } catch (err) {
+    if (err.code === '23505') throw AppError.conflict('Já existe categoria ativa com esse nome');
+    throw err;
+  }
+}
+
+async function atualizarCategoria(id, d) {
+  const permitidos = ['nome', 'cor', 'escopo', 'ordem', 'ativo'];
+  const campos = [];
+  const params = [];
+  for (const [k, v] of Object.entries(d)) {
+    if (v === undefined || !permitidos.includes(k)) continue;
+    params.push(v);
+    campos.push(`${k} = $${params.length}`);
+  }
+  if (!campos.length) {
+    const { rows } = await db.query('SELECT * FROM categorias_despesa WHERE id = $1', [id]);
+    if (!rows[0]) throw AppError.notFound('Categoria não encontrada');
+    return rows[0];
+  }
+  params.push(id);
+  try {
+    const { rows } = await db.query(
+      `UPDATE categorias_despesa SET ${campos.join(', ')}
+        WHERE id = $${params.length} RETURNING *`,
+      params,
+    );
+    if (!rows[0]) throw AppError.notFound('Categoria não encontrada');
+    return rows[0];
+  } catch (err) {
+    if (err.code === '23505') throw AppError.conflict('Já existe categoria ativa com esse nome');
+    throw err;
+  }
+}
+
+/**
+ * Soft-delete: só marca como inativa. Preserva o histórico das despesas
+ * que já usaram essa categoria (a FK é ON DELETE SET NULL, então mesmo
+ * um DELETE físico não perderia despesa — mas o soft-delete permite
+ * reativar depois se o usuário mudar de ideia).
+ */
+async function desativarCategoria(id) {
   const { rows } = await db.query(
-    'INSERT INTO categorias_despesa (nome, cor) VALUES ($1,$2) RETURNING *',
-    [nome, cor || '#64748b'],
+    'UPDATE categorias_despesa SET ativo = FALSE WHERE id = $1 RETURNING *',
+    [id],
   );
+  if (!rows[0]) throw AppError.notFound('Categoria não encontrada');
   return rows[0];
 }
 
@@ -317,7 +383,7 @@ async function painelPessoal({ ano, mes } = {}) {
 module.exports = {
   sincronizarAtrasos,
   listarFornecedores, buscarFornecedor, criarFornecedor, atualizarFornecedor, desativarFornecedor,
-  listarCategorias, criarCategoria,
+  listarCategorias, criarCategoria, atualizarCategoria, desativarCategoria,
   listarDespesas, buscarDespesa, criarDespesa, atualizarDespesa, pagarDespesa, removerDespesa,
   proximosVencimentos, painelPessoal,
 };

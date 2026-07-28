@@ -1,6 +1,250 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { Alerta, Campo, Skeleton, Spinner } from '../components/ui';
+import { Alerta, Campo, Modal, Skeleton, Spinner, Vazio } from '../components/ui';
+
+const ROTULO_ESCOPO = { oficina: 'Oficina', pessoal: 'Pessoal', ambos: 'Ambos' };
+const CORES_SUGERIDAS = [
+  '#2B3D8F', '#7c3aed', '#0891b2', '#ea580c', '#D4A843',
+  '#dc2626', '#65a30d', '#db2777', '#0d9488', '#64748b',
+];
+
+/**
+ * CRUD de categorias de despesa. Lista todas (inclui inativas), com
+ * filtro por escopo. Criar/editar/desativar via modal. Desativar é
+ * soft-delete: mantém o histórico das despesas que já usam a categoria.
+ */
+function CategoriasDespesa() {
+  const [categorias, setCategorias] = useState(null);
+  const [filtroEscopo, setFiltroEscopo] = useState(''); // '', 'oficina', 'pessoal'
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState(null);
+
+  function carregar() {
+    setErro('');
+    api.categorias({ incluir_inativas: true })
+      .then(setCategorias)
+      .catch((e) => setErro(e.message));
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function desativar(cat) {
+    if (!confirm(`Desativar a categoria "${cat.nome}"? Ela some dos selects, mas as despesas que já a usam continuam com ela.`)) return;
+    try {
+      await api.desativarCategoria(cat.id);
+      setOk(`Categoria "${cat.nome}" desativada.`);
+      carregar();
+    } catch (err) { setErro(err.message); }
+  }
+
+  async function reativar(cat) {
+    try {
+      await api.atualizarCategoria(cat.id, { ativo: true });
+      setOk(`Categoria "${cat.nome}" reativada.`);
+      carregar();
+    } catch (err) { setErro(err.message); }
+  }
+
+  function abrirNovo() { setEditando(null); setModalAberto(true); }
+  function abrirEdicao(c) { setEditando(c); setModalAberto(true); }
+  function fechou(salvo) {
+    setModalAberto(false);
+    if (salvo) { setOk('Categoria salva.'); carregar(); }
+  }
+
+  const filtradas = (categorias || []).filter((c) => {
+    if (!filtroEscopo) return true;
+    return c.escopo === filtroEscopo || c.escopo === 'ambos';
+  });
+
+  return (
+    <div className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="titulo-secao">Categorias de despesa</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Organize as despesas em categorias próprias. Cada categoria pode ser
+            só da <b>oficina</b>, só <b>pessoal</b>, ou <b>ambas</b> — controlando
+            o que aparece em cada tela de despesa.
+          </p>
+        </div>
+        <button type="button" className="btn-primary" onClick={abrirNovo}>
+          + Nova categoria
+        </button>
+      </div>
+
+      <div className="mt-4 flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm w-fit">
+        {[['', 'Todas'], ['oficina', 'Oficina'], ['pessoal', 'Pessoal']].map(([k, t]) => (
+          <button key={k || 'all'} type="button" onClick={() => setFiltroEscopo(k)}
+            className={`rounded px-3 py-1.5 text-xs font-semibold transition
+              ${filtroEscopo === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {erro && <div className="mt-3"><Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta></div>}
+      {ok   && <div className="mt-3"><Alerta tipo="ok"   onFechar={() => setOk('')}>{ok}</Alerta></div>}
+
+      <div className="mt-4 overflow-hidden rounded-md border border-slate-200">
+        {!categorias ? (
+          <div className="space-y-2 p-3">
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10" />)}
+          </div>
+        ) : filtradas.length === 0 ? (
+          <Vazio titulo="Nenhuma categoria" descricao="Clique em '+ Nova categoria' pra criar a primeira." />
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+              <tr>
+                <th className="th w-10"></th>
+                <th className="th">Nome</th>
+                <th className="th w-32">Escopo</th>
+                <th className="th w-20 text-right">Ordem</th>
+                <th className="th w-32">Status</th>
+                <th className="th w-40 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtradas.map((c) => (
+                <tr key={c.id} className={c.ativo ? '' : 'opacity-60'}>
+                  <td className="td">
+                    <span className="inline-block h-4 w-4 rounded-full ring-1 ring-slate-200"
+                      style={{ background: c.cor }} title={c.cor} />
+                  </td>
+                  <td className="td font-medium text-slate-800">{c.nome}</td>
+                  <td className="td text-xs">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ring-1 ring-inset
+                      ${c.escopo === 'oficina' ? 'bg-maninho-50 text-maninho-800 ring-maninho-200'
+                        : c.escopo === 'pessoal' ? 'bg-violet-50 text-violet-800 ring-violet-200'
+                          : 'bg-slate-50 text-slate-700 ring-slate-200'}`}>
+                      {ROTULO_ESCOPO[c.escopo] || c.escopo}
+                    </span>
+                  </td>
+                  <td className="td tnum text-right text-xs text-slate-500">{c.ordem}</td>
+                  <td className="td text-xs">
+                    {c.ativo
+                      ? <span className="text-emerald-700">Ativa</span>
+                      : <span className="text-slate-500">Inativa</span>}
+                  </td>
+                  <td className="td text-right">
+                    <button type="button" className="btn-ghost px-2 py-1 text-xs"
+                      onClick={() => abrirEdicao(c)}>Editar</button>
+                    {c.ativo ? (
+                      <button type="button"
+                        className="ml-1 rounded bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        onClick={() => desativar(c)}>Desativar</button>
+                    ) : (
+                      <button type="button"
+                        className="ml-1 rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        onClick={() => reativar(c)}>Reativar</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <FormCategoria aberto={modalAberto} categoria={editando}
+        onFechar={() => setModalAberto(false)} onSalvo={() => fechou(true)} />
+    </div>
+  );
+}
+
+function FormCategoria({ aberto, categoria, onFechar, onSalvo }) {
+  const vazio = { nome: '', cor: '#64748b', escopo: 'ambos', ordem: 100 };
+  const [form, setForm] = useState(vazio);
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    setErro('');
+    setForm(categoria
+      ? { nome: categoria.nome, cor: categoria.cor, escopo: categoria.escopo, ordem: categoria.ordem }
+      : vazio);
+  }, [categoria, aberto]);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function salvar(e) {
+    e.preventDefault();
+    setSalvando(true); setErro('');
+    try {
+      const body = {
+        nome: form.nome.trim(),
+        cor: form.cor,
+        escopo: form.escopo,
+        ordem: Number(form.ordem) || 100,
+      };
+      if (categoria) await api.atualizarCategoria(categoria.id, body);
+      else await api.criarCategoria(body);
+      onSalvo();
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal aberto={aberto} onFechar={onFechar}
+      titulo={categoria ? `Editar categoria "${categoria.nome}"` : 'Nova categoria'}>
+      <form onSubmit={salvar} className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+        <Campo label="Nome" obrigatorio>
+          <input className="input" value={form.nome} onChange={set('nome')}
+            required autoFocus minLength={2} placeholder="Ex.: Supermercado" />
+        </Campo>
+
+        <Campo label="Onde aparece" obrigatorio
+          ajuda="Escolha onde essa categoria vai poder ser usada. 'Ambos' mostra nos dois lados.">
+          <select className="input" value={form.escopo} onChange={set('escopo')}>
+            <option value="oficina">Só na oficina</option>
+            <option value="pessoal">Só nas despesas pessoais</option>
+            <option value="ambos">Ambos (oficina e pessoal)</option>
+          </select>
+        </Campo>
+
+        <Campo label="Cor" ajuda="Usada nos gráficos e badges. Escolha uma das sugestões ou digite hex.">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {CORES_SUGERIDAS.map((c) => (
+                <button type="button" key={c}
+                  onClick={() => setForm((f) => ({ ...f, cor: c }))}
+                  className={`h-7 w-7 rounded-full ring-2 transition
+                    ${form.cor === c ? 'ring-slate-800' : 'ring-transparent hover:ring-slate-400'}`}
+                  style={{ background: c }} title={c} />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input className="input font-mono text-sm w-32"
+                value={form.cor} onChange={set('cor')}
+                pattern="^#[0-9a-fA-F]{6}$" placeholder="#2B3D8F" />
+              <span className="inline-block h-8 w-8 rounded ring-1 ring-slate-200"
+                style={{ background: form.cor }} />
+            </div>
+          </div>
+        </Campo>
+
+        <Campo label="Ordem" ajuda="Menor = aparece primeiro nas listas. Default 100.">
+          <input type="number" className="input tnum w-32" min="0" max="9999"
+            value={form.ordem} onChange={set('ordem')} />
+        </Campo>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : (categoria ? 'Salvar alterações' : 'Criar categoria')}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 /**
  * Configurações do sistema — WhatsApp (Evolution API) + Meta mensal.
@@ -325,6 +569,9 @@ export default function Configuracoes() {
           </button>
         </div>
       </form>
+
+      {/* Categorias de despesa — fora do formulário, tem CRUD próprio */}
+      <CategoriasDespesa />
 
       {/* Conexão do WhatsApp — fora do formulário porque não faz save */}
       <div className="card p-5">

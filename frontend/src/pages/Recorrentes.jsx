@@ -13,10 +13,12 @@ function FormRecorrente({ aberto, recorrente, onFechar, onSalvo }) {
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Recarrega categorias quando o escopo do form muda — mostra só as
+  // relevantes pro escopo selecionado (mais as 'ambos').
   useEffect(() => {
     if (!aberto) return;
-    api.categorias().then(setCategorias).catch(() => {});
-  }, [aberto]);
+    api.categorias({ escopo: form.escopo }).then(setCategorias).catch(() => {});
+  }, [aberto, form.escopo]);
 
   useEffect(() => {
     setErro('');

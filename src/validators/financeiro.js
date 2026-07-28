@@ -75,14 +75,32 @@ const periodo = z.object({
   message: 'Data inicial não pode ser maior que a final',
 });
 
+const ESCOPOS_CATEGORIA = ['oficina', 'pessoal', 'ambos'];
+
 const criarCategoria = z.object({
   nome: z.string().min(2),
   cor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hexadecimal, ex: #2B3D8F').optional(),
+  escopo: z.enum(ESCOPOS_CATEGORIA).default('ambos'),
+  ordem: z.coerce.number().int().min(0).max(9999).optional(),
+});
+
+const atualizarCategoria = z.object({
+  nome: z.string().min(2).optional(),
+  cor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hexadecimal, ex: #2B3D8F').optional(),
+  escopo: z.enum(ESCOPOS_CATEGORIA).optional(),
+  ordem: z.coerce.number().int().min(0).max(9999).optional(),
+  ativo: z.boolean().optional(),
+});
+
+const filtroCategorias = z.object({
+  escopo: z.enum(['oficina', 'pessoal']).optional(),
+  incluir_inativas: z.coerce.boolean().optional(),
 });
 
 module.exports = {
   criarFornecedor,
   atualizarFornecedor: criarFornecedor.partial(),
-  criarDespesa, atualizarDespesa, pagar, filtroDespesas, periodo, criarCategoria,
+  criarDespesa, atualizarDespesa, pagar, filtroDespesas, periodo,
+  criarCategoria, atualizarCategoria, filtroCategorias,
   idParam: z.object({ id: uuid }),
 };
