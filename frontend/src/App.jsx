@@ -16,6 +16,7 @@ import Pessoal from './pages/Pessoal';
 import Funcionarios from './pages/Funcionarios';
 import Recorrentes from './pages/Recorrentes';
 import ImprimirOS from './pages/ImprimirOS';
+import ImprimirChecklist from './pages/ImprimirChecklist';
 
 function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -29,6 +30,8 @@ export default function App() {
         {/* Views "papel" — sem Layout, pra não vir cabeçalho colorido na impressão */}
         <Route path="/os/:id/imprimir"
           element={<Protegida><ImprimirOS /></Protegida>} />
+        <Route path="/os/:id/checklist/imprimir"
+          element={<Protegida><ImprimirChecklist /></Protegida>} />
         <Route path="/" element={<Protegida><Layout /></Protegida>}>
           <Route index element={<Dashboard />} />
           <Route path="ordens" element={<Ordens />} />

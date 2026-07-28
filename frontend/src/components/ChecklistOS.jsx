@@ -106,13 +106,22 @@ export function ChecklistOS({ os }) {
 
       {/* Cabeçalho — dados que vêm do papel */}
       <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-700">
-        <p><b>Cliente:</b> {os.cliente_nome}</p>
-        <p><b>Veículo:</b> {os.marca} {os.modelo} {os.ano ? `· ${os.ano}` : ''} · placa {os.placa}
-          {os.km_entrada ? ` · ${Number(os.km_entrada).toLocaleString('pt-BR')} km` : ''}</p>
-        <p><b>OS nº:</b> {os.numero_os}</p>
-        {os.observacoes && (
-          <p className="mt-1"><b>Observação do cliente:</b> {os.observacoes}</p>
-        )}
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div>
+            <p><b>Cliente:</b> {os.cliente_nome}</p>
+            <p><b>Veículo:</b> {os.marca} {os.modelo} {os.ano ? `· ${os.ano}` : ''} · placa {os.placa}
+              {os.km_entrada ? ` · ${Number(os.km_entrada).toLocaleString('pt-BR')} km` : ''}</p>
+            <p><b>OS nº:</b> {os.numero_os}</p>
+            {os.observacoes && (
+              <p className="mt-1"><b>Observação do cliente:</b> {os.observacoes}</p>
+            )}
+          </div>
+          <a href={`#/os/${os.id}/checklist/imprimir`} target="_blank" rel="noreferrer"
+            className="shrink-0 rounded-md bg-maninho-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-maninho-700"
+            title="Abre em nova aba pra impressão ou PDF">
+            🖨 Imprimir checklist
+          </a>
+        </div>
       </div>
 
       {SECOES.map(({ chave, titulo }) => {

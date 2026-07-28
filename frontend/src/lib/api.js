@@ -147,7 +147,7 @@ export const api = {
   categorias: (params) => request('/financeiro/categorias', { params }),
   criarCategoria: (body) => request('/financeiro/categorias', { method: 'POST', body }),
   atualizarCategoria: (id, body) => request(`/financeiro/categorias/${id}`, { method: 'PATCH', body }),
-  desativarCategoria: (id) => request(`/financeiro/categorias/${id}`, { method: 'DELETE' }),
+  excluirCategoria: (id) => request(`/financeiro/categorias/${id}`, { method: 'DELETE' }),
 
   // --- painel do mês ---
   painelMes: (params) => request('/relatorios/painel-mes', { params }),

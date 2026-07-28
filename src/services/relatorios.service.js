@@ -174,7 +174,8 @@ async function painelMes({ ano, mes } = {}) {
     db.query(
       `SELECT COALESCE(sum(valor_pago), sum(valor))::numeric AS despesa
          FROM despesas
-        WHERE status = 'paga' AND pago_em >= $1::date AND pago_em < $2::date`,
+        WHERE status = 'paga' AND escopo = 'oficina'
+          AND pago_em >= $1::date AND pago_em < $2::date`,
       [inicio, proxMes],
     ),
     db.query(

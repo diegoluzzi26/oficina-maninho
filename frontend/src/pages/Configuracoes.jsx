@@ -29,19 +29,11 @@ function CategoriasDespesa() {
   }
   useEffect(() => { carregar(); }, []);
 
-  async function desativar(cat) {
-    if (!confirm(`Desativar a categoria "${cat.nome}"? Ela some dos selects, mas as despesas que já a usam continuam com ela.`)) return;
+  async function excluir(cat) {
+    if (!confirm(`Excluir a categoria "${cat.nome}"? As despesas que já a usam ficam sem categoria, mas continuam no histórico.`)) return;
     try {
-      await api.desativarCategoria(cat.id);
-      setOk(`Categoria "${cat.nome}" desativada.`);
-      carregar();
-    } catch (err) { setErro(err.message); }
-  }
-
-  async function reativar(cat) {
-    try {
-      await api.atualizarCategoria(cat.id, { ativo: true });
-      setOk(`Categoria "${cat.nome}" reativada.`);
+      await api.excluirCategoria(cat.id);
+      setOk(`Categoria "${cat.nome}" excluída.`);
       carregar();
     } catch (err) { setErro(err.message); }
   }
@@ -102,13 +94,12 @@ function CategoriasDespesa() {
                 <th className="th">Nome</th>
                 <th className="th w-32">Escopo</th>
                 <th className="th w-20 text-right">Ordem</th>
-                <th className="th w-32">Status</th>
                 <th className="th w-40 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtradas.map((c) => (
-                <tr key={c.id} className={c.ativo ? '' : 'opacity-60'}>
+                <tr key={c.id}>
                   <td className="td">
                     <span className="inline-block h-4 w-4 rounded-full ring-1 ring-slate-200"
                       style={{ background: c.cor }} title={c.cor} />
@@ -123,23 +114,12 @@ function CategoriasDespesa() {
                     </span>
                   </td>
                   <td className="td tnum text-right text-xs text-slate-500">{c.ordem}</td>
-                  <td className="td text-xs">
-                    {c.ativo
-                      ? <span className="text-emerald-700">Ativa</span>
-                      : <span className="text-slate-500">Inativa</span>}
-                  </td>
                   <td className="td text-right">
                     <button type="button" className="btn-ghost px-2 py-1 text-xs"
                       onClick={() => abrirEdicao(c)}>Editar</button>
-                    {c.ativo ? (
-                      <button type="button"
-                        className="ml-1 rounded bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                        onClick={() => desativar(c)}>Desativar</button>
-                    ) : (
-                      <button type="button"
-                        className="ml-1 rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                        onClick={() => reativar(c)}>Reativar</button>
-                    )}
+                    <button type="button"
+                      className="ml-1 rounded bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                      onClick={() => excluir(c)}>Excluir</button>
                   </td>
                 </tr>
               ))}

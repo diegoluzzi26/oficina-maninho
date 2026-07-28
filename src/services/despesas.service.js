@@ -152,14 +152,12 @@ async function atualizarCategoria(id, d) {
 }
 
 /**
- * Soft-delete: só marca como inativa. Preserva o histórico das despesas
- * que já usaram essa categoria (a FK é ON DELETE SET NULL, então mesmo
- * um DELETE físico não perderia despesa — mas o soft-delete permite
- * reativar depois se o usuário mudar de ideia).
+ * Hard-delete. FK de despesas e despesas_recorrentes é ON DELETE SET NULL,
+ * então despesas antigas continuam existindo — só perdem a associação.
  */
-async function desativarCategoria(id) {
+async function excluirCategoria(id) {
   const { rows } = await db.query(
-    'UPDATE categorias_despesa SET ativo = FALSE WHERE id = $1 RETURNING *',
+    'DELETE FROM categorias_despesa WHERE id = $1 RETURNING *',
     [id],
   );
   if (!rows[0]) throw AppError.notFound('Categoria não encontrada');
@@ -383,7 +381,7 @@ async function painelPessoal({ ano, mes } = {}) {
 module.exports = {
   sincronizarAtrasos,
   listarFornecedores, buscarFornecedor, criarFornecedor, atualizarFornecedor, desativarFornecedor,
-  listarCategorias, criarCategoria, atualizarCategoria, desativarCategoria,
+  listarCategorias, criarCategoria, atualizarCategoria, excluirCategoria,
   listarDespesas, buscarDespesa, criarDespesa, atualizarDespesa, pagarDespesa, removerDespesa,
   proximosVencimentos, painelPessoal,
 };

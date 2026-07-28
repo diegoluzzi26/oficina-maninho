@@ -37,6 +37,6 @@ router.patch('/categorias/:id', validate({ params: v.idParam, body: v.atualizarC
   h(async (req, res) => res.json(await desp.atualizarCategoria(req.params.id, req.body))));
 
 router.delete('/categorias/:id', validate({ params: v.idParam }),
-  h(async (req, res) => res.json(await desp.desativarCategoria(req.params.id))));
+  h(async (req, res) => res.json(await desp.excluirCategoria(req.params.id))));
 
 module.exports = router;
