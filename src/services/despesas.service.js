@@ -184,7 +184,11 @@ async function listarDespesas(f = {}) {
   // Só as que têm vencimento — é a aba "Boletos"
   if (f.somente_boletos) where.push('vencimento IS NOT NULL');
 
-  if (f.inicio) { params.push(f.inicio); where.push(`competencia >= $${params.length}::date`); }
+  // Janela mês-a-mês considera a vida útil da despesa: da competência até
+  // o vencimento (ou até a própria competência se não for boleto). Assim,
+  // um boleto lançado em maio com vencimento em julho aparece em maio,
+  // junho e julho — some só depois de vencer.
+  if (f.inicio) { params.push(f.inicio); where.push(`COALESCE(vencimento, competencia) >= $${params.length}::date`); }
   if (f.fim) { params.push(f.fim); where.push(`competencia <= $${params.length}::date`); }
 
   if (f.vence_ate) {
