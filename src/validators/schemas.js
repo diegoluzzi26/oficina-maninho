@@ -58,6 +58,8 @@ const criarCarro = z.object({
   km_atual: z.coerce.number().int().min(0, 'KM não pode ser negativo').optional().nullable(),
   chassi: z.string().trim().length(17, 'Chassi deve ter 17 caracteres').optional().nullable()
     .or(z.literal('').transform(() => null)),
+  cambio: z.enum(['manual', 'automatico', 'cvt', 'automatizado']).optional().nullable()
+    .or(z.literal('').transform(() => null)),
 });
 const atualizarCarro = criarCarro.partial().omit({ cliente_id: true });
 
@@ -129,6 +131,15 @@ const atualizarOS = z.object({
   km_entrada: z.coerce.number().int().min(0).optional().nullable(),
   observacoes: z.string().optional().nullable(),
   desconto: dinheiro.optional(),
+  // Correções pós-pagamento: dono pode ajustar o quanto/quando/como
+  // recebeu sem precisar reabrir a OS. `paga_em` acompanha o nome
+  // da coluna no schema (a UI pode enviar como `pago_em` que o
+  // service normaliza).
+  valor_pago: z.coerce.number().min(0).optional().nullable(),
+  paga_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
+    'cartao_debito', 'transferencia', 'cheque', 'outro']).optional().nullable(),
 });
 
 const FORMAS_PAG = ['dinheiro', 'pix', 'boleto', 'cartao_credito',

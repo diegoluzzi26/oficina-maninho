@@ -5,7 +5,7 @@ import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Badge } from '../compon
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
 
-function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
+export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   const vazio = { nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '' };
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
@@ -89,21 +89,34 @@ function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   );
 }
 
-function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
-  const vazio = { placa: '', marca: '', modelo: '', ano: '', cor: '', km_atual: '', chassi: '' };
+export function FormCarro({ aberto, clienteId, carro, onFechar, onSalvo }) {
+  const vazio = { placa: '', marca: '', modelo: '', ano: '', cor: '', km_atual: '', chassi: '', cambio: '' };
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
-  useEffect(() => { setForm(vazio); setErro(''); }, [aberto]);
+  useEffect(() => {
+    setErro('');
+    setForm(carro ? {
+      placa: carro.placa || '',
+      marca: carro.marca || '',
+      modelo: carro.modelo || '',
+      ano: carro.ano == null ? '' : String(carro.ano),
+      cor: carro.cor || '',
+      km_atual: carro.km_atual == null ? '' : String(carro.km_atual),
+      chassi: carro.chassi || '',
+      cambio: carro.cambio || '',
+    } : vazio);
+  }, [carro, aberto]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function salvar(e) {
     e.preventDefault();
     setErro(''); setSalvando(true);
     try {
-      const salvo = await api.criarCarro({
-        cliente_id: clienteId,
+      // Edição: schema `atualizarCarro` no backend proíbe trocar cliente_id, por isso
+      // esse campo só entra no payload de criação.
+      const dados = {
         placa: form.placa,
         marca: form.marca,
         modelo: form.modelo,
@@ -111,7 +124,11 @@ function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
         cor: form.cor || null,
         km_atual: form.km_atual ? Number(form.km_atual) : null,
         chassi: form.chassi || null,
-      });
+        cambio: form.cambio || null,
+      };
+      const salvo = carro
+        ? await api.atualizarCarro(carro.id, dados)
+        : await api.criarCarro({ cliente_id: clienteId, ...dados });
       onSalvo(salvo);
     } catch (err) {
       setErro(err.message);
@@ -121,7 +138,7 @@ function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
   }
 
   return (
-    <Modal aberto={aberto} titulo="Adicionar veículo" onFechar={onFechar}>
+    <Modal aberto={aberto} titulo={carro ? `Editar veículo ${carro.placa}` : 'Adicionar veículo'} onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-4">
         {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
@@ -143,6 +160,15 @@ function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
             <input type="number" min="0" className="input" value={form.km_atual}
               onChange={set('km_atual')} placeholder="120000" />
           </Campo>
+          <Campo label="Câmbio">
+            <select className="input" value={form.cambio} onChange={set('cambio')}>
+              <option value="">Não informado</option>
+              <option value="manual">Manual</option>
+              <option value="automatico">Automático</option>
+              <option value="cvt">CVT</option>
+              <option value="automatizado">Automatizado</option>
+            </select>
+          </Campo>
         </div>
 
         <Campo label="Chassi">
@@ -153,7 +179,7 @@ function FormCarro({ aberto, clienteId, onFechar, onSalvo }) {
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando}>
-            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Adicionar'}
+            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : (carro ? 'Salvar' : 'Adicionar')}
           </button>
         </div>
       </form>
@@ -165,6 +191,7 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
   const [cli, setCli] = useState(null);
   const [ordens, setOrdens] = useState([]);
   const [carroAberto, setCarroAberto] = useState(false);
+  const [carroEditando, setCarroEditando] = useState(null);
   const [carroHistorico, setCarroHistorico] = useState(null);
   const [erro, setErro] = useState('');
 
@@ -215,22 +242,24 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
               <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
                 {cli.carros.map((c) => (
                   <li key={c.id}
-                    onClick={() => setCarroHistorico(c)}
-                    className="flex cursor-pointer items-center justify-between px-3 py-2.5 hover:bg-maninho-50/60"
-                    title="Ver histórico do veículo">
-                    <div>
+                    className="flex items-center justify-between px-3 py-2.5 hover:bg-maninho-50/60">
+                    <button type="button" onClick={() => setCarroHistorico(c)}
+                      className="flex-1 text-left" title="Ver histórico do veículo">
                       <p className="font-mono text-sm font-semibold text-slate-800">{c.placa}</p>
                       <p className="text-xs text-slate-500">
                         {c.marca} {c.modelo}{c.ano ? ` · ${c.ano}` : ''}{c.cor ? ` · ${c.cor}` : ''}
                       </p>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-3">
                       {c.km_atual != null && (
                         <span className="tnum text-xs text-slate-500">
                           {Number(c.km_atual).toLocaleString('pt-BR')} km
                         </span>
                       )}
-                      <span className="text-xs text-slate-400">→</span>
+                      <button type="button" onClick={() => setCarroEditando(c)}
+                        className="text-xs font-semibold text-maninho-600 hover:underline">
+                        Editar
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -262,6 +291,10 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
 
       <FormCarro aberto={carroAberto} clienteId={id} onFechar={() => setCarroAberto(false)}
         onSalvo={() => { setCarroAberto(false); recarregar(); onAtualizado?.(); }} />
+
+      <FormCarro aberto={!!carroEditando} carro={carroEditando}
+        onFechar={() => setCarroEditando(null)}
+        onSalvo={() => { setCarroEditando(null); recarregar(); onAtualizado?.(); }} />
 
       <Modal aberto={!!carroHistorico}
         largura="max-w-2xl"
@@ -310,7 +343,7 @@ export default function Clientes() {
         </button>
       </div>
 
-      <input className="input max-w-sm" placeholder="Buscar por nome, telefone, CPF ou nº"
+      <input className="input max-w-sm" placeholder="Buscar por nome, telefone, CPF, nº ou placa"
         value={busca} onChange={(e) => setBusca(e.target.value)} />
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}

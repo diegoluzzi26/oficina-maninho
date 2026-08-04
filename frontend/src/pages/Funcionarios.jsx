@@ -141,10 +141,73 @@ function FormVale({ aberto, funcionario, onFechar, onSalvo }) {
   );
 }
 
+function FormFalta({ aberto, funcionario, onFechar, onSalvo }) {
+  const [dataFalta, setDataFalta] = useState(hojeISO());
+  const [justificada, setJustificada] = useState(false);
+  const [obs, setObs] = useState('');
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (aberto) {
+      setDataFalta(hojeISO()); setJustificada(false); setObs(''); setErro('');
+    }
+  }, [aberto]);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro(''); setSalvando(true);
+    try {
+      await api.registrarFalta({
+        funcionario_id: funcionario.id,
+        data_falta: dataFalta,
+        justificada,
+        observacoes: obs || null,
+      });
+      onSalvo();
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  if (!funcionario) return null;
+  return (
+    <Modal aberto={aberto} titulo={`Registrar falta — ${funcionario.nome}`} onFechar={onFechar}>
+      <form onSubmit={salvar} className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo label="Data da falta" obrigatorio>
+            <input type="date" className="input" required autoFocus
+              value={dataFalta} onChange={(e) => setDataFalta(e.target.value)} />
+          </Campo>
+          <Campo label="Justificada?" ajuda="Falta com atestado ou aviso prévio">
+            <label className="flex h-[42px] items-center gap-2 rounded-md border border-slate-300 bg-white px-3">
+              <input type="checkbox" checked={justificada}
+                onChange={(e) => setJustificada(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300" />
+              <span className="text-sm text-slate-700">Sim, foi justificada</span>
+            </label>
+          </Campo>
+        </div>
+        <Campo label="Observações">
+          <input className="input" value={obs} onChange={(e) => setObs(e.target.value)}
+            placeholder="Atestado médico, avisou antes, etc." />
+        </Campo>
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Registrar falta'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function DetalheFuncionario({ id, onFechar, onAtualizado }) {
   const [ficha, setFicha] = useState(null);
   const [erro, setErro] = useState('');
   const [valeAberto, setValeAberto] = useState(false);
+  const [faltaAberto, setFaltaAberto] = useState(false);
 
   function recarregar() {
     if (!id) return;
@@ -155,6 +218,12 @@ function DetalheFuncionario({ id, onFechar, onAtualizado }) {
   async function removerVale(v) {
     if (!confirm(`Remover vale de ${brl(v.valor)} do dia ${data(v.data_vale)}?`)) return;
     try { await api.removerVale(v.id); recarregar(); onAtualizado?.(); }
+    catch (e) { setErro(e.message); }
+  }
+
+  async function removerFalta(f) {
+    if (!confirm(`Remover a falta do dia ${data(f.data_falta)}?`)) return;
+    try { await api.removerFalta(f.id); recarregar(); onAtualizado?.(); }
     catch (e) { setErro(e.message); }
   }
 
@@ -207,6 +276,69 @@ function DetalheFuncionario({ id, onFechar, onAtualizado }) {
             )}
           </div>
 
+          {/* Bloco de faltas */}
+          <div className={`rounded-md border-l-4 p-4
+            ${ficha.resumo.faltas_semana > 0
+              ? 'border-l-rose-500 bg-rose-50/50'
+              : 'border-l-slate-300 bg-slate-50'}`}>
+            <div className="flex items-baseline justify-between">
+              <div>
+                <p className="label mb-0.5">
+                  Faltas nesta semana
+                  <span className="ml-1 font-normal text-slate-500">
+                    (desde {data(ficha.resumo.inicio_semana)})
+                  </span>
+                </p>
+                <p className="tnum text-2xl font-bold text-slate-800">
+                  {ficha.resumo.faltas_semana}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  {ficha.resumo.faltas_mes} no mês · {ficha.resumo.faltas_total} no total (histórico)
+                </p>
+              </div>
+              <button onClick={() => setFaltaAberto(true)} className="btn-ghost">
+                + Registrar falta
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de faltas */}
+          {ficha.faltas.length > 0 && (
+            <div>
+              <p className="label mb-2">Últimas faltas</p>
+              <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                {ficha.faltas.slice(0, 12).map((f) => (
+                  <li key={f.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
+                    <span className="tnum text-sm font-semibold text-slate-800">
+                      {data(f.data_falta)}
+                    </span>
+                    {f.justificada ? (
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        justificada
+                      </span>
+                    ) : (
+                      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                        não justificada
+                      </span>
+                    )}
+                    <span className="flex-1 truncate text-xs text-slate-500">
+                      {f.observacoes || ''}
+                    </span>
+                    <button onClick={() => removerFalta(f)}
+                      className="text-[11px] font-semibold text-rose-600 hover:underline">
+                      remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {ficha.faltas.length > 12 && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  mostrando as 12 mais recentes de {ficha.faltas.length} registradas
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Lista de vales */}
           <div>
             <p className="label mb-2">Últimos vales</p>
@@ -247,6 +379,10 @@ function DetalheFuncionario({ id, onFechar, onAtualizado }) {
       <FormVale aberto={valeAberto} funcionario={ficha?.funcionario}
         onFechar={() => setValeAberto(false)}
         onSalvo={() => { setValeAberto(false); recarregar(); onAtualizado?.(); }} />
+
+      <FormFalta aberto={faltaAberto} funcionario={ficha?.funcionario}
+        onFechar={() => setFaltaAberto(false)}
+        onSalvo={() => { setFaltaAberto(false); recarregar(); onAtualizado?.(); }} />
     </Modal>
   );
 }
@@ -313,6 +449,16 @@ export default function Funcionarios() {
                     <p className="tnum text-sm font-semibold text-ouro-700">{brl(f.vales_pendentes)}</p>
                     <p className="text-[10px] text-slate-500">
                       {f.qtd_vales_pendentes} vale{f.qtd_vales_pendentes === 1 ? '' : 's'} pendente{f.qtd_vales_pendentes === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                )}
+                {f.faltas_semana > 0 && (
+                  <div className="text-right">
+                    <p className="tnum text-sm font-semibold text-rose-700">
+                      {f.faltas_semana}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      falta{f.faltas_semana === 1 ? '' : 's'} na semana
                     </p>
                   </div>
                 )}

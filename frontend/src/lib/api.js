@@ -76,6 +76,7 @@ export const api = {
   carro: (id) => request(`/carros/${id}`),
   historicoCarro: (id) => request(`/carros/${id}/historico`),
   criarCarro: (body) => request('/carros', { method: 'POST', body }),
+  atualizarCarro: (id, body) => request(`/carros/${id}`, { method: 'PUT', body }),
 
   servicos: () => request('/servicos'),
   criarServico: (body) => request('/servicos', { method: 'POST', body }),
@@ -113,6 +114,8 @@ export const api = {
   desativarFuncionario: (id) => request(`/funcionarios/${id}`, { method: 'DELETE' }),
   darVale: (body) => request('/funcionarios/vales', { method: 'POST', body }),
   removerVale: (id) => request(`/funcionarios/vales/${id}`, { method: 'DELETE' }),
+  registrarFalta: (body) => request('/funcionarios/faltas', { method: 'POST', body }),
+  removerFalta: (id) => request(`/funcionarios/faltas/${id}`, { method: 'DELETE' }),
 
   // --- despesas recorrentes ---
   despesasRecorrentes: () => request('/despesas-recorrentes'),
@@ -175,6 +178,20 @@ export const api = {
   removerAgendamento: (id) => request(`/agendamentos/${id}`, { method: 'DELETE' }),
   converterAgendamentoEmOS: (id, body = {}) =>
     request(`/agendamentos/${id}/converter-os`, { method: 'POST', body }),
+
+  // --- follow-up ativo com o cliente ---
+  followupRegras: (params) => request('/followup/regras', { params }),
+  criarFollowupRegra: (body) => request('/followup/regras', { method: 'POST', body }),
+  atualizarFollowupRegra: (id, body) => request(`/followup/regras/${id}`, { method: 'PUT', body }),
+  removerFollowupRegra: (id) => request(`/followup/regras/${id}`, { method: 'DELETE' }),
+  followupFila: (params) => request('/followup/fila', { params }),
+  followupItem: (id) => request(`/followup/fila/${id}`),
+  criarFollowupManual: (body) => request('/followup/fila/manual', { method: 'POST', body }),
+  followupMudarStatus: (id, body) => request(`/followup/fila/${id}/status`, { method: 'PATCH', body }),
+  followupReagendar: (id, body) => request(`/followup/fila/${id}/reagendar`, { method: 'PATCH', body }),
+  removerFollowup: (id) => request(`/followup/fila/${id}`, { method: 'DELETE' }),
+  gerarFollowup: (regra_id) => request('/followup/gerar', { method: 'POST', body: regra_id ? { regra_id } : {} }),
+  metricasFollowup: (periodo = 30) => request('/followup/metricas', { params: { periodo } }),
 
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),

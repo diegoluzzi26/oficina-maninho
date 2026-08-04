@@ -287,11 +287,8 @@ async function pagarDespesa(id, { pago_em, valor_pago } = {}) {
 }
 
 async function removerDespesa(id) {
-  // Cancela em vez de apagar: mantém o histórico auditável
-  const { rows } = await db.query(
-    `UPDATE despesas SET status='cancelada' WHERE id=$1 RETURNING id`, [id],
-  );
-  if (!rows[0]) throw AppError.notFound('Despesa não encontrada');
+  const { rowCount } = await db.query('DELETE FROM despesas WHERE id=$1', [id]);
+  if (!rowCount) throw AppError.notFound('Despesa não encontrada');
 }
 
 // ---------------------------------------------------------------- alertas

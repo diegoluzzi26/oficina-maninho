@@ -16,6 +16,7 @@ const atualizarPeca = z.object({
   nome: z.string().min(2).optional(),
   valor_padrao: z.coerce.number().min(0).optional(),
   ativo: z.boolean().optional(),
+  intervalo_retorno_meses: z.coerce.number().int().min(1).max(120).nullable().optional(),
 });
 
 router.get('/', validate({ query: filtro }),

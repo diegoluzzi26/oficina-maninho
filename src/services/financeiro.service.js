@@ -19,6 +19,9 @@ function intervalo({ inicio, fim }, coluna = 'competencia') {
   if (inicio) { params.push(inicio); clause += ` AND ${coluna} >= $${params.length}::date`; }
   if (fim) { params.push(fim); clause += ` AND ${coluna} <= $${params.length}::date`; }
   if (!inicio && !fim) clause = ` AND ${coluna} >= (now() - interval '12 months')::date`;
+  // Painel/Financeiro é da OFICINA — despesas pessoais ficam confinadas à
+  // tela Pessoal (via painelPessoal em despesas.service.js).
+  clause += ` AND escopo = 'oficina'`;
   return { clause, params };
 }
 

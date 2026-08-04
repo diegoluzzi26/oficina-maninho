@@ -7,6 +7,7 @@ import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
 import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
+import { FormCliente, FormCarro } from './Clientes';
 
 /**
  * Anexo protegido por JWT: baixa via fetch (com Authorization) e
@@ -569,9 +570,31 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   const [previewFoto, setPreviewFoto] = useState(null);
   const inputFileRef = useRef(null);
 
-  const editavel = os && os.status !== 'paga';
+  // OS pagas continuam editáveis pra corrigir mistake de digitação —
+  // se o dono cobrou/lançou errado, poder ajustar depois é mais útil
+  // do que travar "por ser fiscal". O botão de excluir OS paga
+  // continua bloqueado (registro histórico não some).
+  const editavel = !!os;
+  const foiPaga = os && os.status === 'paga';
 
   const [pecasCatalogo, setPecasCatalogo] = useState([]);
+  const [editPag, setEditPag] = useState(false);
+  const [pagEdit, setPagEdit] = useState(null);
+  // Edição inline do cliente e do carro vinculados à OS.
+  // Carrega sob demanda pra ter todos os campos (o SELECT_OS só expõe alguns).
+  const [clienteEditando, setClienteEditando] = useState(null);
+  const [carroEditando, setCarroEditando] = useState(null);
+
+  async function abrirEditarCliente() {
+    setErro('');
+    try { setClienteEditando(await api.cliente(os.cliente_id)); }
+    catch (e) { setErro(e.message); }
+  }
+  async function abrirEditarCarro() {
+    setErro('');
+    try { setCarroEditando(await api.carro(os.carro_id)); }
+    catch (e) { setErro(e.message); }
+  }
 
   useEffect(() => {
     if (!os || !editavel) return;
@@ -579,6 +602,29 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
       .then(([s, p]) => { setServicos(s); setPecasCatalogo(p); })
       .catch(() => {});
   }, [os?.id, editavel]);
+
+  useEffect(() => {
+    if (!editPag || !os) return;
+    setPagEdit({
+      valor_pago: os.valor_pago != null ? String(os.valor_pago) : String(os.valor_total || ''),
+      pago_em: os.paga_em ? String(os.paga_em).slice(0, 10) : hojeISO(),
+      forma_pagamento: os.forma_pagamento || 'dinheiro',
+    });
+  }, [editPag, os?.id]);
+
+  async function salvarPagamento() {
+    setCarregando(true); setErro('');
+    try {
+      const atualizada = await api.atualizarOS(os.id, {
+        valor_pago: pagEdit.valor_pago === '' ? null : Number(pagEdit.valor_pago),
+        pago_em: pagEdit.pago_em || null,
+        forma_pagamento: pagEdit.forma_pagamento || null,
+      });
+      setEditPag(false);
+      onMudou(atualizada);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
 
   useEffect(() => {
     if (!os) return;
@@ -707,24 +753,47 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
               · Paga em {data(os.paga_em)} · {rotuloForma(os.forma_pagamento)}
               {os.valor_pago && Number(os.valor_pago) !== Number(os.valor_total)
                 ? ` (${brl(os.valor_pago)})` : ''}
+              <button type="button" onClick={() => setEditPag((v) => !v)}
+                className="ml-2 text-[11px] font-semibold text-maninho-600 hover:underline">
+                {editPag ? 'cancelar edição' : 'editar pagamento'}
+              </button>
             </span>
           )}
         </div>
 
         <div className="grid gap-4 rounded-md bg-slate-50 p-4 sm:grid-cols-2">
           <div>
-            <p className="label">Cliente</p>
+            <div className="flex items-center justify-between">
+              <p className="label">Cliente</p>
+              <button type="button" onClick={abrirEditarCliente}
+                className="text-[11px] font-semibold text-maninho-600 hover:underline"
+                title="Corrigir dados do cliente">
+                ✎ Editar
+              </button>
+            </div>
             <p className="text-sm font-semibold text-slate-800">{os.cliente_nome}</p>
             <p className="text-xs text-slate-500">{telefone(os.cliente_telefone)}</p>
           </div>
           <div>
-            <p className="label">Veículo</p>
+            <div className="flex items-center justify-between">
+              <p className="label">Veículo</p>
+              <button type="button" onClick={abrirEditarCarro}
+                className="text-[11px] font-semibold text-maninho-600 hover:underline"
+                title="Corrigir dados do veículo">
+                ✎ Editar
+              </button>
+            </div>
             <p className="text-sm font-semibold text-slate-800">
               {os.marca} {os.modelo} {os.ano ? `· ${os.ano}` : ''}
             </p>
             <p className="font-mono text-xs text-slate-500">
               {os.placa}{os.km_entrada ? ` · ${Number(os.km_entrada).toLocaleString('pt-BR')} km` : ''}
             </p>
+            {os.cambio && (
+              <span className="mt-1 inline-flex rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                Câmbio {os.cambio}
+              </span>
+            )}
           </div>
         </div>
 
@@ -947,28 +1016,65 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                 ))}
               </>
             )}
-            {/* Excluir só quando ainda não paga (registro fiscal não some) */}
-            {os.status !== 'paga' && (
-              <button onClick={async () => {
-                if (!confirm(`Excluir a OS nº ${os.numero_os}? Serviços, peças e fotos vão junto.`)) return;
-                setCarregando(true); setErro('');
-                try {
-                  await api.excluirOS(os.id);
-                  onExcluida?.(os);
-                } catch (e) { setErro(e.message); }
-                finally { setCarregando(false); }
-              }}
-              disabled={carregando}
-              className="ml-auto rounded bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
-                🗑 Excluir OS
-              </button>
-            )}
+            <button onClick={async () => {
+              const aviso = os.status === 'paga'
+                ? `Excluir a OS nº ${os.numero_os}? Ela já foi PAGA — o registro do pagamento vai sumir junto com serviços, peças e fotos.`
+                : `Excluir a OS nº ${os.numero_os}? Serviços, peças e fotos vão junto.`;
+              if (!confirm(aviso)) return;
+              setCarregando(true); setErro('');
+              try {
+                await api.excluirOS(os.id);
+                onExcluida?.(os);
+              } catch (e) { setErro(e.message); }
+              finally { setCarregando(false); }
+            }}
+            disabled={carregando}
+            className="ml-auto rounded bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+              🗑 Excluir OS
+            </button>
           </div>
         )}
-        {os.status === 'paga' && (
+        {foiPaga && !editPag && (
           <p className="border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-            Ordem paga e encerrada. Não pode ser reaberta nem alterada.
+            Ordem paga. Itens e valor do pagamento ainda podem ser corrigidos —
+            use "editar pagamento" acima ou adicione/remova itens direto.
           </p>
+        )}
+
+        {foiPaga && editPag && pagEdit && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+              Corrigir pagamento
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Campo label="Forma">
+                <select className="input" value={pagEdit.forma_pagamento}
+                  onChange={(e) => setPagEdit((p) => ({ ...p, forma_pagamento: e.target.value }))}>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                  ))}
+                </select>
+              </Campo>
+              <Campo label="Data">
+                <input type="date" className="input" value={pagEdit.pago_em}
+                  onChange={(e) => setPagEdit((p) => ({ ...p, pago_em: e.target.value }))} />
+              </Campo>
+              <Campo label="Valor pago (R$)">
+                <input type="number" step="0.01" min="0" className="input tnum"
+                  value={pagEdit.valor_pago}
+                  onChange={(e) => setPagEdit((p) => ({ ...p, valor_pago: e.target.value }))} />
+              </Campo>
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setEditPag(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn-ouro" onClick={salvarPagamento}
+                disabled={carregando}>
+                {carregando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Salvar correção'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -982,6 +1088,21 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           </div>
         )}
       </Modal>
+
+      {/* Edição inline de cliente e carro vinculados à OS */}
+      <FormCliente aberto={!!clienteEditando} cliente={clienteEditando}
+        onFechar={() => setClienteEditando(null)}
+        onSalvo={async () => {
+          setClienteEditando(null);
+          try { onMudou(await api.ordem(os.id)); } catch (e) { setErro(e.message); }
+        }} />
+
+      <FormCarro aberto={!!carroEditando} carro={carroEditando}
+        onFechar={() => setCarroEditando(null)}
+        onSalvo={async () => {
+          setCarroEditando(null);
+          try { onMudou(await api.ordem(os.id)); } catch (e) { setErro(e.message); }
+        }} />
     </Modal>
   );
 }

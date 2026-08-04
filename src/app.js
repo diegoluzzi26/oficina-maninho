@@ -60,6 +60,7 @@ app.use('/api/fornecedores', auth, require('./routes/fornecedores.routes'));
 app.use('/api/financeiro',   auth, require('./routes/financeiro.routes'));
 app.use('/api/retornos',     auth, require('./routes/retornos.routes'));
 app.use('/api/agendamentos', auth, require('./routes/agendamentos.routes'));
+app.use('/api/followup',     auth, require('./routes/followup.routes'));
 app.use('/api/config',       auth, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
 app.use('/api',              auth, require('./routes/anexos.routes'));

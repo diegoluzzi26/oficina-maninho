@@ -197,6 +197,7 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
   const [modo, setModo] = useState('ver');
   const [nome, setNome] = useState(peca.nome);
   const [valor, setValor] = useState(String(peca.valor_padrao ?? ''));
+  const [ret, setRet]   = useState(String(peca.intervalo_retorno_meses ?? ''));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -204,7 +205,9 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
     setErro(''); setSalvando(true);
     try {
       const atualizado = await api.atualizarPeca(peca.id, {
-        nome: nome.trim(), valor_padrao: Number(valor || 0),
+        nome: nome.trim(),
+        valor_padrao: Number(valor || 0),
+        intervalo_retorno_meses: ret ? Number(ret) : null,
       });
       setModo('ver');
       onSalvo(atualizado);
@@ -213,7 +216,9 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
   }
 
   function cancelar() {
-    setNome(peca.nome); setValor(String(peca.valor_padrao ?? ''));
+    setNome(peca.nome);
+    setValor(String(peca.valor_padrao ?? ''));
+    setRet(String(peca.intervalo_retorno_meses ?? ''));
     setErro(''); setModo('ver');
   }
 
@@ -243,6 +248,15 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
           <div className="w-24 text-right">
             <p className="tnum font-semibold text-maninho-700">{brl(peca.valor_padrao)}</p>
           </div>
+          <div className="hidden w-24 text-right sm:block">
+            {peca.intervalo_retorno_meses ? (
+              <span className="rounded bg-ouro-100 px-1.5 py-0.5 text-[10px] font-semibold text-ouro-700">
+                {peca.intervalo_retorno_meses}m retorno
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400">—</span>
+            )}
+          </div>
           {ehAdmin && (
             <div className="flex gap-1">
               <button onClick={() => setModo('editar')}
@@ -261,6 +275,9 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
           <input type="number" step="0.01" min="0" placeholder="Valor"
             className="input w-24 py-1 text-xs tnum"
             value={valor} onChange={(e) => setValor(e.target.value)} />
+          <input type="number" min="1" max="120" placeholder="Ret m"
+            className="input w-20 py-1 text-xs"
+            value={ret} onChange={(e) => setRet(e.target.value)} />
           <button onClick={salvar} disabled={salvando}
             className="btn-primary px-2 py-1 text-xs">
             {salvando ? '…' : 'Salvar'}
@@ -374,6 +391,9 @@ export default function Servicos() {
                   <span className="hidden w-20 text-right sm:inline">Tempo</span>
                   <span className="hidden w-24 text-right sm:inline">Retorno</span>
                 </>
+              )}
+              {aba === 'pecas' && (
+                <span className="hidden w-24 text-right sm:inline">Retorno</span>
               )}
               {ehAdmin && <span className="w-[110px]">&nbsp;</span>}
             </div>

@@ -26,6 +26,13 @@ const darVale = z.object({
   observacoes: z.string().optional().nullable(),
 });
 
+const registrarFalta = z.object({
+  funcionario_id: v.uuid,
+  data_falta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  justificada: z.boolean().optional(),
+  observacoes: z.string().optional().nullable(),
+});
+
 router.use(requireRole('admin'));  // só dono edita/vê
 
 router.get('/', h(async (req, res) => res.json(await svc.listar(req.query))));
@@ -51,5 +58,12 @@ router.post('/vales', validate({ body: darVale }),
 
 router.delete('/vales/:id', validate({ params: v.idParam }),
   h(async (req, res) => { await svc.removerVale(req.params.id); res.status(204).end(); }));
+
+// Faltas
+router.post('/faltas', validate({ body: registrarFalta }),
+  h(async (req, res) => res.status(201).json(await svc.registrarFalta(req.body, req.user.id))));
+
+router.delete('/faltas/:id', validate({ params: v.idParam }),
+  h(async (req, res) => { await svc.removerFalta(req.params.id); res.status(204).end(); }));
 
 module.exports = router;

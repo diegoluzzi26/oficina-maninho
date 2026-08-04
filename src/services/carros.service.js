@@ -31,10 +31,10 @@ async function buscarPorId(id) {
 
 async function criar(d) {
   const { rows } = await db.query(
-    `INSERT INTO carros (cliente_id, placa, marca, modelo, ano, cor, km_atual, chassi)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    `INSERT INTO carros (cliente_id, placa, marca, modelo, ano, cor, km_atual, chassi, cambio)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [d.cliente_id, d.placa, d.marca, d.modelo, d.ano ?? null, d.cor ?? null,
-      d.km_atual ?? null, d.chassi || null],
+      d.km_atual ?? null, d.chassi || null, d.cambio || null],
   );
   return rows[0];
 }

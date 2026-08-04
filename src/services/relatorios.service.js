@@ -192,13 +192,21 @@ async function painelMes({ ano, mes } = {}) {
         ORDER BY total DESC`, [inicio, proxMes],
     ),
     db.query(
-      `SELECT i.nome_servico,
+      // "Mão de obra ..." (troca de alternador, correia, etc.) é sempre a
+      // MESMA rubrica no Painel — o desmembramento por peça já aparece em
+      // outros lugares. Aceita "mão de obra" e "mao de obra" (sem acento).
+      `SELECT CASE
+                WHEN lower(i.nome_servico) LIKE 'mão de obra%'
+                  OR lower(i.nome_servico) LIKE 'mao de obra%'
+                THEN 'Mão de obra'
+                ELSE i.nome_servico
+              END AS nome_servico,
               SUM(i.quantidade)::int AS quantidade,
               COALESCE(SUM(i.valor_total),0)::numeric AS receita
          FROM os_servicos i
          JOIN vw_faturamento f ON f.os_id = i.os_id
         WHERE f.paga_em >= $1::date AND f.paga_em < $2::date
-        GROUP BY i.nome_servico
+        GROUP BY 1
         ORDER BY receita DESC
         LIMIT 5`, [inicio, proxMes],
     ),

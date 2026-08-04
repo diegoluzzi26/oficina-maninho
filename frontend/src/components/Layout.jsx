@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
-  TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, Wrench, Settings,
-  Menu, X,
+  TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
+  Wrench, Settings, Menu, X,
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
@@ -20,6 +20,7 @@ const MENU = [
   { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, Icone: HardHat },
   { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, Icone: RefreshCw },
   { para: '/retornos', texto: 'Retornos', Icone: PhoneCall },
+  { para: '/followup', texto: 'Follow-up', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true, Icone: Settings },
 ];

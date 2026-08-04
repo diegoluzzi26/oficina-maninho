@@ -36,6 +36,8 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
     descricao: '', categoria_id: '', fornecedor_id: '', valor: '',
     forma: 'boleto', vencimento: '', competencia: '', status: 'pendente',
     numero_doc: '', codigo_barras: '', observacoes: '',
+    pago_em: '', valor_pago: '',
+    escopo,
   };
   const [form, setForm] = useState(vazio);
   const [categorias, setCategorias] = useState([]);
@@ -43,12 +45,14 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Categorias filtram pelo escopo da despesa em edição (as opções válidas
+  // mudam se o usuário troca oficina<->pessoal, então recarrega junto).
   useEffect(() => {
     if (!aberto) return;
-    Promise.all([api.categorias({ escopo }), api.fornecedores()])
+    Promise.all([api.categorias({ escopo: form.escopo }), api.fornecedores()])
       .then(([c, f]) => { setCategorias(c); setFornecedores(f); })
       .catch((e) => setErro(e.message));
-  }, [aberto, escopo]);
+  }, [aberto, form.escopo]);
 
   useEffect(() => {
     setErro('');
@@ -59,7 +63,10 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
       fornecedor_id: despesa.fornecedor_id || '',
       vencimento: paraInput(despesa.vencimento),
       competencia: paraInput(despesa.competencia),
+      pago_em: paraInput(despesa.pago_em),
       valor: String(despesa.valor),
+      valor_pago: despesa.valor_pago != null ? String(despesa.valor_pago) : '',
+      escopo: despesa.escopo || escopo,
     } : vazio);
   }, [despesa, aberto]);
 
@@ -81,8 +88,12 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
         numero_doc: form.numero_doc || null,
         codigo_barras: form.codigo_barras || null,
         observacoes: form.observacoes || null,
-        escopo,
+        escopo: form.escopo || escopo,
       };
+      if (form.status === 'paga') {
+        body.pago_em = form.pago_em || null;
+        body.valor_pago = form.valor_pago === '' ? null : Number(form.valor_pago);
+      }
       const salvo = despesa
         ? await api.atualizarDespesa(despesa.id, body)
         : await api.criarDespesa(body);
@@ -103,6 +114,14 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
         <Campo label="Descrição" obrigatorio>
           <input className="input" value={form.descricao} onChange={set('descricao')} required
             autoFocus placeholder="Compra de alternadores — NF 4471" />
+        </Campo>
+
+        <Campo label="Escopo" ajuda="Troque pra mover a despesa entre Oficina e Pessoal">
+          <select className="input max-w-[220px]" value={form.escopo}
+            onChange={(e) => setForm((f) => ({ ...f, escopo: e.target.value, categoria_id: '' }))}>
+            <option value="oficina">Oficina</option>
+            <option value="pessoal">Pessoal</option>
+          </select>
         </Campo>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -153,6 +172,21 @@ function FormDespesa({ aberto, despesa, escopo = 'oficina', onFechar, onSalvo })
             </select>
           </Campo>
         </div>
+
+        {form.status === 'paga' && (
+          <div className="grid gap-4 rounded-md border border-emerald-200 bg-emerald-50/40 p-3 sm:grid-cols-2">
+            <Campo label="Data do pagamento">
+              <input type="date" className="input" value={form.pago_em}
+                onChange={set('pago_em')} />
+            </Campo>
+            <Campo label="Valor efetivamente pago (R$)"
+              ajuda="Vazio = usa o valor lançado acima">
+              <input type="number" step="0.01" min="0" className="input tnum"
+                value={form.valor_pago} onChange={set('valor_pago')}
+                placeholder={form.valor} />
+            </Campo>
+          </div>
+        )}
 
         <Campo label="Código de barras do boleto">
           <input className="input font-mono text-xs" value={form.codigo_barras}
@@ -375,7 +409,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
           <span className="tnum px-3 text-sm font-semibold text-slate-800">
             {ref.todos ? 'Todos os meses' : `${nomeMes(ref.mes)}/${ref.ano}`}
           </span>
-          <button onClick={() => mudarMes(1)} disabled={ref.todos || eMesAtual}
+          <button onClick={() => mudarMes(1)} disabled={ref.todos}
             className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300">▶</button>
         </div>
         <button onClick={() => setRef({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false })}
@@ -476,7 +510,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                     <th className="th w-28">Forma</th>
                     <th className="th w-24">Situação</th>
                     <th className="th w-28 text-right">Valor</th>
-                    <th className="th w-20" />
+                    <th className="th w-32" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -516,12 +550,26 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                         )}
                       </td>
                       <td className="td text-right">
-                        {d.status !== 'paga' && (
-                          <button onClick={() => setPagando(d)}
-                            className="text-xs font-semibold text-emerald-700 hover:underline">
-                            Pagar
+                        <div className="flex items-center justify-end gap-3">
+                          {d.status !== 'paga' && (
+                            <button onClick={() => setPagando(d)}
+                              className="text-xs font-semibold text-emerald-700 hover:underline">
+                              Pagar
+                            </button>
+                          )}
+                          <button onClick={async () => {
+                            const aviso = d.status === 'paga'
+                              ? `Excluir a despesa "${d.descricao}"? Ela já foi paga — o registro do pagamento vai sumir.`
+                              : `Excluir a despesa "${d.descricao}"?`;
+                            if (!confirm(aviso)) return;
+                            try { await api.cancelarDespesa(d.id); carregar(); }
+                            catch (e) { setErro(e.message); }
+                          }}
+                            className="text-xs font-semibold text-rose-700 hover:underline"
+                            title="Excluir despesa">
+                            Excluir
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))}

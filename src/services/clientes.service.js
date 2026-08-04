@@ -6,11 +6,24 @@ async function listar({ pagina, por_pagina, busca }) {
   const params = [];
   let where = '';
   if (busca) {
-    params.push(`%${busca}%`, busca.replace(/\D/g, '') || '-1');
+    // Busca por placa: normaliza tirando hífen/espaço, uppercase. Termo com 3+
+    // caracteres alfanuméricos vira LIKE parcial pra tolerar digitação incompleta.
+    const placaNorm = busca.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    params.push(
+      `%${busca}%`,
+      busca.replace(/\D/g, '') || '-1',
+      placaNorm.length >= 3 ? `${placaNorm}%` : '__nada__',
+    );
     where = `WHERE nome ILIKE $1 OR telefone ILIKE $1 OR cpf_cnpj ILIKE $1
-                OR numero_cliente::text = $2`;
+                OR numero_cliente::text = $2
+                OR EXISTS (SELECT 1 FROM carros
+                            WHERE cliente_id = c.id
+                              AND upper(replace(placa,'-','')) LIKE $3)`;
   }
-  const total = await db.query(`SELECT count(*) FROM clientes ${where}`, params);
+  // O total precisa usar o mesmo FROM `c` que o WHERE, senão o EXISTS não resolve.
+  const total = await db.query(
+    `SELECT count(*) FROM clientes c ${where}`, params,
+  );
 
   params.push(por_pagina, (pagina - 1) * por_pagina);
   const { rows } = await db.query(

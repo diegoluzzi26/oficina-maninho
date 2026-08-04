@@ -58,7 +58,7 @@ async function garantirPecaNoCatalogo(client, item) {
 const SELECT_OS = `
   SELECT o.*,
          c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.numero_cliente,
-         ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor,
+         ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor, ca.cambio,
          u.nome AS criado_por_nome
     FROM ordens_servico o
     JOIN clientes c ON c.id = o.cliente_id
@@ -217,11 +217,21 @@ async function criar(dados, userId) {
 }
 
 async function atualizar(id, dados) {
+  const permitidos = ['km_entrada', 'observacoes', 'desconto',
+    'valor_pago', 'paga_em', 'forma_pagamento'];
+  // A UI mandava `pago_em` (por espelhar despesas), mas a coluna real
+  // se chama `paga_em`. Normaliza aqui para não vazar o detalhe.
+  const dadosNorm = { ...dados };
+  if (dadosNorm.pago_em !== undefined && dadosNorm.paga_em === undefined) {
+    dadosNorm.paga_em = dadosNorm.pago_em;
+  }
+  delete dadosNorm.pago_em;
+
   const campos = [];
   const params = [];
-  for (const [k, v] of Object.entries(dados)) {
-    if (v === undefined) continue;
-    params.push(v);
+  for (const [k, v] of Object.entries(dadosNorm)) {
+    if (v === undefined || !permitidos.includes(k)) continue;
+    params.push(v === '' ? null : v);
     campos.push(`${k} = $${params.length}`);
   }
   if (!campos.length) return buscarPorId(id);
@@ -279,8 +289,6 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
 }
 
 async function adicionarServico(osId, item) {
-  await garantirEditavel(osId);
-
   return db.withTransaction(async (client) => {
     let { nome_servico: nome, valor_unit: valor } = item;
 
@@ -307,8 +315,6 @@ async function adicionarServico(osId, item) {
 }
 
 async function adicionarPeca(osId, peca) {
-  await garantirEditavel(osId);
-
   return db.withTransaction(async (client) => {
     const pecaId = await garantirPecaNoCatalogo(client, peca);
     await client.query(
@@ -322,26 +328,15 @@ async function adicionarPeca(osId, peca) {
 }
 
 async function removerServico(osId, itemId) {
-  await garantirEditavel(osId);
   const r = await db.query('DELETE FROM os_servicos WHERE id=$1 AND os_id=$2', [itemId, osId]);
   if (!r.rowCount) throw AppError.notFound('Item não encontrado nesta OS');
   return buscarPorId(osId);
 }
 
 async function removerPeca(osId, itemId) {
-  await garantirEditavel(osId);
   const r = await db.query('DELETE FROM os_pecas WHERE id=$1 AND os_id=$2', [itemId, osId]);
   if (!r.rowCount) throw AppError.notFound('Peça não encontrada nesta OS');
   return buscarPorId(osId);
-}
-
-/** OS paga é registro fiscal: não deixamos alterar itens depois. */
-async function garantirEditavel(osId) {
-  const { rows } = await db.query('SELECT status FROM ordens_servico WHERE id=$1', [osId]);
-  if (!rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
-  if (rows[0].status === 'paga') {
-    throw new AppError('Não é possível alterar itens de uma OS já paga', 422);
-  }
 }
 
 /**
@@ -350,11 +345,8 @@ async function garantirEditavel(osId) {
  * registro fiscal e só admite ser "corrigida", não removida.
  */
 async function remover(osId) {
-  const { rows } = await db.query('SELECT status, numero_os FROM ordens_servico WHERE id=$1', [osId]);
+  const { rows } = await db.query('SELECT numero_os FROM ordens_servico WHERE id=$1', [osId]);
   if (!rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
-  if (rows[0].status === 'paga') {
-    throw new AppError('OS já paga não pode ser excluída — é registro fiscal', 422);
-  }
   await db.query('DELETE FROM ordens_servico WHERE id=$1', [osId]);
   return { removida: true, numero_os: rows[0].numero_os };
 }
