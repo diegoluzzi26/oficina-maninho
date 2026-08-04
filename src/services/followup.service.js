@@ -256,6 +256,32 @@ async function gerarFila({ regra_id } = {}, userId) {
             )`,
         [regra.intervalo_dias, regra.id],
       )).rows;
+    } else if (regra.tipo === 'avaliacao') {
+      // N dias após qualquer OS paga/finalizada. Usa a OS mais recente
+      // do cliente pra gerar 1 follow-up por atendimento.
+      candidatos = (await db.query(
+        `SELECT DISTINCT ON (os.cliente_id)
+                c.id AS cliente_id, c.nome AS nome_cliente, c.telefone,
+                ca.id AS carro_id, ca.marca, ca.modelo, ca.placa,
+                os.id AS os_origem_id, ''::text AS servico,
+                COALESCE(os.paga_em, os.fechada_em)::date AS data_servico,
+                (CURRENT_DATE - COALESCE(os.paga_em, os.fechada_em)::date)::int AS dias_desde
+           FROM ordens_servico os
+           JOIN clientes c ON c.id = os.cliente_id
+           JOIN carros ca  ON ca.id = os.carro_id
+          WHERE os.status IN ('paga','finalizada')
+            AND COALESCE(os.paga_em, os.fechada_em)::date <= CURRENT_DATE - ($1 || ' days')::interval
+            AND COALESCE(os.paga_em, os.fechada_em)::date >= CURRENT_DATE - (($1::int + 30) || ' days')::interval
+            AND c.telefone IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM followup_fila ff
+               WHERE ff.cliente_id = c.id
+                 AND ff.regra_id = $2
+                 AND ff.os_origem_id = os.id
+            )
+          ORDER BY os.cliente_id, COALESCE(os.paga_em, os.fechada_em) DESC`,
+        [regra.intervalo_dias, regra.id],
+      )).rows;
     } else if (regra.tipo === 'promocao') {
       // Sugestão: clientes ativos (com OS nos últimos 18 meses) ainda não
       // contactados por essa regra. O admin refina depois na UI.

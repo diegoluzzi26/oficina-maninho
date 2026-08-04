@@ -3,7 +3,7 @@ const { z } = require('zod');
 
 const uuid = z.string().uuid('ID inválido');
 
-const tipo   = z.enum(['manutencao', 'reativacao', 'promocao']);
+const tipo   = z.enum(['manutencao', 'reativacao', 'promocao', 'avaliacao']);
 const status = z.enum(['pendente', 'enviado', 'respondeu', 'converteu', 'dispensado']);
 
 const regra = z.object({

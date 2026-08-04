@@ -8,6 +8,7 @@ const TIPO_BADGE = {
   manutencao: { cor: 'bg-maninho-100 text-maninho-800', label: '🔧 Manutenção' },
   reativacao: { cor: 'bg-ouro-100 text-ouro-800',       label: '💤 Reativação' },
   promocao:   { cor: 'bg-emerald-100 text-emerald-800', label: '📢 Promoção' },
+  avaliacao:  { cor: 'bg-amber-100 text-amber-800',     label: '⭐ Avaliação' },
 };
 const STATUS_BADGE = {
   pendente:   { cor: 'bg-slate-100 text-slate-700',      label: 'Pendente' },
@@ -195,6 +196,7 @@ function FormManual({ aberto, onFechar, onCriado }) {
               <option value="promocao">Promoção</option>
               <option value="manutencao">Manutenção</option>
               <option value="reativacao">Reativação</option>
+              <option value="avaliacao">Avaliação</option>
             </select>
           </Campo>
           <Campo label="Agendar para" obrigatorio>
@@ -321,6 +323,7 @@ export default function Followup() {
           <option value="manutencao">Manutenção</option>
           <option value="reativacao">Reativação</option>
           <option value="promocao">Promoção</option>
+          <option value="avaliacao">Avaliação</option>
         </select>
         <input className="input max-w-xs" placeholder="Buscar cliente ou placa"
           value={busca} onChange={(e) => setBusca(e.target.value)} />

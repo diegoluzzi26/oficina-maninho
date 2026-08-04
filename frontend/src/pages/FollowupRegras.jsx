@@ -7,6 +7,7 @@ const TIPO_LABEL = {
   manutencao: '🔧 Manutenção',
   reativacao: '💤 Reativação',
   promocao:   '📢 Promoção',
+  avaliacao:  '⭐ Avaliação',
 };
 
 function FormRegra({ aberto, regra, servicos, onFechar, onSalvo }) {
@@ -78,6 +79,7 @@ function FormRegra({ aberto, regra, servicos, onFechar, onSalvo }) {
               <option value="manutencao">Manutenção</option>
               <option value="reativacao">Reativação</option>
               <option value="promocao">Promoção</option>
+              <option value="avaliacao">Avaliação</option>
             </select>
           </Campo>
           <Campo label="Intervalo (dias)" obrigatorio>
