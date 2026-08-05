@@ -97,10 +97,28 @@ async function listar({ pagina, por_pagina, status, cliente_id, busca, ano, mes,
     where.push(`o.forma_pagamento = $${params.length}`);
   }
   if (ano && mes) {
-    // Data de referência = aberta_em. Padrão de UX: "OS do mês X".
-    params.push(ano, mes);
-    where.push(`date_part('year',  o.aberta_em) = $${params.length - 1}
-             AND date_part('month', o.aberta_em) = $${params.length}`);
+    // Regra especial: quando o filtro é o MÊS ATUAL, traz também OSs
+    // antigas ainda em aberto (aberta/em_andamento) — elas ficam
+    // pendentes na tela até fecharem. Meses históricos ficam com
+    // corte estrito por aberta_em.
+    const hoje = new Date();
+    const eMesAtual = Number(ano) === hoje.getFullYear()
+      && Number(mes) === hoje.getMonth() + 1;
+    if (eMesAtual) {
+      params.push(ano, mes);
+      where.push(`(
+        (date_part('year', o.aberta_em) = $${params.length - 1}
+         AND date_part('month', o.aberta_em) = $${params.length})
+        OR (
+          o.status IN ('aberta','em_andamento')
+          AND o.aberta_em < make_date($${params.length - 1}::int, $${params.length}::int, 1)
+        )
+      )`);
+    } else {
+      params.push(ano, mes);
+      where.push(`date_part('year',  o.aberta_em) = $${params.length - 1}
+               AND date_part('month', o.aberta_em) = $${params.length}`);
+    }
   }
   if (busca) {
     params.push(`%${busca}%`);

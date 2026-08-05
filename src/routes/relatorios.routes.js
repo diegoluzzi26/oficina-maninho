@@ -2,6 +2,8 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const svc = require('../services/relatorios.service');
+const agendado = require('../services/relatorio-agendado.service');
+const requireRole = require('../middleware/requireRole');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
@@ -44,5 +46,15 @@ router.get('/dashboard', validate({ query: v.periodo }), h(async (req, res) => {
   ]);
   res.json({ resumo, faturamento, servicos_mais_vendidos: servicos, clientes_recorrentes: recorrentes, comparativo });
 }));
+
+/**
+ * Envio manual dos relatórios por WhatsApp (dispara na hora).
+ * Só admin. Sempre envia o último período fechado (mês passado / semana passada).
+ */
+router.post('/enviar-mensal', requireRole('admin'),
+  h(async (_req, res) => res.json(await agendado.enviarMensalUltimo())));
+
+router.post('/enviar-semanal', requireRole('admin'),
+  h(async (_req, res) => res.json(await agendado.enviarSemanalUltimo())));
 
 module.exports = router;

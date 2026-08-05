@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const wa = require('./whatsapp.service');
+const config = require('./config.service');
 
 /**
  * Relatórios automáticos por WhatsApp pro dono da oficina.
@@ -140,10 +141,10 @@ async function marcarEnviado(periodo, tipo, wa_message_id) {
   );
 }
 
-async function enviarMensal(ano, mes) {
+async function enviarMensal(ano, mes, { forcar = false } = {}) {
   const periodo = `mensal-${ano}-${String(mes).padStart(2, '0')}`;
-  if (await jaEnviado(periodo)) return { enviado: false, motivo: 'ja-enviado' };
-  const destino = process.env.ALERTA_WHATSAPP;
+  if (!forcar && await jaEnviado(periodo)) return { enviado: false, motivo: 'ja-enviado' };
+  const destino = config.alerta().whatsapp;
   if (!destino) return { enviado: false, motivo: 'sem-destinatario' };
   const dados = await dadosMensais(ano, mes);
   const msg = await wa.notificar({ telefone: destino, mensagem: mensagemMensal(ano, mes, dados) });
@@ -151,10 +152,10 @@ async function enviarMensal(ano, mes) {
   return { enviado: true, periodo, para: destino };
 }
 
-async function enviarSemanal(inicio, fim, rotulo) {
+async function enviarSemanal(inicio, fim, rotulo, { forcar = false } = {}) {
   const periodo = `semanal-${rotulo}`;
-  if (await jaEnviado(periodo)) return { enviado: false, motivo: 'ja-enviado' };
-  const destino = process.env.ALERTA_WHATSAPP;
+  if (!forcar && await jaEnviado(periodo)) return { enviado: false, motivo: 'ja-enviado' };
+  const destino = config.alerta().whatsapp;
   if (!destino) return { enviado: false, motivo: 'sem-destinatario' };
   const dados = await dadosSemanais(inicio, fim);
   const msg = await wa.notificar({ telefone: destino, mensagem: mensagemSemanal(inicio, fim, dados) });
@@ -219,4 +220,26 @@ function agendar() {
   console.log(`[relatorio-agendado] mensal (dia 1) e semanal (segunda) às ${HORA_ALVO}h`);
 }
 
-module.exports = { agendar, enviarMensal, enviarSemanal };
+/**
+ * Envios manuais: sempre referentes ao ÚLTIMO período fechado
+ * (mês passado / semana passada seg-dom) e ignoram dedup.
+ */
+async function enviarMensalUltimo() {
+  const agora = new Date();
+  const ante = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
+  return enviarMensal(ante.getFullYear(), ante.getMonth() + 1, { forcar: true });
+}
+
+async function enviarSemanalUltimo() {
+  const agora = new Date();
+  const dow = agora.getDay() || 7; // 1..7 (seg=1)
+  const domingoPassado = new Date(agora); domingoPassado.setDate(agora.getDate() - dow);
+  const segundaPassada = new Date(domingoPassado); segundaPassada.setDate(domingoPassado.getDate() - 6);
+  return enviarSemanal(isoDia(segundaPassada), isoDia(domingoPassado),
+    semanaISO(segundaPassada), { forcar: true });
+}
+
+module.exports = {
+  agendar, enviarMensal, enviarSemanal,
+  enviarMensalUltimo, enviarSemanalUltimo,
+};

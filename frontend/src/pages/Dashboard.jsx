@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   PieChart, Pie,
 } from 'recharts';
-import { api } from '../lib/api';
+import { api, getUser } from '../lib/api';
 import { brl, brlCurto, nomeMes, telefone, rotuloForma } from '../lib/format';
 import { Skeleton, Alerta, Vazio } from '../components/ui';
 
@@ -41,6 +41,41 @@ function TooltipMoeda({ active, payload, label }) {
           {p.name && `${p.name}: `}{brl(p.value)}
         </p>
       ))}
+    </div>
+  );
+}
+
+function BotoesResumo() {
+  const usuario = getUser();
+  const [enviando, setEnviando] = useState('');
+  if (usuario?.role !== 'admin') return null;
+
+  async function enviar(tipo) {
+    const label = tipo === 'mensal' ? 'do mês passado' : 'da semana passada';
+    if (!confirm(`Enviar resumo ${label} pro WhatsApp cadastrado em Configurações?`)) return;
+    setEnviando(tipo);
+    try {
+      const fn = tipo === 'mensal' ? api.enviarResumoMensal : api.enviarResumoSemanal;
+      const r = await fn();
+      if (r.enviado) alert(`✓ Enviado pra ${r.para}`);
+      else if (r.motivo === 'sem-destinatario') {
+        alert('Nenhum número configurado. Vai em Configurações → "Meu WhatsApp" e cadastra.');
+      } else alert(`Não enviado: ${r.motivo}`);
+    } catch (e) {
+      alert(`Erro: ${e.message}`);
+    } finally { setEnviando(''); }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button onClick={() => enviar('mensal')} disabled={!!enviando}
+        className="btn-ghost text-xs">
+        {enviando === 'mensal' ? '…' : '📊 Enviar resumo do mês'}
+      </button>
+      <button onClick={() => enviar('semanal')} disabled={!!enviando}
+        className="btn-ghost text-xs">
+        {enviando === 'semanal' ? '…' : '📅 Enviar resumo da semana'}
+      </button>
     </div>
   );
 }
@@ -111,6 +146,7 @@ export default function Dashboard() {
           <p className="mt-0.5 text-sm text-slate-500">
             Receita, despesa e retornos programados de {nomeMes(painel.referencia.mes)} de {painel.referencia.ano}.
           </p>
+          <div className="mt-2"><BotoesResumo /></div>
         </div>
         <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
           <button onClick={() => mudarMes(-1)}
