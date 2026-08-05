@@ -59,7 +59,10 @@ const SELECT_OS = `
   SELECT o.*,
          c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.numero_cliente,
          ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor, ca.cambio,
-         u.nome AS criado_por_nome
+         u.nome AS criado_por_nome,
+         (SELECT a.id FROM os_anexos a
+           WHERE a.os_id = o.id AND a.mime LIKE 'image/%'
+           ORDER BY a.criado_em ASC LIMIT 1) AS foto_id
     FROM ordens_servico o
     JOIN clientes c ON c.id = o.cliente_id
     JOIN carros  ca ON ca.id = o.carro_id

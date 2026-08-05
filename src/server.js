@@ -11,6 +11,7 @@ const server = app.listen(env.port, async () => {
   console.log(`[api] rodando na porta ${env.port} (${env.nodeEnv})`);
   console.log(`[api] whatsapp: ${w.enabled ? 'configurado' : 'NÃO configurado'}`);
   require('./services/alertas.service').agendar();
+  require('./services/relatorio-agendado.service').agendar();
 });
 
 // Encerra conexões abertas antes de morrer — evita erro no cliente durante deploy

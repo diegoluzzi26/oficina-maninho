@@ -555,6 +555,75 @@ function PagarOS({ os, onFechar, onPago }) {
 }
 
 // ---------------------------------------------------------------------
+// Kanban: colunas por status, cards com foto do carro
+// ---------------------------------------------------------------------
+const COLUNAS_KANBAN = [
+  { chave: 'aberta',       titulo: 'Aberta',       cor: 'border-slate-300' },
+  { chave: 'em_andamento', titulo: 'Em andamento', cor: 'border-ouro-400' },
+  { chave: 'finalizada',   titulo: 'Finalizada',   cor: 'border-marca-400' },
+  { chave: 'paga',         titulo: 'Paga',         cor: 'border-emerald-400' },
+];
+
+function CardKanban({ o, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="w-full overflow-hidden rounded-md border border-slate-200 bg-white text-left shadow-sm transition hover:border-maninho-400 hover:shadow-md">
+      {o.foto_id ? (
+        <AnexoImg id={o.foto_id} alt={`Foto OS ${o.numero_os}`}
+          className="h-28 w-full object-cover" />
+      ) : (
+        <div className="flex h-28 w-full items-center justify-center bg-slate-100 text-3xl text-slate-300">
+          🚗
+        </div>
+      )}
+      <div className="p-2.5">
+        <div className="flex items-center justify-between">
+          <span className="tnum text-[11px] font-bold text-maninho-600">#{o.numero_os}</span>
+          <span className="tnum text-xs font-semibold text-slate-700">{brl(o.valor_total)}</span>
+        </div>
+        <p className="mt-1 truncate text-xs font-semibold text-slate-800">{o.cliente_nome}</p>
+        <p className="truncate font-mono text-[11px] text-slate-500">{o.placa}</p>
+        <p className="truncate text-[10px] text-slate-400">{o.marca} {o.modelo}</p>
+      </div>
+    </button>
+  );
+}
+
+function KanbanOS({ ordens, onCard }) {
+  const porStatus = COLUNAS_KANBAN.map((col) => ({
+    ...col,
+    ordens: ordens.filter((o) => o.status === col.chave),
+  }));
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {porStatus.map((col) => (
+        <div key={col.chave} className={`rounded-md border-t-4 bg-slate-50/60 p-2 ${col.cor}`}>
+          <div className="mb-2 flex items-center justify-between px-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              {col.titulo}
+            </p>
+            <span className="tnum rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+              {col.ordens.length}
+            </span>
+          </div>
+          {col.ordens.length === 0 ? (
+            <p className="rounded border border-dashed border-slate-300 py-6 text-center text-[10px] text-slate-400">
+              vazio
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {col.ordens.map((o) => (
+                <CardKanban key={o.id} o={o} onClick={() => onCard(o)} />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
 // Modal detalhe da OS
 // ---------------------------------------------------------------------
 function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
@@ -1124,6 +1193,9 @@ export default function Ordens() {
   const [novaAberta, setNovaAberta] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
   const [pagando, setPagando] = useState(null);
+  // Preferência de visualização persistida localmente
+  const [vista, setVista] = useState(() => localStorage.getItem('ordens_vista') || 'lista');
+  useEffect(() => { localStorage.setItem('ordens_vista', vista); }, [vista]);
 
   // Carrega clientes uma vez pra alimentar o filtro
   useEffect(() => {
@@ -1171,7 +1243,18 @@ export default function Ordens() {
             {lista ? `${lista.paginacao.total} no período` : 'Carregando…'}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setNovaAberta(true)}>+ Nova ordem</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {[['lista', '☰ Lista'], ['kanban', '▦ Kanban']].map(([k, t]) => (
+              <button key={k} onClick={() => setVista(k)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${vista === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <button className="btn-primary" onClick={() => setNovaAberta(true)}>+ Nova ordem</button>
+        </div>
       </div>
 
       {/* Seletor de mês */}
@@ -1239,16 +1322,20 @@ export default function Ordens() {
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
-      <div className="card overflow-hidden">
-        {!lista ? (
-          <div className="space-y-2 p-4">
-            {[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-12" />)}
-          </div>
-        ) : lista.dados.length === 0 ? (
+      {!lista ? (
+        <div className="card space-y-2 p-4">
+          {[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-12" />)}
+        </div>
+      ) : lista.dados.length === 0 ? (
+        <div className="card p-6">
           <Vazio titulo="Nenhuma ordem encontrada"
             descricao={busca || status ? 'Tente mudar o filtro ou a busca.' : 'Nenhuma ordem neste mês.'}
             acao={<button className="btn-primary mt-3" onClick={() => setNovaAberta(true)}>+ Nova ordem</button>} />
-        ) : (
+        </div>
+      ) : vista === 'kanban' ? (
+        <KanbanOS ordens={lista.dados} onCard={setDetalhe} />
+      ) : (
+        <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-slate-200 bg-slate-50/80">
@@ -1296,8 +1383,8 @@ export default function Ordens() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <NovaOS aberto={novaAberta} onFechar={() => setNovaAberta(false)}
         onCriada={(os) => {
