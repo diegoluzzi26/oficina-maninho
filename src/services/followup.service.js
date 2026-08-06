@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const wa = require('./whatsapp.service');
 
 /**
  * Módulo de follow-up ativo com o cliente.
@@ -179,6 +180,64 @@ async function registrarHistorico(fila_id, acao, usuario_id, notas) {
      VALUES ($1,$2,$3,$4)`,
     [fila_id, acao, usuario_id || null, notas || null],
   );
+}
+
+// ---------------------------------------------------------------- ENVIO AUTO
+
+/**
+ * Envia via Evolution API a mensagem já pronta do follow-up.
+ * No sucesso, marca como 'enviado' e registra histórico.
+ * No fracasso, NÃO muda o status (fica pendente pra retentar).
+ */
+async function enviarAgora(id, userId) {
+  const item = await buscarItem(id);
+  if (!item.cliente_telefone) {
+    throw new AppError('Cliente sem telefone cadastrado', 422);
+  }
+  if (item.status === 'enviado' || item.status === 'respondeu' || item.status === 'converteu') {
+    throw new AppError('Follow-up já foi enviado', 409);
+  }
+
+  const resposta = await wa.notificar({
+    telefone: item.cliente_telefone,
+    mensagem: item.mensagem,
+    cliente_id: item.cliente_id,
+  });
+
+  await db.query(
+    `UPDATE followup_fila
+        SET status='enviado', enviado_em=now()
+      WHERE id=$1`, [id],
+  );
+  await registrarHistorico(id, 'enviado_automatico', userId,
+    resposta?.wa_message_id ? `wa_message_id=${resposta.wa_message_id}` : null);
+
+  return buscarItem(id);
+}
+
+/**
+ * Enfileira envios para todos os pendentes com agendado_para <= hoje.
+ * Retorna contagem de sucessos e falhas.
+ */
+async function enviarPendentesAgora(userId) {
+  const { rows } = await db.query(
+    `SELECT id FROM followup_fila
+      WHERE status='pendente' AND agendado_para <= CURRENT_DATE
+      ORDER BY agendado_para ASC, criado_em ASC
+      LIMIT 100`,
+  );
+
+  let enviados = 0;
+  const falhas = [];
+  for (const r of rows) {
+    try {
+      await enviarAgora(r.id, userId);
+      enviados += 1;
+    } catch (err) {
+      falhas.push({ id: r.id, motivo: err.message });
+    }
+  }
+  return { total: rows.length, enviados, falhas };
 }
 
 // ---------------------------------------------------------------- GERAR
@@ -392,4 +451,5 @@ module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
   gerarFila, metricas,
+  enviarAgora, enviarPendentesAgora,
 };

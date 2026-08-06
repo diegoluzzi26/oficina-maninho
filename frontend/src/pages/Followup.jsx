@@ -25,8 +25,20 @@ function linkWhatsApp(tel, mensagem) {
 
 function CardFollowup({ item, onMudou }) {
   const [erro, setErro] = useState('');
+  const [enviandoAuto, setEnviandoAuto] = useState(false);
   const [reagendar, setReagendar] = useState(false);
   const [novaData, setNovaData] = useState(item.agendado_para?.slice(0, 10) || '');
+
+  async function enviarAutomatico() {
+    if (!item.cliente_telefone) { setErro('Cliente sem telefone cadastrado'); return; }
+    if (!confirm(`Enviar automático pelo Evolution pro número ${item.cliente_telefone}?`)) return;
+    setErro(''); setEnviandoAuto(true);
+    try {
+      const r = await api.enviarFollowup(item.id);
+      onMudou(r);
+    } catch (e) { setErro(e.message); }
+    finally { setEnviandoAuto(false); }
+  }
 
   async function marcar(status, extra = {}) {
     setErro('');
@@ -108,10 +120,16 @@ function CardFollowup({ item, onMudou }) {
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
+          {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
+            <button onClick={enviarAutomatico} disabled={enviandoAuto}
+              className="btn-ouro text-xs">
+              {enviandoAuto ? '⌛ Enviando…' : '🚀 Enviar automático'}
+            </button>
+          )}
           <button onClick={copiarMensagem}
             className="btn-ghost text-xs">📋 Copiar</button>
           <button onClick={abrirWhatsApp}
-            className="btn-primary text-xs">📱 Abrir WhatsApp</button>
+            className="btn-ghost text-xs">📱 Abrir WhatsApp</button>
           {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
             <button onClick={() => marcar('enviado')}
               className="btn-ghost text-xs text-emerald-700">✓ Enviado</button>
@@ -232,6 +250,7 @@ export default function Followup() {
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
   const [gerando, setGerando] = useState(false);
+  const [enviandoTodos, setEnviandoTodos] = useState(false);
   const [manualAberto, setManualAberto] = useState(false);
 
   const carregar = useCallback(() => {
@@ -260,6 +279,19 @@ export default function Followup() {
     finally { setGerando(false); }
   }
 
+  async function enviarTodosPendentes() {
+    if (!confirm('Enviar TODOS os follow-ups pendentes (agendados até hoje) via Evolution API?')) return;
+    setEnviandoTodos(true); setErro('');
+    try {
+      const r = await api.enviarFollowupsPendentes();
+      const msg = `Enviados: ${r.enviados}/${r.total}` +
+        (r.falhas.length ? `\nFalhas: ${r.falhas.length}` : '');
+      alert(msg);
+      carregar();
+    } catch (e) { setErro(e.message); }
+    finally { setEnviandoTodos(false); }
+  }
+
   function itemMudou(atualizado, removidoId) {
     if (removidoId) {
       setLista((l) => l ? { ...l, dados: l.dados.filter((x) => x.id !== removidoId) } : l);
@@ -285,6 +317,9 @@ export default function Followup() {
               <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
               <button className="btn-primary" onClick={gerar} disabled={gerando}>
                 {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar fila'}
+              </button>
+              <button className="btn-ouro" onClick={enviarTodosPendentes} disabled={enviandoTodos}>
+                {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar pendentes'}
               </button>
             </>
           )}

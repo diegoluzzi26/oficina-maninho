@@ -193,6 +193,8 @@ export const api = {
   followupReagendar: (id, body) => request(`/followup/fila/${id}/reagendar`, { method: 'PATCH', body }),
   removerFollowup: (id) => request(`/followup/fila/${id}`, { method: 'DELETE' }),
   gerarFollowup: (regra_id) => request('/followup/gerar', { method: 'POST', body: regra_id ? { regra_id } : {} }),
+  enviarFollowup: (id) => request(`/followup/fila/${id}/enviar`, { method: 'POST', body: {} }),
+  enviarFollowupsPendentes: () => request('/followup/fila/enviar-pendentes', { method: 'POST', body: {} }),
   metricasFollowup: (periodo = 30) => request('/followup/metricas', { params: { periodo } }),
 
   // --- configurações (só admin) ---
