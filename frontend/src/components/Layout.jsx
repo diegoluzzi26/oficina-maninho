@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
+import ResumoDiario from './ResumoDiario';
 
 const MENU = [
   { para: '/', texto: 'Painel', exato: true, Icone: LayoutDashboard },
@@ -155,6 +156,9 @@ export default function Layout() {
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
           <Outlet />
         </main>
+
+        {/* "Bom dia!" — só na primeira entrada do dia (por usuário) */}
+        <ResumoDiario />
 
         <footer className="mx-auto w-full max-w-[1400px] px-4 pb-6 sm:px-8">
           <p className="border-t border-slate-200 pt-4 text-center font-display text-[10.5px]
