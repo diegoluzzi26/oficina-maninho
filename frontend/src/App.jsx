@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { getToken } from './lib/api';
+import { getToken, getUser } from './lib/api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -24,6 +24,12 @@ function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
 }
 
+/** Papel 'basico' vai direto pra Ordens — não enxerga o Painel. */
+function PainelOuOrdens() {
+  const u = getUser();
+  return u?.role === 'basico' ? <Navigate to="/ordens" replace /> : <Dashboard />;
+}
+
 export default function App() {
   return (
     <HashRouter>
@@ -35,7 +41,7 @@ export default function App() {
         <Route path="/os/:id/checklist/imprimir"
           element={<Protegida><ImprimirChecklist /></Protegida>} />
         <Route path="/" element={<Protegida><Layout /></Protegida>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<PainelOuOrdens />} />
           <Route path="ordens" element={<Ordens />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="despesas" element={<Despesas />} />

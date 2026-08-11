@@ -9,10 +9,12 @@ import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
 import ResumoDiario from './ResumoDiario';
 
+// paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
+// só admin/atendente enxergam. somenteAdmin restringe ainda mais.
 const MENU = [
   { para: '/', texto: 'Painel', exato: true, Icone: LayoutDashboard },
-  { para: '/agenda', texto: 'Agenda', Icone: Calendar },
-  { para: '/ordens', texto: 'Ordens', Icone: ClipboardList },
+  { para: '/agenda', texto: 'Agenda', paraBasico: true, Icone: Calendar },
+  { para: '/ordens', texto: 'Ordens', paraBasico: true, Icone: ClipboardList },
   { para: '/clientes', texto: 'Clientes', Icone: Users },
   { para: '/despesas', texto: 'Despesas', badge: true, Icone: Receipt },
   { para: '/fornecedores', texto: 'Fornecedores', Icone: Truck },
@@ -43,7 +45,12 @@ export default function Layout() {
   }, [local.pathname]);
 
   const pendencias = (alertas?.atrasadas.length || 0) + (alertas?.vence_hoje.length || 0);
-  const itens = MENU.filter((m) => !m.somenteAdmin || usuario?.role === 'admin');
+  const ehBasico = usuario?.role === 'basico';
+  const itens = MENU.filter((m) => {
+    if (ehBasico) return m.paraBasico === true;
+    if (m.somenteAdmin) return usuario?.role === 'admin';
+    return true;
+  });
 
   function sair() {
     clearSession();

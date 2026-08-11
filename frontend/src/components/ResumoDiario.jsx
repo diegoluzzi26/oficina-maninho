@@ -37,6 +37,8 @@ export default function ResumoDiario() {
   const usuario = getUser();
 
   useEffect(() => {
+    // Papel 'basico' (mecânico/operador) não vê dados financeiros
+    if (usuario?.role === 'basico') return;
     if (jaViuHoje()) return;
     const hoje = new Date();
     api.painelMes({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 })
@@ -46,7 +48,7 @@ export default function ResumoDiario() {
         marcarComoVisto();
       })
       .catch(() => { /* silencioso — não bloqueia login se falhar */ });
-  }, []);
+  }, [usuario?.role]);
 
   if (!aberto) return null;
 
