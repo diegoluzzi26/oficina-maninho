@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const env = require('./config/env');
 const auth = require('./middleware/auth');
+const bloquearBasico = require('./middleware/bloquearExclusoesBasico');
 const errorHandler = require('./middleware/errorHandler');
 const AppError = require('./utils/AppError');
 
@@ -46,24 +47,25 @@ app.use('/api/whatsapp', require('./routes/whatsapp.routes'));
 // Login é público
 app.use('/api/auth', require('./routes/auth.routes'));
 
-// Daqui pra baixo, tudo exige token
-app.use('/api/clientes',   auth, require('./routes/clientes.routes'));
-app.use('/api/carros',     auth, require('./routes/carros.routes'));
-app.use('/api/servicos',   auth, require('./routes/servicos.routes'));
-app.use('/api/pecas',      auth, require('./routes/pecas.routes'));
-app.use('/api/funcionarios', auth, require('./routes/funcionarios.routes'));
-app.use('/api/despesas-recorrentes', auth, require('./routes/despesas-recorrentes.routes'));
-app.use('/api/os',         auth, require('./routes/os.routes'));
-app.use('/api/relatorios', auth, require('./routes/relatorios.routes'));
-app.use('/api/despesas',     auth, require('./routes/despesas.routes'));
-app.use('/api/fornecedores', auth, require('./routes/fornecedores.routes'));
-app.use('/api/financeiro',   auth, require('./routes/financeiro.routes'));
-app.use('/api/retornos',     auth, require('./routes/retornos.routes'));
-app.use('/api/agendamentos', auth, require('./routes/agendamentos.routes'));
-app.use('/api/followup',     auth, require('./routes/followup.routes'));
-app.use('/api/config',       auth, require('./routes/config.routes'));
+// Daqui pra baixo, tudo exige token. bloquearBasico proíbe exclusões
+// pro papel 'basico' — não afeta admin nem atendente.
+app.use('/api/clientes',   auth, bloquearBasico, require('./routes/clientes.routes'));
+app.use('/api/carros',     auth, bloquearBasico, require('./routes/carros.routes'));
+app.use('/api/servicos',   auth, bloquearBasico, require('./routes/servicos.routes'));
+app.use('/api/pecas',      auth, bloquearBasico, require('./routes/pecas.routes'));
+app.use('/api/funcionarios', auth, bloquearBasico, require('./routes/funcionarios.routes'));
+app.use('/api/despesas-recorrentes', auth, bloquearBasico, require('./routes/despesas-recorrentes.routes'));
+app.use('/api/os',         auth, bloquearBasico, require('./routes/os.routes'));
+app.use('/api/relatorios', auth, bloquearBasico, require('./routes/relatorios.routes'));
+app.use('/api/despesas',     auth, bloquearBasico, require('./routes/despesas.routes'));
+app.use('/api/fornecedores', auth, bloquearBasico, require('./routes/fornecedores.routes'));
+app.use('/api/financeiro',   auth, bloquearBasico, require('./routes/financeiro.routes'));
+app.use('/api/retornos',     auth, bloquearBasico, require('./routes/retornos.routes'));
+app.use('/api/agendamentos', auth, bloquearBasico, require('./routes/agendamentos.routes'));
+app.use('/api/followup',     auth, bloquearBasico, require('./routes/followup.routes'));
+app.use('/api/config',       auth, bloquearBasico, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
-app.use('/api',              auth, require('./routes/anexos.routes'));
+app.use('/api',              auth, bloquearBasico, require('./routes/anexos.routes'));
 
 app.use((req, _res, next) => next(new AppError(`Rota não encontrada: ${req.method} ${req.path}`, 404)));
 app.use(errorHandler);

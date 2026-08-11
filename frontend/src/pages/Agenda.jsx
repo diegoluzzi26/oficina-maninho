@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { nomeMes, telefone } from '../lib/format';
 import { Alerta, Modal, Campo, Spinner, Skeleton, Vazio } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
+import { podeCancelar } from '../lib/permissoes';
 
 // ---------------------------------------------------------------------
 // Utilidades de data (evita depender de moment/dayjs)
@@ -423,10 +424,12 @@ function PainelDia({ dia, agendamentos, onNovo, onEditar, onAcao }) {
                     className="rounded bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
                     Editar
                   </button>
-                  <button onClick={() => onAcao('cancelar', a)}
-                    className="rounded bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100">
-                    Cancelar
-                  </button>
+                  {podeCancelar() && (
+                    <button onClick={() => onAcao('cancelar', a)}
+                      className="rounded bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100">
+                      Cancelar
+                    </button>
+                  )}
                 </div>
               )}
             </li>

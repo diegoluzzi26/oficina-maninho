@@ -8,6 +8,7 @@ import { HistoricoCarro } from '../components/HistoricoCarro';
 import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
 import { FormCliente, FormCarro } from './Clientes';
+import { podeExcluir } from '../lib/permissoes';
 
 /**
  * Anexo protegido por JWT: baixa via fetch (com Authorization) e
@@ -922,9 +923,11 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                   <AnexoImg id={f.id} alt={f.descricao || 'foto da OS'}
                     onClick={() => setPreviewFoto(f)}
                     className="h-full w-full cursor-pointer object-cover transition group-hover:opacity-80" />
-                  <button onClick={() => removerFoto(f.id)}
-                    className="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 opacity-0 shadow transition group-hover:opacity-100"
-                    title="Remover">✕</button>
+                  {podeExcluir() && (
+                    <button onClick={() => removerFoto(f.id)}
+                      className="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 opacity-0 shadow transition group-hover:opacity-100"
+                      title="Remover">✕</button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1085,22 +1088,24 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                 ))}
               </>
             )}
-            <button onClick={async () => {
-              const aviso = os.status === 'paga'
-                ? `Excluir a OS nº ${os.numero_os}? Ela já foi PAGA — o registro do pagamento vai sumir junto com serviços, peças e fotos.`
-                : `Excluir a OS nº ${os.numero_os}? Serviços, peças e fotos vão junto.`;
-              if (!confirm(aviso)) return;
-              setCarregando(true); setErro('');
-              try {
-                await api.excluirOS(os.id);
-                onExcluida?.(os);
-              } catch (e) { setErro(e.message); }
-              finally { setCarregando(false); }
-            }}
-            disabled={carregando}
-            className="ml-auto rounded bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
-              🗑 Excluir OS
-            </button>
+            {podeExcluir() && (
+              <button onClick={async () => {
+                const aviso = os.status === 'paga'
+                  ? `Excluir a OS nº ${os.numero_os}? Ela já foi PAGA — o registro do pagamento vai sumir junto com serviços, peças e fotos.`
+                  : `Excluir a OS nº ${os.numero_os}? Serviços, peças e fotos vão junto.`;
+                if (!confirm(aviso)) return;
+                setCarregando(true); setErro('');
+                try {
+                  await api.excluirOS(os.id);
+                  onExcluida?.(os);
+                } catch (e) { setErro(e.message); }
+                finally { setCarregando(false); }
+              }}
+              disabled={carregando}
+              className="ml-auto rounded bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                🗑 Excluir OS
+              </button>
+            )}
           </div>
         )}
         {foiPaga && !editPag && (
