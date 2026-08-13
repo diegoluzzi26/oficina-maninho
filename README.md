@@ -28,45 +28,42 @@ docker compose exec api node scripts/seed.js
 
 Acesse: **http://localhost:8080**
 
-## 1.5 Colocar na internet (Vercel + Oracle Cloud, R$0)
+## 1.5 Como está em produção hoje (Vercel + Hetzner Cloud)
 
 Deploy dividido em dois lugares — cada um faz o que faz de melhor:
 
-| Parte | Onde | Custo |
+| Parte | Onde | Custo aproximado |
 |---|---|---|
 | Frontend (React/Vite) | **Vercel** (CDN global, deploy automático via GitHub) | R$0 |
-| Backend + Postgres + Evolution + Backup | **Oracle Cloud Always Free** (VM ARM 4vCPU, 24GB RAM) | R$0 |
+| Backend + Postgres + Evolution + Backup | **Hetzner Cloud** (VM Ubuntu 24.04) | ~R$25/mês (CX22) |
 
-**Total permanente: R$0.**
+O backend inteiro roda numa única VM Hetzner com Docker Compose (API +
+Postgres + Evolution + Caddy + Backup em containers). O frontend é
+estático e vive na Vercel, apontando pra API pela URL pública do Caddy.
 
-### 1.5.1 Backend na Oracle: criar a VM (~15 min, sem código)
+### 1.5.1 Backend na Hetzner: criar a VM (~5 min, sem código)
 
-1. Cadastro em [oracle.com/cloud/free](https://www.oracle.com/cloud/free).
-   Precisa de cartão de crédito (verificação — não cobra). No painel,
-   confirma que a linha diz **"Always Free"** e não trial.
-2. **Compute → Instances → Create Instance**:
-   - **Shape:** `VM.Standard.A1.Flex` — 4 OCPU, 24 GB memory
-   - **Image:** Canonical Ubuntu 24.04 (Minimal)
-   - **Networking:** aceita o VCN default
-   - **SSH keys:** cola sua chave pública (ou gera com Oracle e baixa)
-3. **Pegadinha nº 1:** entra em **Networking → VCNs → default →
-   Security Lists → Default Security List** e adiciona 3 regras
-   Ingress pra `0.0.0.0/0`:
-   - TCP `80` (HTTP)
-   - TCP `443` (HTTPS)
-   - UDP `443` (HTTP/3)
-   Sem isso, o HTTPS não sobe — o Caddy fica travado tentando pegar
-   cert do Let's Encrypt.
-4. Anota o **IP público** da instância (fica no card da VM).
+1. Login em [console.hetzner.cloud](https://console.hetzner.cloud).
+2. **Add Server**:
+   - **Location:** qualquer uma; para clientes no Brasil, Ashburn (US East)
+     ou Hillsboro (US West) tendem a dar menor latência que Europa.
+   - **Image:** Ubuntu 24.04
+   - **Type:** `CX22` (2 vCPU / 4 GB) é o mínimo confortável; `CPX21`
+     (3 vCPU / 4 GB, AMD) roda ainda melhor por poucos euros a mais.
+   - **SSH Keys:** sobe sua chave pública (nada de senha).
+   - **Firewalls:** opcional. Se criar um, libera `22/tcp` (SSH),
+     `80/tcp`, `443/tcp` e `443/udp` (HTTP/3). Sem firewall, tudo aberto
+     por padrão — o `setup-servidor.sh` já configura UFW por dentro.
+3. Anota o **IPv4 público** da VM (aparece no card do servidor).
 
-### 1.5.2 Backend na Oracle: instalar (~10 min, roda no servidor)
+### 1.5.2 Backend na Hetzner: instalar (~10 min, roda no servidor)
 
 ```bash
-# 1. SSH na VM (usuário padrão é 'ubuntu')
-ssh ubuntu@<IP>
+# 1. SSH na VM (usuário padrão da Hetzner é 'root')
+ssh root@<IP>
 
 # 2. Prepara Ubuntu (Docker, firewall, swap, hardening SSH)
-curl -fsSL https://raw.githubusercontent.com/diegoluzzi26/oficina-maninho/main/deploy/setup-servidor.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/diegoluzzi26/oficina-maninho/main/deploy/setup-servidor.sh | bash
 
 # 3. Clona o repo e entra
 git clone https://github.com/diegoluzzi26/oficina-maninho.git
@@ -86,7 +83,7 @@ sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT|; \
 echo "DOMINIO=$DOM" >> .env
 
 # 5. Sobe tudo (SEM o container web — frontend vem do Vercel)
-sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 # 6. Aguarda 30s pro Caddy pegar o certificado Let's Encrypt
 sleep 30 && curl -sI https://$DOM/health
@@ -105,14 +102,14 @@ Se o último `curl` retornou `HTTP/2 200`, o backend tá pronto.
    - `VITE_API_URL` = `https://<seu-ip>.sslip.io/api`
 5. **Deploy** — em ~1 min tá no ar em `https://oficina-maninho-<hash>.vercel.app`
 
-**Depois** volta no servidor da Oracle pra liberar o CORS pra o
-domínio Vercel que apareceu:
+**Depois** volta no servidor Hetzner pra liberar o CORS pro domínio
+Vercel que apareceu:
 
 ```bash
 cd oficina-maninho
 sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=https://oficina-maninho.vercel.app,*.vercel.app|" .env
 echo "FRONTEND_URL=oficina-maninho.vercel.app" >> .env
-sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api caddy
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api caddy
 ```
 
 ### 1.5.4 Depois do primeiro up
@@ -122,9 +119,27 @@ sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api c
    imediatamente** em Configurações
 3. Configurações → **Conexão do WhatsApp** → escaneia QR
 4. (Opcional) Backup pro Google Drive:
-   `sudo docker compose run --rm -it backup rclone config`
+   `docker compose run --rm -it backup rclone config`
 
-### 1.5.5 Domínio próprio (opcional, ~R$40/ano)
+### 1.5.5 Atualizar a versão que roda no servidor (deploy do dia-a-dia)
+
+Depois de dar `git push` daqui, roda no servidor:
+
+```bash
+ssh root@<IP>
+cd oficina-maninho && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api
+```
+
+O `entrypoint` do container da API aplica as migrations pendentes
+automaticamente antes de subir o servidor (`node scripts/migrate.js`),
+então uma nova migração SQL já entra no banco nesse mesmo comando. Pra
+conferir: `docker compose logs api --tail=30` — cada migração aparece
+como `✓ NNN_nome.sql`.
+
+Se algum arquivo do frontend mudou, a Vercel redeploya sozinha assim
+que o push chega ao GitHub — não precisa mexer no servidor pra isso.
+
+### 1.5.6 Domínio próprio (opcional, ~R$40/ano)
 
 Depois de comprar `autoeletricamaninho.com.br`:
 
@@ -132,13 +147,14 @@ Depois de comprar `autoeletricamaninho.com.br`:
 ```bash
 # Aponta api.autoeletricamaninho.com.br pro IP da VM (DNS)
 sed -i "s|^DOMINIO=.*|DOMINIO=api.autoeletricamaninho.com.br|" .env
-sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d caddy
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d caddy
 ```
 
 **Frontend** (raiz): no dashboard Vercel → **Settings → Domains** →
 add `autoeletricamaninho.com.br`. Vercel dá as instruções DNS. Depois
 atualiza `VITE_API_URL=https://api.autoeletricamaninho.com.br/api` nas
-env vars da Vercel e redeployza (bota `CORS_ORIGINS` na Oracle também).
+env vars da Vercel e redeployza (bota o novo domínio em `CORS_ORIGINS`
+no Hetzner também).
 
 ---
 
