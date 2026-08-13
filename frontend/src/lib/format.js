@@ -86,3 +86,67 @@ export function textoVencimento(dias) {
 /** Data no formato AAAA-MM-DD para inputs type="date". */
 export const paraInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 export const hojeISO = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Normaliza um nome de peça/serviço para agrupar sinônimos triviais:
+ * ignora caixa, acentos e plural simples. Ex.: "Bieletas", "bieleta"
+ * e "BIELETA " colapsam na mesma chave.
+ * Não resolve sinônimos semânticos (ex.: "amortecedor" ≠ "amortecedores
+ * dianteiros"); só o par singular/plural + variações de grafia.
+ */
+export function chaveNome(nome) {
+  const base = String(nome || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return base
+    .split(' ')
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w))
+    .join(' ');
+}
+
+/**
+ * Agrupa itens de peças/serviços por nome normalizado (chaveNome),
+ * somando quantidade e valor. Preserva a data mais recente e a
+ * grafia mais frequente como rótulo de exibição.
+ *
+ * `nomeCampo` é o nome do campo que contém a descrição (ex.: 'descricao'
+ * para peças, 'nome_servico' para serviços).
+ */
+export function agruparPorSinonimo(itens, nomeCampo) {
+  const grupos = new Map();
+  for (const it of itens || []) {
+    const nome = it[nomeCampo] || '';
+    const chave = chaveNome(nome);
+    if (!chave) continue;
+    let g = grupos.get(chave);
+    if (!g) {
+      g = {
+        chave,
+        nomes: {},
+        quantidade: 0,
+        valor_total: 0,
+        ocorrencias: 0,
+        ultima_em: null,
+        ultima_numero_os: null,
+      };
+      grupos.set(chave, g);
+    }
+    g.nomes[nome] = (g.nomes[nome] || 0) + 1;
+    g.quantidade += Number(it.quantidade) || 0;
+    g.valor_total += Number(it.valor_total) || 0;
+    g.ocorrencias += 1;
+    const dt = it.aberta_em ? new Date(it.aberta_em).getTime() : 0;
+    const prev = g.ultima_em ? new Date(g.ultima_em).getTime() : 0;
+    if (dt >= prev) { g.ultima_em = it.aberta_em; g.ultima_numero_os = it.numero_os; }
+  }
+  return Array.from(grupos.values())
+    .map((g) => ({
+      ...g,
+      nome_exibicao: Object.entries(g.nomes)
+        .sort((a, b) => b[1] - a[1])[0][0],
+    }))
+    .sort((a, b) => (new Date(b.ultima_em) - new Date(a.ultima_em)));
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { brl, data } from '../lib/format';
+import { brl, data, agruparPorSinonimo } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Badge } from './ui';
 
 /**
@@ -27,8 +27,10 @@ export function HistoricoCarro({ carroId, excluirOsId, compacto = false }) {
   if (!hist) return <Skeleton className="h-40" />;
 
   const ordens = hist.ordens.filter((o) => o.id !== excluirOsId);
-  const totalServicos = hist.servicos_realizados.length;
-  const totalPecas = hist.pecas_trocadas.length;
+  const servicosAgrupados = agruparPorSinonimo(hist.servicos_realizados, 'nome_servico');
+  const pecasAgrupadas = agruparPorSinonimo(hist.pecas_trocadas, 'descricao');
+  const totalServicos = servicosAgrupados.length;
+  const totalPecas = pecasAgrupadas.length;
 
   return (
     <div className="space-y-3">
@@ -76,20 +78,20 @@ export function HistoricoCarro({ carroId, excluirOsId, compacto = false }) {
               descricao="Serviços lançados nas OS aparecem aqui." />
           : (
             <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
-              {hist.servicos_realizados.slice(0, compacto ? 5 : 100).map((s, i) => (
-                <li key={i} className="flex items-center gap-2 px-3 py-2">
+              {servicosAgrupados.slice(0, compacto ? 5 : 100).map((g) => (
+                <li key={g.chave} className="flex items-center gap-2 px-3 py-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800">{s.nome_servico}</p>
+                    <p className="truncate text-sm font-medium text-slate-800">{g.nome_exibicao}</p>
                     <p className="text-[11px] text-slate-500">
-                      OS nº {s.numero_os} · {data(s.aberta_em)}
+                      {g.ocorrencias > 1
+                        ? `${g.ocorrencias}× · última em OS nº ${g.ultima_numero_os} (${data(g.ultima_em)})`
+                        : `OS nº ${g.ultima_numero_os} · ${data(g.ultima_em)}`}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="tnum text-sm font-semibold">{brl(s.valor_total)}</p>
-                    {s.quantidade > 1 && (
-                      <p className="text-[10px] text-slate-500">
-                        {s.quantidade}× {brl(s.valor_unit)}
-                      </p>
+                    <p className="tnum text-sm font-semibold">{brl(g.valor_total)}</p>
+                    {g.quantidade > 1 && (
+                      <p className="text-[10px] text-slate-500">{g.quantidade} unid.</p>
                     )}
                   </div>
                 </li>
@@ -104,19 +106,19 @@ export function HistoricoCarro({ carroId, excluirOsId, compacto = false }) {
               descricao="Peças lançadas nas OS aparecem aqui." />
           : (
             <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
-              {hist.pecas_trocadas.slice(0, compacto ? 5 : 100).map((p, i) => (
-                <li key={i} className="flex items-center gap-2 px-3 py-2">
+              {pecasAgrupadas.slice(0, compacto ? 5 : 100).map((g) => (
+                <li key={g.chave} className="flex items-center gap-2 px-3 py-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800">{p.descricao}</p>
+                    <p className="truncate text-sm font-medium text-slate-800">{g.nome_exibicao}</p>
                     <p className="text-[11px] text-slate-500">
-                      OS nº {p.numero_os} · {data(p.aberta_em)}
+                      {g.ocorrencias > 1
+                        ? `${g.ocorrencias}× · última em OS nº ${g.ultima_numero_os} (${data(g.ultima_em)})`
+                        : `OS nº ${g.ultima_numero_os} · ${data(g.ultima_em)}`}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="tnum text-sm font-semibold">{brl(p.valor_total)}</p>
-                    <p className="text-[10px] text-slate-500">
-                      {p.quantidade}× {brl(p.valor_unit)}
-                    </p>
+                    <p className="tnum text-sm font-semibold">{brl(g.valor_total)}</p>
+                    <p className="text-[10px] text-slate-500">{g.quantidade} unid.</p>
                   </div>
                 </li>
               ))}

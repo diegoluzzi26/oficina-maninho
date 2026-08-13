@@ -54,10 +54,11 @@ async function doMes({ ano, mes } = {}) {
 async function criar(d) {
   const { rows } = await db.query(
     `INSERT INTO retornos (cliente_id, carro_id, os_id, servico_id,
-                           nome_servico, agendado_para, motivo)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                           nome_servico, agendado_para, motivo, observacao)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
     [d.cliente_id, d.carro_id || null, d.os_id || null, d.servico_id || null,
-     d.nome_servico || null, d.agendado_para, d.motivo || null],
+     d.nome_servico || null, d.agendado_para, d.motivo || null,
+     d.observacao || null],
   );
   return buscarPorId(rows[0].id);
 }

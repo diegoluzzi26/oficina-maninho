@@ -26,11 +26,13 @@ const criarRetorno = z.object({
   nome_servico: z.string().min(1).optional().nullable(),
   agendado_para: dataISO,
   motivo: z.string().optional().nullable(),
+  observacao: z.string().optional().nullable(),
 });
 
 const atualizarRetorno = z.object({
   agendado_para: dataISO.optional(),
   motivo: z.string().optional().nullable(),
+  observacao: z.string().optional().nullable(),
   nome_servico: z.string().optional().nullable(),
   status: z.enum(['pendente', 'contatado', 'ignorado']).optional(),
 });
