@@ -23,29 +23,56 @@ function linkWhatsApp(tel, mensagem) {
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
 }
 
-function CardFollowup({ item, onMudou }) {
+/**
+ * Um card, uma ação principal.
+ *
+ * pendente               → botão grande "📱 Enviar WhatsApp"
+ * enviado / respondeu    → botão grande "✓ Converteu"
+ * converteu / dispensado → só as ações secundárias
+ *
+ * As ações secundárias (reagendar, copiar, dispensar, remover, enviar
+ * pelo Evolution) ficam num rodapé discreto em texto pequeno. O card
+ * deixou de parecer uma barra de ferramentas.
+ */
+function CardFollowup({ item, onMudou, ehAdmin }) {
   const [erro, setErro] = useState('');
-  const [enviandoAuto, setEnviandoAuto] = useState(false);
+  const [carregando, setCarregando] = useState(''); // '' | 'enviar' | 'auto' | 'converteu' | ...
   const [reagendar, setReagendar] = useState(false);
   const [novaData, setNovaData] = useState(item.agendado_para?.slice(0, 10) || '');
 
+  const semTelefone = !item.cliente_telefone;
+  const encerrado = item.status === 'converteu' || item.status === 'dispensado';
+  const jaEnviado = item.status === 'enviado' || item.status === 'respondeu';
+
+  async function marcar(status) {
+    setErro(''); setCarregando(status);
+    try {
+      const r = await api.followupMudarStatus(item.id, { status });
+      onMudou(r);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(''); }
+  }
+
+  async function abrirWhatsApp() {
+    if (semTelefone) { setErro('Cliente sem telefone cadastrado'); return; }
+    window.open(linkWhatsApp(item.cliente_telefone, item.mensagem), '_blank');
+    // Se ainda não foi marcado como enviado, pergunta.
+    if (!jaEnviado) {
+      setTimeout(() => {
+        if (confirm('Mensagem enviada? Marcar como "Enviado"?')) marcar('enviado');
+      }, 500);
+    }
+  }
+
   async function enviarAutomatico() {
-    if (!item.cliente_telefone) { setErro('Cliente sem telefone cadastrado'); return; }
-    if (!confirm(`Enviar automático pelo Evolution pro número ${item.cliente_telefone}?`)) return;
-    setErro(''); setEnviandoAuto(true);
+    if (semTelefone) { setErro('Cliente sem telefone cadastrado'); return; }
+    if (!confirm(`Enviar pelo Evolution direto pro ${item.cliente_telefone}?`)) return;
+    setErro(''); setCarregando('auto');
     try {
       const r = await api.enviarFollowup(item.id);
       onMudou(r);
     } catch (e) { setErro(e.message); }
-    finally { setEnviandoAuto(false); }
-  }
-
-  async function marcar(status, extra = {}) {
-    setErro('');
-    try {
-      const r = await api.followupMudarStatus(item.id, { status, ...extra });
-      onMudou(r);
-    } catch (e) { setErro(e.message); }
+    finally { setCarregando(''); }
   }
 
   async function excluir() {
@@ -66,21 +93,32 @@ function CardFollowup({ item, onMudou }) {
   async function copiarMensagem() {
     try {
       await navigator.clipboard.writeText(item.mensagem);
-      alert('Mensagem copiada!');
+      // Feedback visual leve — reaproveita o slot de erro em azul.
+      setErro('');
     } catch { /* ignore */ }
-  }
-
-  async function abrirWhatsApp() {
-    if (!item.cliente_telefone) { setErro('Cliente sem telefone cadastrado'); return; }
-    window.open(linkWhatsApp(item.cliente_telefone, item.mensagem), '_blank');
-    // Pergunta se marca como enviado
-    setTimeout(() => {
-      if (confirm('Mensagem enviada? Marcar como enviado?')) marcar('enviado');
-    }, 500);
   }
 
   const tipo = TIPO_BADGE[item.tipo] || TIPO_BADGE.manutencao;
   const st = STATUS_BADGE[item.status] || STATUS_BADGE.pendente;
+
+  // Botão principal muda conforme status. Fica null quando o item já
+  // está encerrado (converteu/dispensado) — o card vira só histórico.
+  let botaoPrincipal = null;
+  if (item.status === 'pendente') {
+    botaoPrincipal = (
+      <button onClick={abrirWhatsApp} disabled={semTelefone}
+        className="btn-ouro w-full sm:w-auto">
+        📱 Enviar pelo WhatsApp
+      </button>
+    );
+  } else if (jaEnviado) {
+    botaoPrincipal = (
+      <button onClick={() => marcar('converteu')} disabled={carregando === 'converteu'}
+        className="btn-primary w-full sm:w-auto">
+        {carregando === 'converteu' ? <><Spinner className="h-4 w-4" /> Salvando…</> : '✓ Cliente converteu'}
+      </button>
+    );
+  }
 
   return (
     <div className="card p-4">
@@ -92,7 +130,7 @@ function CardFollowup({ item, onMudou }) {
           {st.label}
         </span>
         {item.regra_nome && (
-          <span className="text-[11px] text-slate-500">· {item.regra_nome}</span>
+          <span className="hidden text-[11px] text-slate-500 sm:inline">· {item.regra_nome}</span>
         )}
         <span className="ml-auto text-[11px] text-slate-500">
           Agendado {data(item.agendado_para)}
@@ -119,36 +157,41 @@ function CardFollowup({ item, onMudou }) {
           <button onClick={() => setReagendar(false)} className="btn-ghost text-xs">Cancelar</button>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
-            <button onClick={enviarAutomatico} disabled={enviandoAuto}
-              className="btn-ouro text-xs">
-              {enviandoAuto ? '⌛ Enviando…' : '🚀 Enviar automático'}
-            </button>
+        <>
+          {botaoPrincipal && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {botaoPrincipal}
+              {item.status === 'pendente' && !semTelefone && (
+                <button onClick={enviarAutomatico} disabled={carregando === 'auto'}
+                  className="text-xs font-semibold text-slate-600 underline-offset-2 hover:text-maninho-700 hover:underline">
+                  {carregando === 'auto' ? '⌛ Enviando…' : 'ou enviar sem abrir o WhatsApp'}
+                </button>
+              )}
+            </div>
           )}
-          <button onClick={copiarMensagem}
-            className="btn-ghost text-xs">📋 Copiar</button>
-          <button onClick={abrirWhatsApp}
-            className="btn-ghost text-xs">📱 Abrir WhatsApp</button>
-          {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
-            <button onClick={() => marcar('enviado')}
-              className="btn-ghost text-xs text-emerald-700">✓ Enviado</button>
-          )}
-          {(item.status === 'enviado' || item.status === 'respondeu') && (
-            <button onClick={() => marcar('converteu')}
-              className="btn-ouro text-xs">✓ Converteu</button>
-          )}
-          <button onClick={() => setReagendar(true)}
-            className="btn-ghost text-xs">📅 Reagendar</button>
-          {item.status !== 'dispensado' && (
-            <button onClick={() => marcar('dispensado')}
-              className="btn-ghost text-xs">✕ Dispensar</button>
-          )}
-          <button onClick={excluir}
-            className="ml-auto text-xs font-semibold text-rose-600 hover:underline">
-            🗑
-          </button>
-        </div>
+
+          {/* Rodapé com ações secundárias sempre presentes */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+            <button onClick={copiarMensagem} className="hover:text-maninho-700">📋 Copiar</button>
+            <button onClick={() => setReagendar(true)} className="hover:text-maninho-700">📅 Reagendar</button>
+            {item.status === 'pendente' && (
+              <button onClick={() => marcar('enviado')} className="hover:text-emerald-700">
+                marcar como enviado
+              </button>
+            )}
+            {!encerrado && (
+              <button onClick={() => marcar('dispensado')} className="hover:text-rose-600">
+                ✕ Dispensar
+              </button>
+            )}
+            {ehAdmin && (
+              <button onClick={excluir}
+                className="ml-auto text-rose-500 hover:text-rose-700">
+                remover
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -310,17 +353,21 @@ export default function Followup() {
             Contato ativo com o cliente via WhatsApp
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost" onClick={() => setManualAberto(true)}>+ Manual</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-primary" onClick={() => setManualAberto(true)}>+ Novo</button>
           {ehAdmin && (
             <>
-              <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
-              <button className="btn-primary" onClick={gerar} disabled={gerando}>
-                {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar fila'}
+              <button className="btn-ghost" onClick={gerar} disabled={gerando}>
+                {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar da fila'}
               </button>
               <button className="btn-ouro" onClick={enviarTodosPendentes} disabled={enviandoTodos}>
-                {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar pendentes'}
+                {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar hoje'}
               </button>
+              <Link to="/followup/regras"
+                className="text-xs font-semibold text-slate-500 hover:text-maninho-700"
+                title="Editar as regras que geram os follow-ups">
+                ⚙ Regras
+              </Link>
             </>
           )}
         </div>
@@ -369,13 +416,14 @@ export default function Followup() {
       {!lista ? (
         <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-32" />)}</div>
       ) : lista.dados.length === 0 ? (
-        <Vazio titulo="Nenhum follow-up na fila"
-          descricao="Clique em ⚡ Gerar fila pra criar follow-ups automáticos a partir das regras."
-        />
+        <Vazio titulo="Nenhum follow-up nessa lista"
+          descricao={ehAdmin
+            ? 'Clique em ⚡ Gerar fila pra criar follow-ups a partir das regras, ou + Manual pra montar um do zero.'
+            : 'Peça pro admin gerar a fila, ou crie um manual clicando em + Manual.'} />
       ) : (
         <div className="space-y-3">
           {lista.dados.map((item) => (
-            <CardFollowup key={item.id} item={item} onMudou={itemMudou} />
+            <CardFollowup key={item.id} item={item} onMudou={itemMudou} ehAdmin={ehAdmin} />
           ))}
         </div>
       )}
