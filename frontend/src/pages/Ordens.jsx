@@ -704,8 +704,15 @@ function Adiantamentos({ os, onMudou }) {
             Valor que o cliente já pagou antes de fechar a OS
           </p>
         </div>
-        {!aberto && restante > 0 && (
-          <button type="button" onClick={() => { setValor(String(restante)); setAberto(true); }}
+        {!aberto && (
+          <button type="button"
+            onClick={() => {
+              // Pré-preenche com o restante quando dá; senão deixa vazio pro
+              // usuário digitar o valor entregue pelo cliente (caso da OS
+              // ainda sem itens ou já com adiantamentos acima do total).
+              setValor(restante > 0 ? String(restante) : '');
+              setAberto(true);
+            }}
             className="rounded bg-maninho-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-maninho-700">
             + Adicionar
           </button>
