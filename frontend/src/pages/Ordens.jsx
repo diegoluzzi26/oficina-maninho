@@ -1418,171 +1418,6 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   );
 }
 
-// ---------------------------------------------------------------------
-// Painel inline mostrado quando o atendente clica numa OS na lista.
-// Mostra peças e serviços da OS e atalhos pra abrir o detalhe completo
-// ou criar um retorno manual pré-preenchido com essa OS.
-// ---------------------------------------------------------------------
-function PreviewOS({ os, carregando, onAbrirModal, onNovoRetorno }) {
-  if (carregando || !os) {
-    return <div className="p-2"><Skeleton className="h-16" /></div>;
-  }
-  const totalServicos = (os.servicos || []).reduce(
-    (s, i) => s + (Number(i.valor_unit) || 0) * (Number(i.quantidade) || 0), 0);
-  const totalPecas = (os.pecas || []).reduce(
-    (s, i) => s + (Number(i.valor_unit) || 0) * (Number(i.quantidade) || 0), 0);
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <div className="flex items-center justify-between">
-            <p className="label">Serviços</p>
-            <p className="tnum text-xs font-semibold text-slate-600">{brl(totalServicos)}</p>
-          </div>
-          {os.servicos?.length ? (
-            <ul className="mt-1 divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
-              {os.servicos.map((s) => (
-                <li key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-                  <span className="flex-1 truncate text-slate-800">{s.nome_servico}</span>
-                  <span className="text-[11px] text-slate-500">{s.quantidade}×</span>
-                  <span className="tnum w-20 text-right font-semibold">{brl(Number(s.valor_unit) * Number(s.quantidade))}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-xs italic text-slate-400">
-              nenhum serviço lançado
-            </p>
-          )}
-        </div>
-        <div>
-          <div className="flex items-center justify-between">
-            <p className="label">Peças</p>
-            <p className="tnum text-xs font-semibold text-slate-600">{brl(totalPecas)}</p>
-          </div>
-          {os.pecas?.length ? (
-            <ul className="mt-1 divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
-              {os.pecas.map((p) => (
-                <li key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-                  <span className="flex-1 truncate text-slate-800">{p.descricao}</span>
-                  <span className="text-[11px] text-slate-500">{p.quantidade}×</span>
-                  <span className="tnum w-20 text-right font-semibold">{brl(Number(p.valor_unit) * Number(p.quantidade))}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-xs italic text-slate-400">
-              nenhuma peça lançada
-            </p>
-          )}
-        </div>
-      </div>
-
-      {os.observacoes && (
-        <div className="rounded-md bg-white/70 px-3 py-2 text-sm text-slate-700">
-          <p className="label mb-0.5">Observações</p>
-          {os.observacoes}
-        </div>
-      )}
-
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
-        <button onClick={onNovoRetorno}
-          className="rounded bg-maninho-50 px-3 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
-          + Retorno manual
-        </button>
-        <button onClick={onAbrirModal}
-          className="rounded bg-maninho-600 px-3 py-1 text-xs font-semibold text-white hover:bg-maninho-700">
-          Abrir / editar OS
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Modal — cria retorno manual pré-preenchido a partir de uma OS.
-// ---------------------------------------------------------------------
-function NovoRetornoDaOS({ os, onFechar, onCriado }) {
-  const daquiSeisMeses = () => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 6);
-    return d.toISOString().slice(0, 10);
-  };
-  const [agendado, setAgendado] = useState(daquiSeisMeses);
-  const [motivo, setMotivo] = useState('');
-  const [obs, setObs] = useState('');
-  const [erro, setErro] = useState('');
-  const [salvando, setSalvando] = useState(false);
-
-  useEffect(() => {
-    if (!os) return;
-    setAgendado(daquiSeisMeses());
-    setMotivo(os.servicos?.[0]?.nome_servico || '');
-    setObs('');
-    setErro('');
-  }, [os?.id]);
-
-  async function salvar(e) {
-    e.preventDefault();
-    setErro(''); setSalvando(true);
-    try {
-      await api.criarRetorno({
-        cliente_id: os.cliente_id,
-        carro_id: os.carro_id || null,
-        os_id: os.id,
-        agendado_para: agendado,
-        motivo: motivo || null,
-        nome_servico: motivo || null,
-        observacao: obs || null,
-      });
-      onCriado();
-    } catch (err) {
-      setErro(err.message);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Modal aberto={!!os} onFechar={onFechar}
-      titulo={os ? `Novo retorno — OS nº ${os.numero_os}` : ''} largura="max-w-md">
-      {os && (
-        <form onSubmit={salvar} className="space-y-3">
-          {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
-          <p className="text-xs text-slate-500">
-            Cliente: <span className="font-semibold text-slate-700">{os.cliente_nome}</span>
-            {os.placa && <> · Veículo: <span className="font-mono font-semibold">{os.placa}</span></>}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Campo label="Agendado para" obrigatorio>
-              <input type="date" className="input" value={agendado}
-                onChange={(e) => setAgendado(e.target.value)} required />
-            </Campo>
-            <Campo label="Motivo / serviço">
-              <input className="input" value={motivo}
-                placeholder="Ex.: troca de óleo"
-                onChange={(e) => setMotivo(e.target.value)} />
-            </Campo>
-          </div>
-          <Campo label="Observação">
-            <textarea className="input" rows={3} value={obs}
-              placeholder="Anotação livre pro atendente"
-              onChange={(e) => setObs(e.target.value)} />
-          </Campo>
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onFechar}
-              className="btn-ghost px-3 py-1.5 text-sm">Cancelar</button>
-            <button type="submit" className="btn-primary px-4 py-1.5 text-sm"
-              disabled={salvando || !agendado}>
-              {salvando ? <Spinner className="h-4 w-4" /> : 'Criar retorno'}
-            </button>
-          </div>
-        </form>
-      )}
-    </Modal>
-  );
-}
 
 // ---------------------------------------------------------------------
 // Página principal
@@ -1601,10 +1436,6 @@ export default function Ordens() {
   const [novaAberta, setNovaAberta] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
   const [pagando, setPagando] = useState(null);
-  const [expandidaId, setExpandidaId] = useState(null);
-  const [expandida, setExpandida] = useState(null); // OS completa (com peças/serviços)
-  const [carregandoExpansao, setCarregandoExpansao] = useState(false);
-  const [novoRetorno, setNovoRetorno] = useState(null); // OS-alvo para criar retorno manual
   // Preferência de visualização persistida localmente
   const [vista, setVista] = useState(() => localStorage.getItem('ordens_vista') || 'lista');
   useEffect(() => { localStorage.setItem('ordens_vista', vista); }, [vista]);
@@ -1633,17 +1464,6 @@ export default function Ordens() {
     const t = setTimeout(carregar, busca ? 350 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
-
-  useEffect(() => {
-    if (!expandidaId) { setExpandida(null); return; }
-    let vivo = true;
-    setCarregandoExpansao(true); setExpandida(null);
-    api.ordem(expandidaId)
-      .then((o) => { if (vivo) setExpandida(o); })
-      .catch((e) => { if (vivo) setErro(e.message); })
-      .finally(() => { if (vivo) setCarregandoExpansao(false); });
-    return () => { vivo = false; };
-  }, [expandidaId]);
 
   function mudarMes(delta) {
     setRef((r) => {
@@ -1763,7 +1583,6 @@ export default function Ordens() {
             <table className="w-full">
               <thead className="border-b border-slate-200 bg-slate-50/80">
                 <tr>
-                  <th className="th w-8"></th>
                   <th className="th w-16">Nº</th>
                   <th className="th">Cliente</th>
                   <th className="th">Veículo</th>
@@ -1773,53 +1592,37 @@ export default function Ordens() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {lista.dados.map((o) => {
-                  const aberto = expandidaId === o.id;
-                  return (
-                    <React.Fragment key={o.id}>
-                      <tr onClick={() => setExpandidaId(aberto ? null : o.id)}
-                        className={`cursor-pointer transition
-                          ${aberto ? 'bg-maninho-50/70' : 'hover:bg-maninho-50/40'}`}>
-                        <td className="td text-center text-slate-400">{aberto ? '▾' : '▸'}</td>
-                        <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
-                        <td className="td">
-                          <p className="font-medium text-slate-800">{o.cliente_nome}</p>
-                          <p className="text-xs text-slate-500">{telefone(o.cliente_telefone)}</p>
-                        </td>
-                        <td className="td">
-                          <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
-                          <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
-                        </td>
-                        <td className="td text-xs text-slate-500">
-                          <p>{data(o.aberta_em)}</p>
-                          {o.criado_por_nome && (
-                            <p className="text-[10px] text-slate-400">por {o.criado_por_nome.split(' ')[0]}</p>
-                          )}
-                        </td>
-                        <td className="td">
-                          <StatusInline os={o}
-                            onMudar={async (osAlvo, novoStatus) => {
-                              try {
-                                await api.mudarStatus(osAlvo.id, novoStatus, false);
-                                carregar();
-                              } catch (e) { setErro(e.message); }
-                            }}
-                            onPagar={(osAlvo) => setPagando(osAlvo)} />
-                        </td>
-                        <td className="td tnum text-right font-semibold text-slate-800">{brl(o.valor_total)}</td>
-                      </tr>
-                      {aberto && (
-                        <tr className="bg-maninho-50/30">
-                          <td colSpan={7} className="px-4 py-3">
-                            <PreviewOS os={expandida} carregando={carregandoExpansao}
-                              onAbrirModal={() => setDetalhe(o)}
-                              onNovoRetorno={() => setNovoRetorno(expandida || o)} />
-                          </td>
-                        </tr>
+                {lista.dados.map((o) => (
+                  <tr key={o.id} onClick={() => setDetalhe(o)}
+                    className="cursor-pointer transition hover:bg-maninho-50/40">
+                    <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
+                    <td className="td">
+                      <p className="font-medium text-slate-800">{o.cliente_nome}</p>
+                      <p className="text-xs text-slate-500">{telefone(o.cliente_telefone)}</p>
+                    </td>
+                    <td className="td">
+                      <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
+                      <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
+                    </td>
+                    <td className="td text-xs text-slate-500">
+                      <p>{data(o.aberta_em)}</p>
+                      {o.criado_por_nome && (
+                        <p className="text-[10px] text-slate-400">por {o.criado_por_nome.split(' ')[0]}</p>
                       )}
-                    </React.Fragment>
-                  );
-                })}
+                    </td>
+                    <td className="td" onClick={(e) => e.stopPropagation()}>
+                      <StatusInline os={o}
+                        onMudar={async (osAlvo, novoStatus) => {
+                          try {
+                            await api.mudarStatus(osAlvo.id, novoStatus, false);
+                            carregar();
+                          } catch (e) { setErro(e.message); }
+                        }}
+                        onPagar={(osAlvo) => setPagando(osAlvo)} />
+                    </td>
+                    <td className="td tnum text-right font-semibold text-slate-800">{brl(o.valor_total)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1842,9 +1645,6 @@ export default function Ordens() {
 
       <PagarOS os={pagando} onFechar={() => setPagando(null)}
         onPago={() => { setPagando(null); carregar(); }} />
-
-      <NovoRetornoDaOS os={novoRetorno} onFechar={() => setNovoRetorno(null)}
-        onCriado={() => { setNovoRetorno(null); }} />
     </div>
   );
 }
