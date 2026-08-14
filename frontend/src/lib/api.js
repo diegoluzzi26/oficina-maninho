@@ -98,6 +98,8 @@ export const api = {
   addPecaOS: (id, body) => request(`/os/${id}/pecas`, { method: 'POST', body }),
   removerServicoOS: (id, itemId) => request(`/os/${id}/servicos/${itemId}`, { method: 'DELETE' }),
   removerPecaOS: (id, itemId) => request(`/os/${id}/pecas/${itemId}`, { method: 'DELETE' }),
+  adicionarPagamentoOS: (id, body) => request(`/os/${id}/pagamentos`, { method: 'POST', body }),
+  removerPagamentoOS: (id, pagId) => request(`/os/${id}/pagamentos/${pagId}`, { method: 'DELETE' }),
 
   mensagensWA: (params) => request('/whatsapp/mensagens', { params }),
 

@@ -477,9 +477,15 @@ function PagarOS({ os, onFechar, onPago }) {
   const [aviso, setAviso] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Adiantamentos já registrados enquanto a OS estava em andamento:
+  // desconta do total pra sugerir só o saldo restante.
+  const jaRecebido = (os?.pagamentos || [])
+    .reduce((s, p) => s + Number(p.valor || 0), 0);
+  const restante = os ? Math.max(0, Number((Number(os.valor_total) - jaRecebido).toFixed(2))) : 0;
+
   useEffect(() => {
     if (os) {
-      setParcelas([{ forma: 'dinheiro', valor: String(os.valor_total || '') }]);
+      setParcelas([{ forma: 'dinheiro', valor: String(restante || os.valor_total || '') }]);
       setPagoEm(hojeISO()); setNotificarRecibo(false);
       setErro(''); setAviso('');
     }
@@ -491,7 +497,9 @@ function PagarOS({ os, onFechar, onPago }) {
     (s, p) => s + (Number(p.valor) || 0), 0,
   );
   const totalOS = Number(os.valor_total) || 0;
-  const diferenca = Number((totalParcelas - totalOS).toFixed(2));
+  // O "esperado" é o restante quando há adiantamento, ou o total se não teve.
+  const esperado = restante > 0 ? restante : totalOS;
+  const diferenca = Number((totalParcelas - esperado).toFixed(2));
 
   function alterarParcela(idx, campo, v) {
     setParcelas((atuais) => atuais.map((p, i) => (i === idx ? { ...p, [campo]: v } : p)));
@@ -562,6 +570,17 @@ function PagarOS({ os, onFechar, onPago }) {
         <div className="rounded-md bg-maninho-50 p-3 text-center">
           <p className="text-xs text-slate-500">Total da OS</p>
           <p className="numero text-2xl text-maninho-700">{brl(os.valor_total)}</p>
+          {jaRecebido > 0 && (
+            <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+              <span className="text-emerald-700">
+                Já recebido: <strong className="tnum">{brl(jaRecebido)}</strong>
+              </span>
+              <span className="text-slate-400">·</span>
+              <span className="text-maninho-700">
+                Falta: <strong className="tnum">{brl(restante)}</strong>
+              </span>
+            </div>
+          )}
         </div>
 
         <Campo label="Data do pagamento" obrigatorio>
@@ -607,7 +626,7 @@ function PagarOS({ os, onFechar, onPago }) {
               : 'bg-rose-50 text-rose-800'}`}>
             <span>Somado: <strong className="tnum">{brl(totalParcelas)}</strong></span>
             {Math.abs(diferenca) < 0.01
-              ? <span>= total da OS</span>
+              ? <span>= {jaRecebido > 0 ? 'valor restante' : 'total da OS'}</span>
               : diferenca < 0
                 ? <span>faltam <strong className="tnum">{brl(Math.abs(diferenca))}</strong> (pagamento parcial)</span>
                 : <span>excede em <strong className="tnum">{brl(diferenca)}</strong></span>}
@@ -633,6 +652,127 @@ function PagarOS({ os, onFechar, onPago }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Adiantamentos: pagamentos parciais que o cliente vai fazendo antes
+// da OS fechar. Aparece só quando a OS não está paga. Ao dar baixa,
+// o modal PagarOS desconta o já recebido do valor sugerido.
+// ---------------------------------------------------------------------
+function Adiantamentos({ os, onMudou }) {
+  const [aberto, setAberto] = useState(false);
+  const [forma, setForma] = useState('dinheiro');
+  const [valor, setValor] = useState('');
+  const [pagoEm, setPagoEm] = useState(hojeISO());
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const pagamentos = os.pagamentos || [];
+  const jaRecebido = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
+  const restante = Math.max(0, Number((Number(os.valor_total) - jaRecebido).toFixed(2)));
+
+  async function salvar(e) {
+    e.preventDefault();
+    if (!(Number(valor) > 0)) { setErro('Informe um valor maior que zero'); return; }
+    setSalvando(true); setErro('');
+    try {
+      const atualizada = await api.adicionarPagamentoOS(os.id, {
+        forma, valor: Number(valor), pago_em: pagoEm,
+      });
+      setForma('dinheiro'); setValor(''); setPagoEm(hojeISO());
+      setAberto(false);
+      onMudou(atualizada);
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  async function remover(pagId) {
+    if (!confirm('Remover este adiantamento?')) return;
+    try {
+      const atualizada = await api.removerPagamentoOS(os.id, pagId);
+      onMudou(atualizada);
+    } catch (err) { setErro(err.message); }
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <p className="label mb-0">Adiantamentos</p>
+          <p className="text-[11px] text-slate-500">
+            Valor que o cliente já pagou antes de fechar a OS
+          </p>
+        </div>
+        {!aberto && restante > 0 && (
+          <button type="button" onClick={() => { setValor(String(restante)); setAberto(true); }}
+            className="rounded bg-maninho-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-maninho-700">
+            + Adicionar
+          </button>
+        )}
+      </div>
+
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+      {pagamentos.length === 0 && !aberto && (
+        <p className="py-2 text-center text-xs text-slate-400">
+          Nenhum adiantamento registrado.
+        </p>
+      )}
+
+      {pagamentos.length > 0 && (
+        <ul className="mb-2 divide-y divide-slate-100 text-sm">
+          {pagamentos.map((p) => (
+            <li key={p.id} className="flex items-center justify-between py-1.5">
+              <span className="flex-1">
+                <span className="font-semibold text-slate-700">{rotuloForma(p.forma)}</span>
+                <span className="ml-2 text-xs text-slate-500">
+                  {data(p.pago_em)}
+                </span>
+              </span>
+              <span className="tnum font-semibold text-emerald-700">{brl(p.valor)}</span>
+              <button type="button" onClick={() => remover(p.id)}
+                className="ml-3 text-xs text-slate-400 hover:text-rose-600"
+                title="Remover">✕</button>
+            </li>
+          ))}
+          <li className="flex items-center justify-between py-1.5 text-xs">
+            <span className="text-emerald-700">Já recebido</span>
+            <span className="tnum font-bold text-emerald-700">{brl(jaRecebido)}</span>
+            <span className="ml-3 w-4" />
+          </li>
+          <li className="flex items-center justify-between py-1.5 text-xs">
+            <span className="text-maninho-700">Falta</span>
+            <span className="tnum font-bold text-maninho-700">{brl(restante)}</span>
+            <span className="ml-3 w-4" />
+          </li>
+        </ul>
+      )}
+
+      {aberto && (
+        <form onSubmit={salvar} className="grid grid-cols-[1fr_1fr_130px_auto] gap-2 border-t border-slate-100 pt-2">
+          <select className="input py-1.5 text-xs" value={forma}
+            onChange={(e) => setForma(e.target.value)}>
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+            ))}
+          </select>
+          <input type="date" className="input py-1.5 text-xs" value={pagoEm}
+            onChange={(e) => setPagoEm(e.target.value)} required />
+          <input type="number" step="0.01" min="0.01" className="input tnum py-1.5 text-xs text-right"
+            placeholder="0,00" value={valor}
+            onChange={(e) => setValor(e.target.value)} required />
+          <div className="flex gap-1">
+            <button type="submit" disabled={salvando}
+              className="btn-primary px-2 py-1 text-xs">
+              {salvando ? '…' : 'Salvar'}
+            </button>
+            <button type="button" onClick={() => setAberto(false)}
+              className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -1142,6 +1282,10 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             </div>
           )}
         </div>
+
+        {!foiPaga && (
+          <Adiantamentos os={os} onMudou={onMudou} />
+        )}
 
         <div className="space-y-1 rounded-md bg-maninho-50 px-4 py-3 text-sm">
           <div className="flex justify-between text-slate-600">

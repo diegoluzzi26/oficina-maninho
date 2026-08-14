@@ -315,17 +315,30 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
   }
 
   if (novo === 'paga') {
-    const parcelas = normalizarPagamentos(dadosPagamento, valorTotal);
-    if (!parcelas.length) {
+    // Se já entrou adiantamento suficiente pra cobrir o total, o
+    // usuário pode só clicar "marcar como paga" sem informar mais
+    // nada. Consultamos o que já foi pago pra decidir se novas
+    // parcelas são obrigatórias.
+    const jaPago = await db.query(
+      'SELECT COALESCE(SUM(valor), 0)::numeric AS total FROM os_pagamentos WHERE os_id = $1',
+      [id],
+    );
+    const totalPago = Number(jaPago.rows[0].total);
+    const restante = Number((valorTotal - totalPago).toFixed(2));
+
+    const parcelas = normalizarPagamentos(dadosPagamento, restante > 0 ? restante : valorTotal);
+    if (!parcelas.length && totalPago <= 0) {
       throw new AppError('Informe a forma de pagamento para dar baixa na OS', 422);
     }
     if (parcelas.some((p) => !(p.valor > 0))) {
       throw new AppError('Todo pagamento precisa ter valor maior que zero', 422);
     }
 
+    // Não apagamos pagamentos existentes: se o cliente adiantou
+    // valor enquanto a OS estava em andamento, essas linhas ficam.
+    // O que vier em `parcelas` é somado por cima (tipicamente o
+    // saldo restante) e o trigger recalcula valor_pago.
     await db.withTransaction(async (client) => {
-      // Zera pagamentos antigos (caso alguém esteja re-pagando após reabertura futura)
-      await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
       for (const p of parcelas) {
         await client.query(
           `INSERT INTO os_pagamentos (os_id, forma, valor, pago_em)
@@ -333,8 +346,6 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
           [id, p.forma, p.valor, p.pago_em],
         );
       }
-      // O trigger t_os_pag_sync já atualizou valor_pago e forma_pagamento.
-      // Aqui só transiciona o status; paga_em vem do trigger existente.
       const dataPag = dadosPagamento.pago_em
         || parcelas[0].pago_em
         || null;
@@ -391,6 +402,52 @@ async function adicionarPeca(osId, peca) {
   });
 }
 
+/**
+ * Registra um adiantamento (ou parcela extra) numa OS que ainda não
+ * foi paga. Serve pro caso do cliente pagar parte antes do serviço
+ * terminar. Se a soma dos pagamentos atinge o valor total, a OS
+ * continua no status atual — quem finaliza é o botão "Marcar como
+ * paga", pra não fechar por engano.
+ */
+async function adicionarPagamento(osId, { forma, valor, pago_em }) {
+  const atual = await db.query('SELECT status FROM ordens_servico WHERE id = $1', [osId]);
+  if (!atual.rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+  if (atual.rows[0].status === 'paga') {
+    throw new AppError(
+      'Essa OS já está paga. Pra corrigir o pagamento, edite direto o registro existente.',
+      422,
+    );
+  }
+  if (!(Number(valor) > 0)) {
+    throw new AppError('Informe um valor maior que zero', 422);
+  }
+
+  await db.query(
+    `INSERT INTO os_pagamentos (os_id, forma, valor, pago_em)
+     VALUES ($1, $2, $3, COALESCE($4::timestamptz, now()))`,
+    [osId, forma, Number(valor), pago_em || null],
+  );
+  return buscarPorId(osId);
+}
+
+async function removerPagamento(osId, pagId) {
+  const atual = await db.query('SELECT status FROM ordens_servico WHERE id = $1', [osId]);
+  if (!atual.rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+  if (atual.rows[0].status === 'paga') {
+    throw new AppError(
+      'Essa OS já está paga — não dá pra remover pagamento sem reabrir. '
+      + 'Se o valor está errado, edite o registro.',
+      422,
+    );
+  }
+  const r = await db.query(
+    'DELETE FROM os_pagamentos WHERE id = $1 AND os_id = $2',
+    [pagId, osId],
+  );
+  if (!r.rowCount) throw AppError.notFound('Pagamento não encontrado nesta OS');
+  return buscarPorId(osId);
+}
+
 async function removerServico(osId, itemId) {
   const r = await db.query('DELETE FROM os_servicos WHERE id=$1 AND os_id=$2', [itemId, osId]);
   if (!r.rowCount) throw AppError.notFound('Item não encontrado nesta OS');
@@ -418,5 +475,6 @@ async function remover(osId) {
 module.exports = {
   listar, buscarPorId, criar, atualizar, mudarStatus,
   adicionarServico, adicionarPeca, removerServico, removerPeca,
+  adicionarPagamento, removerPagamento,
   remover,
 };

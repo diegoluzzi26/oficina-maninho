@@ -121,6 +121,21 @@ router.delete('/:id/pecas/:itemId',
   validate({ params: z.object({ id: v.uuid, itemId: v.uuid }) }),
   h(async (req, res) => res.json(await svc.removerPeca(req.params.id, req.params.itemId))));
 
+// Adiantamento/pagamento parcial em OS ainda não paga.
+const pagamentoBody = z.object({
+  forma: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
+    'cartao_debito', 'transferencia', 'cheque', 'outro']),
+  valor: z.coerce.number().positive(),
+  pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+router.post('/:id/pagamentos', validate({ params: v.idParam, body: pagamentoBody }),
+  h(async (req, res) => res.status(201).json(await svc.adicionarPagamento(req.params.id, req.body))));
+
+router.delete('/:id/pagamentos/:pagId',
+  validate({ params: z.object({ id: v.uuid, pagId: v.uuid }) }),
+  h(async (req, res) => res.json(await svc.removerPagamento(req.params.id, req.params.pagId))));
+
 // Exclui OS inteira (bloqueado se paga)
 router.delete('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.remover(req.params.id))));
