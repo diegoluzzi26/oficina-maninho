@@ -461,12 +461,17 @@ function NovaOS({ aberto, onFechar, onCriada }) {
 }
 
 // ---------------------------------------------------------------------
-// Modal marcar como paga
+// Modal marcar como paga — aceita até 2 formas de pagamento (split).
+// Se só uma parcela, o form fica igual ao de antes. O botão "+ segunda
+// forma" habilita a segunda linha; ao chegar em 2, o campo Valor da
+// primeira parcela vira o único editável e a segunda é sempre o resto.
 // ---------------------------------------------------------------------
 function PagarOS({ os, onFechar, onPago }) {
-  const [forma, setForma] = useState('dinheiro');
+  // Sempre um array. Segunda linha adicionada sob demanda.
+  const [parcelas, setParcelas] = useState([
+    { forma: 'dinheiro', valor: '' },
+  ]);
   const [pagoEm, setPagoEm] = useState(hojeISO());
-  const [valor, setValor] = useState('');
   const [notificarRecibo, setNotificarRecibo] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -474,24 +479,69 @@ function PagarOS({ os, onFechar, onPago }) {
 
   useEffect(() => {
     if (os) {
-      setValor(String(os.valor_total || ''));
-      setForma('dinheiro'); setPagoEm(hojeISO()); setNotificarRecibo(false);
+      setParcelas([{ forma: 'dinheiro', valor: String(os.valor_total || '') }]);
+      setPagoEm(hojeISO()); setNotificarRecibo(false);
       setErro(''); setAviso('');
     }
   }, [os?.id]);
 
   if (!os) return null;
 
+  const totalParcelas = parcelas.reduce(
+    (s, p) => s + (Number(p.valor) || 0), 0,
+  );
+  const totalOS = Number(os.valor_total) || 0;
+  const diferenca = Number((totalParcelas - totalOS).toFixed(2));
+
+  function alterarParcela(idx, campo, v) {
+    setParcelas((atuais) => atuais.map((p, i) => (i === idx ? { ...p, [campo]: v } : p)));
+  }
+
+  function adicionarSegunda() {
+    // Sugere já dividido: primeira = metade, segunda = resto.
+    const metade = (totalOS / 2).toFixed(2);
+    setParcelas([
+      { forma: parcelas[0].forma, valor: metade },
+      { forma: parcelas[0].forma === 'pix' ? 'dinheiro' : 'pix', valor: (totalOS - Number(metade)).toFixed(2) },
+    ]);
+  }
+
+  function removerSegunda() {
+    setParcelas([{ forma: parcelas[0].forma, valor: String(totalOS) }]);
+  }
+
   async function salvar(e) {
     e.preventDefault();
-    setErro(''); setAviso(''); setSalvando(true);
+    setErro(''); setAviso('');
+
+    const parcelasValidas = parcelas.filter((p) => Number(p.valor) > 0);
+    if (!parcelasValidas.length) {
+      setErro('Informe pelo menos um pagamento com valor.'); return;
+    }
+    if (parcelasValidas.length > 1) {
+      const formasIguais = parcelasValidas[0].forma === parcelasValidas[1].forma;
+      if (formasIguais) {
+        setErro('Ao dividir o pagamento, escolha duas formas diferentes.'); return;
+      }
+    }
+
+    setSalvando(true);
     try {
-      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, {
-        forma_pagamento: forma, pago_em: pagoEm, valor_pago: Number(valor),
-      });
+      const payload = parcelasValidas.length === 1
+        ? {
+            forma_pagamento: parcelasValidas[0].forma,
+            pago_em: pagoEm,
+            valor_pago: Number(parcelasValidas[0].valor),
+          }
+        : {
+            pago_em: pagoEm,
+            pagamentos: parcelasValidas.map((p) => ({
+              forma: p.forma, valor: Number(p.valor), pago_em: pagoEm,
+            })),
+          };
+      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, payload);
       if (notificarRecibo && atualizada.whatsapp && !atualizada.whatsapp.enviado) {
         setAviso(`Pagamento registrado. Recibo por WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
-        // não fecha — dá tempo do usuário ler o aviso
         return;
       }
       onPago(atualizada);
@@ -514,23 +564,54 @@ function PagarOS({ os, onFechar, onPago }) {
           <p className="numero text-2xl text-maninho-700">{brl(os.valor_total)}</p>
         </div>
 
-        <Campo label="Forma de pagamento" obrigatorio>
-          <select className="input" value={forma} onChange={(e) => setForma(e.target.value)}>
-            {FORMAS_PAGAMENTO.map((f) => (
-              <option key={f.valor} value={f.valor}>{f.rotulo}</option>
-            ))}
-          </select>
+        <Campo label="Data do pagamento" obrigatorio>
+          <input type="date" className="input" value={pagoEm} required
+            onChange={(e) => setPagoEm(e.target.value)} />
         </Campo>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Campo label="Data" obrigatorio>
-            <input type="date" className="input" value={pagoEm} required
-              onChange={(e) => setPagoEm(e.target.value)} />
-          </Campo>
-          <Campo label="Valor pago" obrigatorio>
-            <input type="number" step="0.01" min="0" className="input tnum" value={valor} required
-              onChange={(e) => setValor(e.target.value)} />
-          </Campo>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Formas de pagamento
+            </p>
+            {parcelas.length === 1 ? (
+              <button type="button" onClick={adicionarSegunda}
+                className="text-xs font-semibold text-maninho-700 hover:underline">
+                + dividir em 2
+              </button>
+            ) : (
+              <button type="button" onClick={removerSegunda}
+                className="text-xs font-semibold text-rose-600 hover:underline">
+                usar só 1 forma
+              </button>
+            )}
+          </div>
+
+          {parcelas.map((p, idx) => (
+            <div key={idx} className="grid grid-cols-[1fr_140px] gap-2">
+              <select className="input" value={p.forma}
+                onChange={(e) => alterarParcela(idx, 'forma', e.target.value)}>
+                {FORMAS_PAGAMENTO.map((f) => (
+                  <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                ))}
+              </select>
+              <input type="number" step="0.01" min="0" className="input tnum text-right"
+                placeholder="0,00" value={p.valor} required
+                onChange={(e) => alterarParcela(idx, 'valor', e.target.value)} />
+            </div>
+          ))}
+
+          <div className={`flex items-center justify-between rounded px-3 py-2 text-xs
+            ${Math.abs(diferenca) < 0.01 ? 'bg-emerald-50 text-emerald-800'
+              : diferenca < 0 ? 'bg-amber-50 text-amber-800'
+              : 'bg-rose-50 text-rose-800'}`}>
+            <span>Somado: <strong className="tnum">{brl(totalParcelas)}</strong></span>
+            {Math.abs(diferenca) < 0.01
+              ? <span>= total da OS</span>
+              : diferenca < 0
+                ? <span>faltam <strong className="tnum">{brl(Math.abs(diferenca))}</strong> (pagamento parcial)</span>
+                : <span>excede em <strong className="tnum">{brl(diferenca)}</strong></span>}
+          </div>
         </div>
 
         <label className="flex cursor-pointer items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -820,8 +901,13 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           </a>
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
-              · Paga em {data(os.paga_em)} · {rotuloForma(os.forma_pagamento)}
-              {os.valor_pago && Number(os.valor_pago) !== Number(os.valor_total)
+              · Paga em {data(os.paga_em)} ·{' '}
+              {os.pagamentos && os.pagamentos.length > 1
+                ? os.pagamentos.map((p) =>
+                    `${rotuloForma(p.forma)} ${brl(p.valor)}`).join(' + ')
+                : rotuloForma(os.forma_pagamento)}
+              {os.pagamentos && os.pagamentos.length <= 1
+                && os.valor_pago && Number(os.valor_pago) !== Number(os.valor_total)
                 ? ` (${brl(os.valor_pago)})` : ''}
               <button type="button" onClick={() => setEditPag((v) => !v)}
                 className="ml-2 text-[11px] font-semibold text-maninho-600 hover:underline">

@@ -43,8 +43,35 @@ function TooltipFin({ active, payload, label }) {
   );
 }
 
+function CardFluxo({ titulo, entrada, saida, liquido, atraso = 0 }) {
+  const positivo = liquido >= 0;
+  return (
+    <div className="card anima p-5" style={{ animationDelay: `${atraso}ms` }}>
+      <p className="label">{titulo}</p>
+      <div className="mt-2 flex items-baseline gap-2">
+        <p className={`numero text-[28px] ${positivo ? 'text-emerald-700' : 'text-rose-600'}`}>
+          {positivo ? '+' : '−'}{brl(Math.abs(liquido))}
+        </p>
+        <span className="text-xs text-slate-500">líquido</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded bg-emerald-50 px-2 py-1.5 text-emerald-800">
+          <p className="uppercase tracking-wide opacity-70">Entrou</p>
+          <p className="tnum font-semibold">{brl(entrada)}</p>
+        </div>
+        <div className="rounded bg-rose-50 px-2 py-1.5 text-rose-800">
+          <p className="uppercase tracking-wide opacity-70">Saiu</p>
+          <p className="tnum font-semibold">{brl(saida)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Financeiro() {
   const [dados, setDados] = useState(null);
+  const [fluxo14, setFluxo14] = useState([]);
+  const [fluxoNow, setFluxoNow] = useState(null);
   const [periodo, setPeriodo] = useState('6m');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
@@ -55,8 +82,17 @@ export default function Financeiro() {
 
     setCarregando(true);
     setErro('');
-    api.painelFinanceiro(periodoMeses(meses))
-      .then((d) => !cancelado && setDados(d))
+    Promise.all([
+      api.painelFinanceiro(periodoMeses(meses)),
+      api.fluxoAtual(),
+      api.fluxoDiario(),
+    ])
+      .then(([painel, atual, diario]) => {
+        if (cancelado) return;
+        setDados(painel);
+        setFluxoNow(atual);
+        setFluxo14(diario.slice(-14));
+      })
       .catch((e) => !cancelado && setErro(e.message))
       .finally(() => !cancelado && setCarregando(false));
 
@@ -111,6 +147,39 @@ export default function Financeiro() {
           ))}
         </div>
       </div>
+
+      {/* Fluxo do dia / semana + mini-gráfico últimos 14 dias */}
+      {fluxoNow && (
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_2fr]">
+          <CardFluxo titulo="Hoje" entrada={fluxoNow.hoje.entrada}
+            saida={fluxoNow.hoje.saida} liquido={fluxoNow.hoje.liquido} atraso={0} />
+          <CardFluxo titulo="Esta semana" entrada={fluxoNow.semana.entrada}
+            saida={fluxoNow.semana.saida} liquido={fluxoNow.semana.liquido} atraso={60} />
+          <div className="card anima p-4" style={{ animationDelay: '120ms' }}>
+            <p className="label">Entradas e saídas dos últimos 14 dias</p>
+            {fluxo14.length === 0 ? (
+              <p className="mt-6 text-center text-xs text-slate-500">Sem movimentação</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={130}>
+                <BarChart data={fluxo14.map((d) => ({
+                  dia: new Date(d.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                  Entrou: d.entrada,
+                  Saiu: d.saida,
+                }))} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#64748b' }}
+                    axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
+                  <YAxis tickFormatter={(v) => `${brlCurto(v)}`}
+                    tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} />
+                  <Tooltip content={<TooltipFin />} cursor={{ fill: AZUL, fillOpacity: 0.04 }} />
+                  <Bar dataKey="Entrou" fill={VERDE} radius={[2, 2, 0, 0]} maxBarSize={14} />
+                  <Bar dataKey="Saiu" fill={ROSA} radius={[2, 2, 0, 0]} maxBarSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

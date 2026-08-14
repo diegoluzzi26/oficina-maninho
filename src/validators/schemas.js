@@ -145,10 +145,20 @@ const atualizarOS = z.object({
 const FORMAS_PAG = ['dinheiro', 'pix', 'boleto', 'cartao_credito',
   'cartao_debito', 'transferencia', 'cheque', 'outro'];
 
+// Uma parcela do pagamento (uma linha em os_pagamentos).
+const pagamentoParcial = z.object({
+  forma: z.enum(FORMAS_PAG),
+  valor: z.coerce.number().positive(),
+  pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
 const mudarStatus = z.object({
   status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']),
   notificar_whatsapp: z.boolean().default(false),
-  // Só usados quando status === 'paga'
+  // Só usados quando status === 'paga'.
+  // Formato novo (split): array de pagamentos.
+  pagamentos: z.array(pagamentoParcial).min(1).max(4).optional(),
+  // Formato antigo (uma forma só) — continua aceito.
   forma_pagamento: z.enum(FORMAS_PAG).optional(),
   pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   valor_pago: z.coerce.number().min(0).optional(),

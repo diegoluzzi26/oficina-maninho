@@ -71,11 +71,12 @@ const SELECT_OS = `
 
 async function comItens(client, os) {
   const q = client || db;
-  const [servicos, pecas] = await Promise.all([
+  const [servicos, pecas, pagamentos] = await Promise.all([
     q.query('SELECT * FROM os_servicos WHERE os_id = $1 ORDER BY criado_em', [os.id]),
     q.query('SELECT * FROM os_pecas    WHERE os_id = $1 ORDER BY criado_em', [os.id]),
+    q.query('SELECT id, forma, valor, pago_em, observacao FROM os_pagamentos WHERE os_id = $1 ORDER BY pago_em, criado_em', [os.id]),
   ]);
-  return { ...os, servicos: servicos.rows, pecas: pecas.rows };
+  return { ...os, servicos: servicos.rows, pecas: pecas.rows, pagamentos: pagamentos.rows };
 }
 
 async function buscarPorId(id) {
@@ -273,11 +274,36 @@ const TRANSICOES = {
   paga: [],
 };
 
+/**
+ * Normaliza a entrada de pagamento: aceita tanto o formato novo
+ * (array `pagamentos: [{forma, valor, pago_em}]`) quanto o antigo
+ * (`forma_pagamento` + `valor_pago` + `pago_em` single). Sempre
+ * devolve uma lista com pelo menos uma parcela.
+ */
+function normalizarPagamentos({ pagamentos, forma_pagamento, pago_em, valor_pago }, valorTotal) {
+  if (Array.isArray(pagamentos) && pagamentos.length) {
+    return pagamentos.map((p) => ({
+      forma: p.forma,
+      valor: Number(p.valor),
+      pago_em: p.pago_em || pago_em || null,
+    }));
+  }
+  if (forma_pagamento) {
+    return [{
+      forma: forma_pagamento,
+      valor: valor_pago != null ? Number(valor_pago) : Number(valorTotal),
+      pago_em: pago_em || null,
+    }];
+  }
+  return [];
+}
+
 async function mudarStatus(id, novo, dadosPagamento = {}) {
   const atual = await db.query('SELECT status, valor_total FROM ordens_servico WHERE id = $1', [id]);
   if (!atual.rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
 
   const de = atual.rows[0].status;
+  const valorTotal = Number(atual.rows[0].valor_total);
   if (de === novo) return buscarPorId(id);
 
   if (!TRANSICOES[de].includes(novo)) {
@@ -288,21 +314,38 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
     );
   }
 
-  // Ao pagar, exigimos forma. Data e valor têm defaults sensatos.
   if (novo === 'paga') {
-    const { forma_pagamento, pago_em, valor_pago } = dadosPagamento;
-    if (!forma_pagamento) {
+    const parcelas = normalizarPagamentos(dadosPagamento, valorTotal);
+    if (!parcelas.length) {
       throw new AppError('Informe a forma de pagamento para dar baixa na OS', 422);
     }
-    await db.query(
-      `UPDATE ordens_servico
-          SET status = $1,
-              forma_pagamento = $2,
-              paga_em  = COALESCE($3::timestamptz, now()),
-              valor_pago = COALESCE($4, valor_total)
-        WHERE id = $5`,
-      [novo, forma_pagamento, pago_em || null, valor_pago ?? null, id],
-    );
+    if (parcelas.some((p) => !(p.valor > 0))) {
+      throw new AppError('Todo pagamento precisa ter valor maior que zero', 422);
+    }
+
+    await db.withTransaction(async (client) => {
+      // Zera pagamentos antigos (caso alguém esteja re-pagando após reabertura futura)
+      await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
+      for (const p of parcelas) {
+        await client.query(
+          `INSERT INTO os_pagamentos (os_id, forma, valor, pago_em)
+           VALUES ($1, $2, $3, COALESCE($4::timestamptz, now()))`,
+          [id, p.forma, p.valor, p.pago_em],
+        );
+      }
+      // O trigger t_os_pag_sync já atualizou valor_pago e forma_pagamento.
+      // Aqui só transiciona o status; paga_em vem do trigger existente.
+      const dataPag = dadosPagamento.pago_em
+        || parcelas[0].pago_em
+        || null;
+      await client.query(
+        `UPDATE ordens_servico
+            SET status = $1,
+                paga_em = COALESCE($2::timestamptz, now())
+          WHERE id = $3`,
+        [novo, dataPag, id],
+      );
+    });
   } else {
     await db.query('UPDATE ordens_servico SET status = $1 WHERE id = $2', [novo, id]);
   }

@@ -27,6 +27,16 @@ router.get('/evolucao', validate({ query: v.periodo }),
 router.get('/fluxo-caixa', validate({ query: v.periodo }),
   h(async (req, res) => res.json(await fin.fluxoCaixa(req.query))));
 
+router.get('/fluxo-diario', validate({ query: v.periodo }),
+  h(async (req, res) => res.json(await fin.fluxoDiario(req.query))));
+
+router.get('/fluxo-semanal', validate({ query: v.periodo }),
+  h(async (req, res) => res.json(await fin.fluxoSemanal(req.query))));
+
+// Cards de "hoje" e "esta semana" — sem parâmetros, sempre corrente.
+router.get('/fluxo-atual',
+  h(async (_req, res) => res.json(await fin.fluxoAtual())));
+
 router.get('/categorias', validate({ query: v.filtroCategorias }),
   h(async (req, res) => res.json(await desp.listarCategorias(req.query))));
 

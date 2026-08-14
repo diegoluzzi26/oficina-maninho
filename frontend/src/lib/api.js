@@ -147,6 +147,9 @@ export const api = {
 
   painelFinanceiro: (params) => request('/financeiro/painel', { params }),
   fluxoCaixa: (params) => request('/financeiro/fluxo-caixa', { params }),
+  fluxoDiario: (params) => request('/financeiro/fluxo-diario', { params }),
+  fluxoSemanal: (params) => request('/financeiro/fluxo-semanal', { params }),
+  fluxoAtual: () => request('/financeiro/fluxo-atual'),
   categorias: (params) => request('/financeiro/categorias', { params }),
   criarCategoria: (body) => request('/financeiro/categorias', { method: 'POST', body }),
   atualizarCategoria: (id, body) => request(`/financeiro/categorias/${id}`, { method: 'PATCH', body }),

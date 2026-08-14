@@ -182,6 +182,95 @@ async function fluxoCaixa(filtros) {
   };
 }
 
+/**
+ * Fluxo diário — entradas e saídas por dia dentro de uma janela.
+ * Default: últimos 30 dias.
+ */
+async function fluxoDiario(filtros) {
+  const params = [];
+  let clause = '';
+  if (filtros.inicio) { params.push(filtros.inicio); clause += ` AND dia >= $${params.length}::date`; }
+  if (filtros.fim)    { params.push(filtros.fim);    clause += ` AND dia <= $${params.length}::date`; }
+  if (!filtros.inicio && !filtros.fim) clause = ` AND dia >= (CURRENT_DATE - interval '30 days')::date`;
+
+  const { rows } = await db.query(
+    `SELECT dia, entrada, saida, liquido
+       FROM vw_fluxo_diario WHERE 1=1 ${clause} ORDER BY dia`,
+    params,
+  );
+  return rows.map((r) => ({
+    dia: r.dia,
+    entrada: Number(r.entrada),
+    saida: Number(r.saida),
+    liquido: Number(r.liquido),
+  }));
+}
+
+/** Fluxo semanal (segunda a domingo, ISO). Default: últimas 12 semanas. */
+async function fluxoSemanal(filtros) {
+  const params = [];
+  let clause = '';
+  if (filtros.inicio) { params.push(filtros.inicio); clause += ` AND semana >= date_trunc('week',$${params.length}::date)::date`; }
+  if (filtros.fim)    { params.push(filtros.fim);    clause += ` AND semana <= date_trunc('week',$${params.length}::date)::date`; }
+  if (!filtros.inicio && !filtros.fim) clause = ` AND semana >= date_trunc('week', CURRENT_DATE - interval '12 weeks')::date`;
+
+  const { rows } = await db.query(
+    `SELECT semana, entrada, saida, liquido
+       FROM vw_fluxo_semanal WHERE 1=1 ${clause} ORDER BY semana`,
+    params,
+  );
+  return rows.map((r) => ({
+    semana: r.semana,
+    entrada: Number(r.entrada),
+    saida: Number(r.saida),
+    liquido: Number(r.liquido),
+  }));
+}
+
+/**
+ * Resumo "hoje" + "esta semana" pro cabeçalho do Financeiro e do Dashboard.
+ * Uma consulta única com CTEs em vez de várias round-trips — a tela abre
+ * mais rápido e a leitura fica atômica dentro do request.
+ */
+async function fluxoAtual() {
+  const { rows } = await db.query(`
+    WITH hoje AS (
+      SELECT COALESCE(SUM(entrada),0)::numeric AS entrada,
+             COALESCE(SUM(saida),0)::numeric   AS saida
+        FROM vw_fluxo_diario
+       WHERE dia = CURRENT_DATE
+    ),
+    semana AS (
+      SELECT COALESCE(SUM(entrada),0)::numeric AS entrada,
+             COALESCE(SUM(saida),0)::numeric   AS saida
+        FROM vw_fluxo_diario
+       WHERE dia >= date_trunc('week', CURRENT_DATE)::date
+         AND dia <= CURRENT_DATE
+    )
+    SELECT hoje.entrada  AS hoje_entrada,
+           hoje.saida    AS hoje_saida,
+           semana.entrada AS semana_entrada,
+           semana.saida   AS semana_saida
+      FROM hoje, semana
+  `);
+  const r = rows[0];
+  return {
+    hoje: {
+      entrada: Number(r.hoje_entrada),
+      saida: Number(r.hoje_saida),
+      liquido: Number(r.hoje_entrada) - Number(r.hoje_saida),
+    },
+    semana: {
+      entrada: Number(r.semana_entrada),
+      saida: Number(r.semana_saida),
+      liquido: Number(r.semana_entrada) - Number(r.semana_saida),
+      // Semana ISO (segunda-domingo) usada aqui — a UI mostra o intervalo
+      inicio: null,
+      fim: null,
+    },
+  };
+}
+
 /** Payload único para a tela de análises. */
 async function painelFinanceiro(filtros) {
   const [res, cat, forma, forn, evol, fluxo] = await Promise.all([
@@ -205,4 +294,5 @@ async function painelFinanceiro(filtros) {
 module.exports = {
   resumo, porCategoria, porFormaPagamento, porFornecedor,
   evolucaoMensal, fluxoCaixa, painelFinanceiro,
+  fluxoDiario, fluxoSemanal, fluxoAtual,
 };

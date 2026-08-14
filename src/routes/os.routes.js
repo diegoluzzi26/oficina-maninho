@@ -82,9 +82,10 @@ router.put('/:id', validate({ params: v.idParam, body: v.atualizarOS }),
 
 router.patch('/:id/status', validate({ params: v.idParam, body: v.mudarStatus }),
   h(async (req, res) => {
-    const { status, notificar_whatsapp, forma_pagamento, pago_em, valor_pago } = req.body;
+    const { status, notificar_whatsapp,
+      forma_pagamento, pago_em, valor_pago, pagamentos } = req.body;
     const os = await svc.mudarStatus(req.params.id, status,
-      { forma_pagamento, pago_em, valor_pago });
+      { forma_pagamento, pago_em, valor_pago, pagamentos });
     const resposta = { ...os };
     if (notificar_whatsapp && (status === 'finalizada' || status === 'paga')) {
       resposta.whatsapp = await notificarSeguro(os, status);
