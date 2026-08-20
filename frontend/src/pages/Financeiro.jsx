@@ -134,7 +134,29 @@ function OSsDoDia() {
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+          {/* Resumo por forma de pagamento — soma quanto entrou em cada tipo */}
+          {(() => {
+            const porForma = dados.dados.reduce((acc, o) => {
+              const chave = o.forma_pagamento || 'outro';
+              acc[chave] = (acc[chave] || 0) + (o.valor_pago ?? o.valor_total);
+              return acc;
+            }, {});
+            const entradas = Object.entries(porForma).sort((a, b) => b[1] - a[1]);
+            if (entradas.length === 0) return null;
+            return (
+              <div className="mt-3 flex flex-wrap gap-2 rounded-md bg-slate-50 p-3">
+                {entradas.map(([forma, total]) => (
+                  <span key={forma}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs shadow-sm ring-1 ring-slate-200">
+                    <span className="font-semibold text-slate-700">{rotuloForma(forma)}</span>
+                    <span className="tnum font-bold text-emerald-700">{brl(total)}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+
+          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
             <span className="text-xs text-slate-500">
               {dados.totais.qtd} OS{dados.totais.qtd === 1 ? '' : 's'} paga{dados.totais.qtd === 1 ? '' : 's'}
             </span>
