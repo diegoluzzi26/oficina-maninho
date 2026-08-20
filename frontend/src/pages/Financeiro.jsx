@@ -6,6 +6,7 @@ import {
 import { api } from '../lib/api';
 import { brl, brlCurto, mesCurto, periodoMeses, rotuloForma, hojeISO } from '../lib/format';
 import { Skeleton, Alerta, Vazio } from '../components/ui';
+import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
 const AZUL = '#283090';
 const OURO = '#D4A843';
@@ -18,11 +19,11 @@ const PERIODOS = [
   { chave: '12m', texto: '12 meses', meses: 12 },
 ];
 
-function Kpi({ titulo, valor, sub, cor = 'text-slate-800', atraso = 0 }) {
+function Kpi({ titulo, valor, sub, cor = 'text-slate-800', atraso = 0, preset }) {
   return (
-    <div className="card anima p-5" style={{ animationDelay: `${atraso}ms` }}>
+    <div className={`card anima ${preset?.kpiPad || 'p-5'}`} style={{ animationDelay: `${atraso}ms` }}>
       <p className="label">{titulo}</p>
-      <p className={`numero mt-2 text-[32px] ${cor}`}>{valor}</p>
+      <p className={`numero mt-2 ${preset?.kpiValor || 'text-[32px]'} ${cor}`}>{valor}</p>
       {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
     </div>
   );
@@ -178,6 +179,7 @@ export default function Financeiro() {
   const [periodo, setPeriodo] = useState('6m');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  const { densidade, setDensidade, preset } = useDensidade();
 
   useEffect(() => {
     let cancelado = false;
@@ -231,29 +233,32 @@ export default function Financeiro() {
             Despesas por competência · fluxo de caixa por pagamento efetivo
           </p>
         </div>
-        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
-          {PERIODOS.map((p) => (
-            <button key={p.chave} onClick={() => setPeriodo(p.chave)}
-              className={`rounded px-3 py-1.5 text-xs font-semibold transition
-                ${periodo === p.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-              {p.texto}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {PERIODOS.map((p) => (
+              <button key={p.chave} onClick={() => setPeriodo(p.chave)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${periodo === p.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {p.texto}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)}
+        <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)} preset={preset}
           sub="Ordens de serviço pagas" cor="text-emerald-700" atraso={0} />
-        <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)}
+        <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)} preset={preset}
           sub={`${resumo.quantidade} lançamentos`} cor="text-rose-600" atraso={60} />
-        <Kpi titulo={lucroPositivo ? 'Lucro' : 'Prejuízo'} valor={brl(Math.abs(fluxo.totais.lucro))}
+        <Kpi titulo={lucroPositivo ? 'Lucro' : 'Prejuízo'} valor={brl(Math.abs(fluxo.totais.lucro))} preset={preset}
           cor={lucroPositivo ? 'text-maninho-600' : 'text-rose-600'} atraso={120}
           sub={fluxo.totais.margem !== null
             ? `Margem de ${fluxo.totais.margem.toFixed(1).replace('.', ',')}%`
             : 'Sem receita para calcular margem'} />
-        <Kpi titulo="A pagar" valor={brl(resumo.total_pendente + resumo.total_atrasado)}
+        <Kpi titulo="A pagar" valor={brl(resumo.total_pendente + resumo.total_atrasado)} preset={preset}
           cor={resumo.total_atrasado > 0 ? 'text-rose-600' : 'text-slate-800'} atraso={180}
           sub={resumo.qtd_atrasadas > 0
             ? `${resumo.qtd_atrasadas} conta(s) atrasada(s)`
@@ -275,7 +280,7 @@ export default function Financeiro() {
         {serieFluxo.length === 0 ? (
           <Vazio titulo="Sem movimentação no período" />
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={preset.graficoAlto}>
             <ComposedChart data={serieFluxo} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
               <XAxis dataKey="rotulo" tick={{ fontSize: 11, fill: '#64748b' }}
@@ -305,7 +310,7 @@ export default function Financeiro() {
             <Vazio titulo="Nenhuma despesa no período" />
           ) : (
             <div className="flex flex-wrap items-center gap-4">
-              <ResponsiveContainer width="100%" height={220} className="!w-full sm:!w-1/2">
+              <ResponsiveContainer width="100%" height={preset.graficoMedio} className="!w-full sm:!w-1/2">
                 <PieChart>
                   <Pie data={categorias} dataKey="total" nameKey="categoria"
                     cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2}>
@@ -341,7 +346,7 @@ export default function Financeiro() {
           {formas.length === 0 ? (
             <Vazio titulo="Nenhuma despesa no período" />
           ) : (
-            <ResponsiveContainer width="100%" height={Math.max(200, formas.length * 40)}>
+            <ResponsiveContainer width="100%" height={Math.max(preset.graficoMedio, formas.length * 40)}>
               <BarChart data={formas} layout="vertical"
                 margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />

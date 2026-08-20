@@ -7,6 +7,7 @@ import {
 import { api, getUser } from '../lib/api';
 import { brl, brlCurto, nomeMes, telefone, rotuloForma } from '../lib/format';
 import { Skeleton, Alerta, Vazio } from '../components/ui';
+import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
 const AZUL = '#283090';
 const OURO = '#D4A843';
@@ -15,7 +16,7 @@ const VERMELHO = '#DC2626';
 
 const CORES_FORMA = ['#283090', '#D4A843', '#059669', '#0EA5E9', '#EC4899', '#F97316', '#7C3AED', '#64748B'];
 
-function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0 }) {
+function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0, preset }) {
   const cor = {
     normal: 'text-slate-800',
     marca: 'text-maninho-600',
@@ -23,9 +24,9 @@ function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0 }) {
     vermelho: 'text-rose-600',
   }[tomValor];
   return (
-    <div className="card anima p-5" style={{ animationDelay: `${atraso}ms` }}>
+    <div className={`card anima ${preset?.kpiPad || 'p-5'}`} style={{ animationDelay: `${atraso}ms` }}>
       <p className="label">{titulo}</p>
-      <p className={`numero mt-2 text-[30px] ${cor}`}>{valor}</p>
+      <p className={`numero mt-2 ${preset?.kpiValor || 'text-[30px]'} ${cor}`}>{valor}</p>
       {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
     </div>
   );
@@ -87,6 +88,7 @@ export default function Dashboard() {
   const [retornos, setRetornos] = useState([]);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  const { densidade, setDensidade, preset } = useDensidade();
 
   useEffect(() => {
     let cancelado = false;
@@ -146,7 +148,10 @@ export default function Dashboard() {
           <p className="mt-0.5 text-sm text-slate-500">
             Receita, despesa e retornos programados de {nomeMes(painel.referencia.mes)} de {painel.referencia.ano}.
           </p>
-          <div className="mt-2"><BotoesResumo /></div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <BotoesResumo />
+            <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
+          </div>
         </div>
         <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
           <button onClick={() => mudarMes(-1)}
@@ -206,36 +211,36 @@ export default function Dashboard() {
 
       {/* KPIs do mês */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi titulo="Receita" valor={brl(painel.receita)}
+        <Kpi titulo="Receita" valor={brl(painel.receita)} preset={preset}
           tomValor="marca"
           sub={`${painel.qtd_os} ${painel.qtd_os === 1 ? 'ordem paga' : 'ordens pagas'}`}
           atraso={0} />
-        <Kpi titulo="Despesa paga" valor={brl(painel.despesa)}
+        <Kpi titulo="Despesa paga" valor={brl(painel.despesa)} preset={preset}
           tomValor="vermelho"
           sub="Contas quitadas neste mês" atraso={60} />
-        <Kpi titulo="Lucro" valor={brl(painel.lucro)}
+        <Kpi titulo="Lucro" valor={brl(painel.lucro)} preset={preset}
           tomValor={painel.lucro >= 0 ? 'verde' : 'vermelho'}
           sub={painel.lucro >= 0 ? 'Receita − despesa' : 'No vermelho'}
           atraso={120} />
-        <Kpi titulo="Na oficina agora" valor={String(emAberto)}
+        <Kpi titulo="Na oficina agora" valor={String(emAberto)} preset={preset}
           sub={emAberto ? `${brl(valorEmAberto)} a receber` : 'Nada em aberto'}
           atraso={180} />
       </div>
 
       {/* Ticket + descontos + comparativo + variação */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi titulo="Ticket médio" valor={brl(painel.ticket_medio)}
+        <Kpi titulo="Ticket médio" valor={brl(painel.ticket_medio)} preset={preset}
           sub={`${painel.clientes_atendidos} clientes atendidos`} atraso={240} />
-        <Kpi titulo="Desconto dado"
+        <Kpi titulo="Desconto dado" preset={preset}
           valor={brl(painel.desconto_total_mes || 0)}
           tomValor={painel.desconto_total_mes > 0 ? 'vermelho' : 'normal'}
           sub={painel.desconto_total_mes > 0
             ? 'Diferença entre cobrado e recebido'
             : 'Nenhum desconto no mês'}
           atraso={260} />
-        <Kpi titulo="Mês anterior" valor={brl(painel.comparativo.mes_anterior)}
+        <Kpi titulo="Mês anterior" valor={brl(painel.comparativo.mes_anterior)} preset={preset}
           sub={`${painel.comparativo.qtd_anterior} OS pagas`} atraso={280} />
-        <Kpi titulo="Variação vs anterior"
+        <Kpi titulo="Variação vs anterior" preset={preset}
           tomValor={variacao === null ? 'normal' : variacao >= 0 ? 'verde' : 'vermelho'}
           valor={variacao === null ? '—' :
             `${variacao >= 0 ? '▲' : '▼'} ${Math.abs(variacao).toFixed(1).replace('.', ',')}%`}
@@ -296,7 +301,7 @@ export default function Dashboard() {
             <Vazio titulo="Nenhum recebimento neste mês" />
           ) : (
             <div className="grid items-center gap-4 sm:grid-cols-[180px_1fr]">
-              <ResponsiveContainer width="100%" height={180}>
+              <ResponsiveContainer width="100%" height={preset.graficoMedio}>
                 <PieChart>
                   <Pie data={painel.por_forma} dataKey="total" nameKey="forma"
                     innerRadius={44} outerRadius={72} paddingAngle={2}>
@@ -333,7 +338,7 @@ export default function Dashboard() {
             {painel.top_marcas.length === 0 ? (
               <Vazio titulo="Nenhuma OS neste mês" />
             ) : (
-              <ResponsiveContainer width="100%" height={Math.max(180, painel.top_marcas.length * 40)}>
+              <ResponsiveContainer width="100%" height={Math.max(preset.graficoMedio, painel.top_marcas.length * 40)}>
                 <BarChart data={painel.top_marcas} layout="vertical"
                   margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
@@ -407,7 +412,7 @@ export default function Dashboard() {
         {painel.top_servicos.length === 0 ? (
           <Vazio titulo="Nenhum serviço faturado" />
         ) : (
-          <ResponsiveContainer width="100%" height={Math.max(180, painel.top_servicos.length * 40)}>
+          <ResponsiveContainer width="100%" height={Math.max(preset.graficoMedio, painel.top_servicos.length * 40)}>
             <BarChart data={painel.top_servicos} layout="vertical"
               margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
