@@ -202,7 +202,43 @@ async function painelFinanceiro(filtros) {
   };
 }
 
+/**
+ * OSs PAGAS em um dia específico — pra o dono conferir o que fechou
+ * financeiramente naquele dia (data = paga_em).
+ * Retorna dados suficientes pra renderizar tabela + total no rodapé.
+ */
+async function osDoDia({ data }) {
+  const dia = data || new Date().toISOString().slice(0, 10);
+  const { rows } = await db.query(
+    `SELECT o.id, o.numero_os, o.valor_total, o.valor_pago,
+            o.forma_pagamento, o.paga_em, o.aberta_em,
+            c.nome AS cliente_nome,
+            ca.placa, ca.marca, ca.modelo
+       FROM ordens_servico o
+       JOIN clientes c ON c.id = o.cliente_id
+       JOIN carros  ca ON ca.id = o.carro_id
+      WHERE o.status = 'paga'
+        AND o.paga_em::date = $1::date
+      ORDER BY o.paga_em ASC`,
+    [dia],
+  );
+  const dados = rows.map((r) => ({
+    ...r,
+    valor_total: Number(r.valor_total),
+    valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
+  }));
+  const total = dados.reduce((s, d) => s + (d.valor_pago ?? d.valor_total), 0);
+  return {
+    dia,
+    dados,
+    totais: {
+      qtd: dados.length,
+      recebido: Number(total.toFixed(2)),
+    },
+  };
+}
+
 module.exports = {
   resumo, porCategoria, porFormaPagamento, porFornecedor,
-  evolucaoMensal, fluxoCaixa, painelFinanceiro,
+  evolucaoMensal, fluxoCaixa, painelFinanceiro, osDoDia,
 };

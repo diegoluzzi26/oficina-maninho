@@ -1,5 +1,6 @@
 'use strict';
 const router = require('express').Router();
+const { z } = require('zod');
 const fin = require('../services/financeiro.service');
 const desp = require('../services/despesas.service');
 const v = require('../validators/financeiro');
@@ -26,6 +27,11 @@ router.get('/evolucao', validate({ query: v.periodo }),
 
 router.get('/fluxo-caixa', validate({ query: v.periodo }),
   h(async (req, res) => res.json(await fin.fluxoCaixa(req.query))));
+
+// OSs pagas em um dia específico (default: hoje). Data em YYYY-MM-DD.
+router.get('/os-do-dia',
+  validate({ query: z.object({ data: z.string().date().optional() }) }),
+  h(async (req, res) => res.json(await fin.osDoDia(req.query))));
 
 router.get('/categorias', validate({ query: v.filtroCategorias }),
   h(async (req, res) => res.json(await desp.listarCategorias(req.query))));

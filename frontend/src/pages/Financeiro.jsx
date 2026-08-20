@@ -4,7 +4,7 @@ import {
   BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import { api } from '../lib/api';
-import { brl, brlCurto, mesCurto, periodoMeses } from '../lib/format';
+import { brl, brlCurto, mesCurto, periodoMeses, rotuloForma, hojeISO } from '../lib/format';
 import { Skeleton, Alerta, Vazio } from '../components/ui';
 
 const AZUL = '#283090';
@@ -39,6 +39,114 @@ function TooltipFin({ active, payload, label }) {
           <span className="font-semibold">{brl(p.value)}</span>
         </p>
       ))}
+    </div>
+  );
+}
+
+/**
+ * OSs pagas em um dia específico — visão financeira do dia.
+ * Independente do período dos gráficos (esses são agregados mensais).
+ */
+function OSsDoDia() {
+  const [dia, setDia] = useState(hojeISO());
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let cancelado = false;
+    setErro(''); setDados(null);
+    api.osDoDia(dia)
+      .then((d) => !cancelado && setDados(d))
+      .catch((e) => !cancelado && setErro(e.message));
+    return () => { cancelado = true; };
+  }, [dia]);
+
+  function mudarDia(delta) {
+    const d = new Date(dia + 'T12:00:00');
+    d.setDate(d.getDate() + delta);
+    setDia(d.toISOString().slice(0, 10));
+  }
+
+  return (
+    <div className="card anima p-5" style={{ animationDelay: '460ms' }}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="titulo-secao">OSs pagas por dia</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Todas as ordens que fecharam pagamento no dia escolhido
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
+          <button onClick={() => mudarDia(-1)}
+            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">◀</button>
+          <input type="date" value={dia} onChange={(e) => setDia(e.target.value)}
+            className="tnum border-0 bg-transparent px-2 text-sm font-semibold text-slate-800
+                       focus:outline-none focus:ring-0" />
+          <button onClick={() => mudarDia(1)}
+            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">▶</button>
+          {dia !== hojeISO() && (
+            <button onClick={() => setDia(hojeISO())}
+              className="ml-1 rounded bg-maninho-50 px-2 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
+              Hoje
+            </button>
+          )}
+        </div>
+      </div>
+
+      {erro && <Alerta tipo="erro">{erro}</Alerta>}
+
+      {!dados ? (
+        <Skeleton className="h-24" />
+      ) : dados.dados.length === 0 ? (
+        <Vazio titulo="Nenhuma OS paga nesse dia"
+          descricao="Escolha outra data ou espere fechar o primeiro pagamento." />
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-slate-200 bg-slate-50/80">
+                <tr>
+                  <th className="th w-16">Nº</th>
+                  <th className="th">Cliente</th>
+                  <th className="th">Veículo</th>
+                  <th className="th w-28">Forma</th>
+                  <th className="th w-24 text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dados.dados.map((o) => {
+                  const pago = o.valor_pago ?? o.valor_total;
+                  return (
+                    <tr key={o.id} className="transition hover:bg-maninho-50/60">
+                      <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
+                      <td className="td">
+                        <p className="text-sm font-medium text-slate-800">{o.cliente_nome}</p>
+                      </td>
+                      <td className="td">
+                        <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
+                        <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
+                      </td>
+                      <td className="td text-xs text-slate-600">{rotuloForma(o.forma_pagamento)}</td>
+                      <td className="td tnum text-right font-semibold text-slate-800">{brl(pago)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+            <span className="text-xs text-slate-500">
+              {dados.totais.qtd} OS{dados.totais.qtd === 1 ? '' : 's'} paga{dados.totais.qtd === 1 ? '' : 's'}
+            </span>
+            <span className="tnum text-sm">
+              <span className="text-slate-500">Total recebido no dia </span>
+              <span className="font-display text-lg font-bold text-emerald-700">
+                {brl(dados.totais.recebido)}
+              </span>
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -129,6 +237,9 @@ export default function Financeiro() {
             ? `${resumo.qtd_atrasadas} conta(s) atrasada(s)`
             : 'Nenhuma conta atrasada'} />
       </div>
+
+      {/* OSs pagas por dia */}
+      <OSsDoDia />
 
       {/* Fluxo de caixa */}
       <div className="card anima p-5" style={{ animationDelay: '220ms' }}>
