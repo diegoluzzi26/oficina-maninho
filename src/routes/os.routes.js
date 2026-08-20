@@ -142,6 +142,30 @@ router.delete('/:id/pecas/:itemId',
   validate({ params: z.object({ id: v.uuid, itemId: v.uuid }) }),
   h(async (req, res) => res.json(await svc.removerPeca(req.params.id, req.params.itemId))));
 
+// Adiantamentos (sinal do cliente antes de fechar a OS)
+const adiantamentoBody = z.object({
+  valor: z.coerce.number().positive('Valor deve ser maior que zero'),
+  forma: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
+                 'cartao_debito', 'transferencia', 'cheque', 'outro']),
+  recebido_em: z.string().date().optional(),
+  observacoes: z.string().max(500).optional(),
+});
+
+router.get('/:id/adiantamentos', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.listarAdiantamentos(req.params.id))));
+
+router.post('/:id/adiantamentos',
+  validate({ params: v.idParam, body: adiantamentoBody }),
+  h(async (req, res) => res.status(201).json(
+    await svc.adicionarAdiantamento(req.params.id, req.body, req.user.id))));
+
+router.delete('/:id/adiantamentos/:adiantamentoId',
+  validate({ params: z.object({ id: v.uuid, adiantamentoId: v.uuid }) }),
+  h(async (req, res) => {
+    await svc.removerAdiantamento(req.params.id, req.params.adiantamentoId);
+    res.status(204).end();
+  }));
+
 // Exclui OS inteira (bloqueado se paga)
 router.delete('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.remover(req.params.id))));

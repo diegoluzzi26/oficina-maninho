@@ -657,6 +657,46 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   // Carrega sob demanda pra ter todos os campos (o SELECT_OS só expõe alguns).
   const [clienteEditando, setClienteEditando] = useState(null);
   const [carroEditando, setCarroEditando] = useState(null);
+  // Sinais/adiantamentos dessa OS. Entram no fluxo de caixa na data
+  // que foram recebidos, sem esperar a OS virar 'paga'.
+  const [adiantamentos, setAdiantamentos] = useState([]);
+  const [novoAdiant, setNovoAdiant] = useState({ valor: '', forma: 'pix', recebido_em: hojeISO() });
+  const [addAdiantAberto, setAddAdiantAberto] = useState(false);
+
+  useEffect(() => {
+    if (!os) { setAdiantamentos([]); return; }
+    api.adiantamentosOS(os.id).then(setAdiantamentos).catch(() => setAdiantamentos([]));
+  }, [os?.id]);
+
+  const totalAdiantado = adiantamentos.reduce((s, a) => s + Number(a.valor), 0);
+  const restanteDevido = Math.max(0, Number(os?.valor_total || 0) - totalAdiantado);
+
+  async function adicionarAdiantamento() {
+    if (!novoAdiant.valor || Number(novoAdiant.valor) <= 0) return;
+    setCarregando(true); setErro('');
+    try {
+      await api.darAdiantamento(os.id, {
+        valor: Number(novoAdiant.valor),
+        forma: novoAdiant.forma,
+        recebido_em: novoAdiant.recebido_em || undefined,
+      });
+      setNovoAdiant({ valor: '', forma: 'pix', recebido_em: hojeISO() });
+      setAddAdiantAberto(false);
+      const nova = await api.adiantamentosOS(os.id);
+      setAdiantamentos(nova);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
+
+  async function removerAdiantamento(aid) {
+    if (!confirm('Remover este adiantamento?')) return;
+    setCarregando(true); setErro('');
+    try {
+      await api.removerAdiantamento(os.id, aid);
+      setAdiantamentos((l) => l.filter((x) => x.id !== aid));
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
 
   async function abrirEditarCliente() {
     setErro('');
@@ -913,6 +953,67 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           <div className="rounded-md border-l-2 border-ouro-500 bg-ouro-100/40 px-3 py-2">
             <p className="label mb-0.5">Observações</p>
             <p className="text-sm text-slate-700">{os.observacoes}</p>
+          </div>
+        )}
+
+        {/* Adiantamentos / sinais do cliente. Entram no fluxo de caixa
+            na data que foram recebidos. */}
+        {!foiPaga && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                  Adiantamentos recebidos
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {adiantamentos.length > 0
+                    ? `Total recebido: ${brl(totalAdiantado)} · Falta receber: ${brl(restanteDevido)}`
+                    : 'Nenhum sinal recebido ainda. Ao fechar, o valor a receber será o total da OS.'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setAddAdiantAberto(!addAdiantAberto)}
+                className="btn-primary px-3 py-1 text-xs">
+                {addAdiantAberto ? 'Cancelar' : '+ Adiantamento'}
+              </button>
+            </div>
+
+            {addAdiantAberto && (
+              <div className="mb-3 grid gap-2 rounded bg-white p-3 sm:grid-cols-[110px_140px_140px_auto]">
+                <input type="number" step="0.01" min="0.01" placeholder="R$"
+                  className="input py-1.5 text-sm tnum" value={novoAdiant.valor}
+                  onChange={(e) => setNovoAdiant((v) => ({ ...v, valor: e.target.value }))} />
+                <select className="input py-1.5 text-sm" value={novoAdiant.forma}
+                  onChange={(e) => setNovoAdiant((v) => ({ ...v, forma: e.target.value }))}>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                  ))}
+                </select>
+                <input type="date" className="input py-1.5 text-sm" value={novoAdiant.recebido_em}
+                  onChange={(e) => setNovoAdiant((v) => ({ ...v, recebido_em: e.target.value }))} />
+                <button type="button" onClick={adicionarAdiantamento}
+                  disabled={carregando || !novoAdiant.valor}
+                  className="btn-ouro text-xs">
+                  {carregando ? '…' : 'Registrar'}
+                </button>
+              </div>
+            )}
+
+            {adiantamentos.length > 0 && (
+              <ul className="divide-y divide-emerald-200/60 rounded bg-white">
+                {adiantamentos.map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 px-3 py-2">
+                    <span className="tnum font-semibold text-emerald-700">{brl(a.valor)}</span>
+                    <span className="text-xs text-slate-600">{rotuloForma(a.forma)}</span>
+                    <span className="ml-auto text-xs text-slate-500">{data(a.recebido_em)}</span>
+                    {podeExcluir() && (
+                      <button onClick={() => removerAdiantamento(a.id)}
+                        className="rounded px-1.5 text-xs text-rose-600 hover:bg-rose-50"
+                        title="Remover">✕</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

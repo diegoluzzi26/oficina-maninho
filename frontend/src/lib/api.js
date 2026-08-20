@@ -102,6 +102,9 @@ export const api = {
     request(`/os/${id}/pecas/${itemId}`, { method: 'PATCH', body }),
   removerServicoOS: (id, itemId) => request(`/os/${id}/servicos/${itemId}`, { method: 'DELETE' }),
   removerPecaOS: (id, itemId) => request(`/os/${id}/pecas/${itemId}`, { method: 'DELETE' }),
+  adiantamentosOS: (id) => request(`/os/${id}/adiantamentos`),
+  darAdiantamento: (id, body) => request(`/os/${id}/adiantamentos`, { method: 'POST', body }),
+  removerAdiantamento: (id, aid) => request(`/os/${id}/adiantamentos/${aid}`, { method: 'DELETE' }),
 
   mensagensWA: (params) => request('/whatsapp/mensagens', { params }),
 

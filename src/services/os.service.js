@@ -417,9 +417,49 @@ async function remover(osId) {
   return { removida: true, numero_os: rows[0].numero_os };
 }
 
+// ---------------------------------------------------------------- ADIANTAMENTOS
+// Sinais que o cliente paga antes da OS fechar. Entram no fluxo de
+// caixa pela data que foi recebido, sem esperar a OS virar 'paga'.
+
+async function listarAdiantamentos(osId) {
+  const { rows } = await db.query(
+    `SELECT a.*, u.nome AS criado_por_nome
+       FROM os_adiantamentos a
+       LEFT JOIN users u ON u.id = a.criado_por
+      WHERE a.os_id = $1
+      ORDER BY a.recebido_em ASC, a.criado_em ASC`, [osId],
+  );
+  return rows.map((r) => ({ ...r, valor: Number(r.valor) }));
+}
+
+async function adicionarAdiantamento(osId, dados, userId) {
+  const osExiste = await db.query('SELECT status FROM ordens_servico WHERE id=$1', [osId]);
+  if (!osExiste.rows[0]) throw AppError.notFound('OS não encontrada');
+  if (osExiste.rows[0].status === 'paga') {
+    throw new AppError('OS já foi paga — não aceita novo adiantamento', 422);
+  }
+  const { rows } = await db.query(
+    `INSERT INTO os_adiantamentos (os_id, valor, forma, recebido_em, observacoes, criado_por)
+     VALUES ($1,$2,$3,COALESCE($4::date, CURRENT_DATE),$5,$6)
+     RETURNING *`,
+    [osId, dados.valor, dados.forma, dados.recebido_em || null,
+      dados.observacoes || null, userId || null],
+  );
+  return { ...rows[0], valor: Number(rows[0].valor) };
+}
+
+async function removerAdiantamento(osId, adiantamentoId) {
+  const r = await db.query(
+    'DELETE FROM os_adiantamentos WHERE id=$1 AND os_id=$2',
+    [adiantamentoId, osId],
+  );
+  if (!r.rowCount) throw AppError.notFound('Adiantamento não encontrado');
+}
+
 module.exports = {
   listar, buscarPorId, criar, atualizar, mudarStatus,
   adicionarServico, atualizarServico, adicionarPeca, atualizarPeca,
   removerServico, removerPeca,
+  listarAdiantamentos, adicionarAdiantamento, removerAdiantamento,
   remover,
 };
