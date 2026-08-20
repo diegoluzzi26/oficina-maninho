@@ -96,6 +96,10 @@ export const api = {
   excluirOS: (id) => request(`/os/${id}`, { method: 'DELETE' }),
   addServicoOS: (id, body) => request(`/os/${id}/servicos`, { method: 'POST', body }),
   addPecaOS: (id, body) => request(`/os/${id}/pecas`, { method: 'POST', body }),
+  atualizarServicoOS: (id, itemId, body) =>
+    request(`/os/${id}/servicos/${itemId}`, { method: 'PATCH', body }),
+  atualizarPecaOS: (id, itemId, body) =>
+    request(`/os/${id}/pecas/${itemId}`, { method: 'PATCH', body }),
   removerServicoOS: (id, itemId) => request(`/os/${id}/servicos/${itemId}`, { method: 'DELETE' }),
   removerPecaOS: (id, itemId) => request(`/os/${id}/pecas/${itemId}`, { method: 'DELETE' }),
 

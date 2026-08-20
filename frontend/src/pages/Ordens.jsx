@@ -635,6 +635,9 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   const [novoSvc, setNovoSvc] = useState({ servico_id: '', nome_servico: '', quantidade: 1, valor_unit: '' });
   const [novaPeca, setNovaPeca] = useState({ descricao: '', quantidade: 1, valor_unit: '' });
   const [addAberto, setAddAberto] = useState(null); // 'servico' | 'peca' | null
+  // Edição inline de um item já lançado (serviço ou peça).
+  // Guarda tipo + id + valores em edição — só uma linha por vez.
+  const [editandoItem, setEditandoItem] = useState(null);
   const [fotos, setFotos] = useState([]);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [previewFoto, setPreviewFoto] = useState(null);
@@ -772,6 +775,45 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
       });
       setNovaPeca({ descricao: '', quantidade: 1, valor_unit: '' });
       setAddAberto(null);
+      onMudou(atualizada);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
+
+  function iniciarEdicaoServico(s) {
+    setEditandoItem({
+      tipo: 'servico', id: s.id,
+      nome_servico: s.nome_servico,
+      quantidade: String(s.quantidade),
+      valor_unit: String(s.valor_unit),
+    });
+  }
+  function iniciarEdicaoPeca(p) {
+    setEditandoItem({
+      tipo: 'peca', id: p.id,
+      descricao: p.descricao,
+      quantidade: String(p.quantidade),
+      valor_unit: String(p.valor_unit),
+    });
+  }
+
+  async function salvarEdicaoItem() {
+    if (!editandoItem) return;
+    setCarregando(true); setErro('');
+    try {
+      const patch = {
+        quantidade: Number(editandoItem.quantidade),
+        valor_unit: Number(editandoItem.valor_unit),
+      };
+      let atualizada;
+      if (editandoItem.tipo === 'servico') {
+        patch.nome_servico = editandoItem.nome_servico;
+        atualizada = await api.atualizarServicoOS(os.id, editandoItem.id, patch);
+      } else {
+        patch.descricao = editandoItem.descricao;
+        atualizada = await api.atualizarPecaOS(os.id, editandoItem.id, patch);
+      }
+      setEditandoItem(null);
       onMudou(atualizada);
     } catch (e) { setErro(e.message); }
     finally { setCarregando(false); }
@@ -946,21 +988,54 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           {os.servicos?.length ? (
             <table className="w-full">
               <tbody className="divide-y divide-slate-100">
-                {os.servicos.map((s) => (
-                  <tr key={s.id}>
-                    <td className="py-2 text-sm text-slate-700">{s.nome_servico}</td>
-                    <td className="py-2 text-right text-xs text-slate-500">
-                      {s.quantidade}× {brl(s.valor_unit)}
-                    </td>
-                    <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(s.valor_total)}</td>
-                    {editavel && (
-                      <td className="w-8 py-2 text-right">
-                        <button onClick={() => removerItem('servico', s.id)} disabled={carregando}
-                          className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                {os.servicos.map((s) => {
+                  const emEdicao = editandoItem?.tipo === 'servico' && editandoItem.id === s.id;
+                  if (emEdicao) {
+                    return (
+                      <tr key={s.id} className="bg-maninho-50/60">
+                        <td className="py-2 pr-2">
+                          <input className="input w-full py-1 text-xs"
+                            value={editandoItem.nome_servico}
+                            onChange={(e) => setEditandoItem((v) => ({ ...v, nome_servico: e.target.value }))} />
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <input type="number" min="1" className="input w-14 py-1 text-xs"
+                              value={editandoItem.quantidade}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
+                            <span className="text-xs text-slate-500">×</span>
+                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
+                              value={editandoItem.valor_unit}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
+                          </div>
+                        </td>
+                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
+                          <button onClick={salvarEdicaoItem} disabled={carregando}
+                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
+                          <button onClick={() => setEditandoItem(null)}
+                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={s.id}>
+                      <td className="py-2 text-sm text-slate-700">{s.nome_servico}</td>
+                      <td className="py-2 text-right text-xs text-slate-500">
+                        {s.quantidade}× {brl(s.valor_unit)}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(s.valor_total)}</td>
+                      {editavel && (
+                        <td className="w-16 py-2 text-right">
+                          <button onClick={() => iniciarEdicaoServico(s)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
+                          <button onClick={() => removerItem('servico', s.id)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : <p className="text-sm text-slate-400">Nenhum serviço lançado</p>}
@@ -1002,21 +1077,54 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           {os.pecas?.length ? (
             <table className="w-full">
               <tbody className="divide-y divide-slate-100">
-                {os.pecas.map((p) => (
-                  <tr key={p.id}>
-                    <td className="py-2 text-sm text-slate-700">{p.descricao}</td>
-                    <td className="py-2 text-right text-xs text-slate-500">
-                      {Number(p.quantidade)}× {brl(p.valor_unit)}
-                    </td>
-                    <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(p.valor_total)}</td>
-                    {editavel && (
-                      <td className="w-8 py-2 text-right">
-                        <button onClick={() => removerItem('peca', p.id)} disabled={carregando}
-                          className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                {os.pecas.map((p) => {
+                  const emEdicao = editandoItem?.tipo === 'peca' && editandoItem.id === p.id;
+                  if (emEdicao) {
+                    return (
+                      <tr key={p.id} className="bg-maninho-50/60">
+                        <td className="py-2 pr-2">
+                          <input className="input w-full py-1 text-xs"
+                            value={editandoItem.descricao}
+                            onChange={(e) => setEditandoItem((v) => ({ ...v, descricao: e.target.value }))} />
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <input type="number" min="0.01" step="0.01" className="input w-14 py-1 text-xs"
+                              value={editandoItem.quantidade}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
+                            <span className="text-xs text-slate-500">×</span>
+                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
+                              value={editandoItem.valor_unit}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
+                          </div>
+                        </td>
+                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
+                          <button onClick={salvarEdicaoItem} disabled={carregando}
+                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
+                          <button onClick={() => setEditandoItem(null)}
+                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={p.id}>
+                      <td className="py-2 text-sm text-slate-700">{p.descricao}</td>
+                      <td className="py-2 text-right text-xs text-slate-500">
+                        {Number(p.quantidade)}× {brl(p.valor_unit)}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(p.valor_total)}</td>
+                      {editavel && (
+                        <td className="w-16 py-2 text-right">
+                          <button onClick={() => iniciarEdicaoPeca(p)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
+                          <button onClick={() => removerItem('peca', p.id)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (

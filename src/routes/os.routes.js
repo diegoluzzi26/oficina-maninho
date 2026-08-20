@@ -106,8 +106,25 @@ const itemPecaBody = z.object({
   valor_unit: z.coerce.number().min(0),
 });
 
+const itemServicoPatch = z.object({
+  nome_servico: z.string().min(1).optional(),
+  quantidade: z.coerce.number().int().positive().optional(),
+  valor_unit: z.coerce.number().min(0).optional(),
+});
+
+const itemPecaPatch = z.object({
+  descricao: z.string().min(1).optional(),
+  quantidade: z.coerce.number().positive().optional(),
+  valor_unit: z.coerce.number().min(0).optional(),
+});
+
 router.post('/:id/servicos', validate({ params: v.idParam, body: itemServicoBody }),
   h(async (req, res) => res.status(201).json(await svc.adicionarServico(req.params.id, req.body))));
+
+router.patch('/:id/servicos/:itemId',
+  validate({ params: z.object({ id: v.uuid, itemId: v.uuid }), body: itemServicoPatch }),
+  h(async (req, res) => res.json(
+    await svc.atualizarServico(req.params.id, req.params.itemId, req.body))));
 
 router.delete('/:id/servicos/:itemId',
   validate({ params: z.object({ id: v.uuid, itemId: v.uuid }) }),
@@ -115,6 +132,11 @@ router.delete('/:id/servicos/:itemId',
 
 router.post('/:id/pecas', validate({ params: v.idParam, body: itemPecaBody }),
   h(async (req, res) => res.status(201).json(await svc.adicionarPeca(req.params.id, req.body))));
+
+router.patch('/:id/pecas/:itemId',
+  validate({ params: z.object({ id: v.uuid, itemId: v.uuid }), body: itemPecaPatch }),
+  h(async (req, res) => res.json(
+    await svc.atualizarPeca(req.params.id, req.params.itemId, req.body))));
 
 router.delete('/:id/pecas/:itemId',
   validate({ params: z.object({ id: v.uuid, itemId: v.uuid }) }),

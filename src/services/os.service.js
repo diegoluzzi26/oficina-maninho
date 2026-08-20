@@ -348,6 +348,51 @@ async function adicionarPeca(osId, peca) {
   });
 }
 
+/**
+ * Edita um item de serviço já lançado na OS. Aceita mudar nome, quantidade
+ * ou valor unitário. Só passa por aqui campos realmente informados —
+ * qualquer omitido fica como estava. Total da OS é recalculado por trigger.
+ */
+async function atualizarServico(osId, itemId, patch) {
+  const campos = []; const params = [];
+  if (patch.nome_servico !== undefined) {
+    params.push(patch.nome_servico); campos.push(`nome_servico = $${params.length}`);
+  }
+  if (patch.quantidade !== undefined) {
+    params.push(Number(patch.quantidade)); campos.push(`quantidade = $${params.length}`);
+  }
+  if (patch.valor_unit !== undefined) {
+    params.push(Number(patch.valor_unit)); campos.push(`valor_unit = $${params.length}`);
+  }
+  if (!campos.length) return buscarPorId(osId);
+  params.push(itemId, osId);
+  const r = await db.query(
+    `UPDATE os_servicos SET ${campos.join(', ')}
+       WHERE id = $${params.length - 1} AND os_id = $${params.length}`, params);
+  if (!r.rowCount) throw AppError.notFound('Item não encontrado nesta OS');
+  return buscarPorId(osId);
+}
+
+async function atualizarPeca(osId, itemId, patch) {
+  const campos = []; const params = [];
+  if (patch.descricao !== undefined) {
+    params.push(patch.descricao); campos.push(`descricao = $${params.length}`);
+  }
+  if (patch.quantidade !== undefined) {
+    params.push(Number(patch.quantidade)); campos.push(`quantidade = $${params.length}`);
+  }
+  if (patch.valor_unit !== undefined) {
+    params.push(Number(patch.valor_unit)); campos.push(`valor_unit = $${params.length}`);
+  }
+  if (!campos.length) return buscarPorId(osId);
+  params.push(itemId, osId);
+  const r = await db.query(
+    `UPDATE os_pecas SET ${campos.join(', ')}
+       WHERE id = $${params.length - 1} AND os_id = $${params.length}`, params);
+  if (!r.rowCount) throw AppError.notFound('Peça não encontrada nesta OS');
+  return buscarPorId(osId);
+}
+
 async function removerServico(osId, itemId) {
   const r = await db.query('DELETE FROM os_servicos WHERE id=$1 AND os_id=$2', [itemId, osId]);
   if (!r.rowCount) throw AppError.notFound('Item não encontrado nesta OS');
@@ -374,6 +419,7 @@ async function remover(osId) {
 
 module.exports = {
   listar, buscarPorId, criar, atualizar, mudarStatus,
-  adicionarServico, adicionarPeca, removerServico, removerPeca,
+  adicionarServico, atualizarServico, adicionarPeca, atualizarPeca,
+  removerServico, removerPeca,
   remover,
 };
