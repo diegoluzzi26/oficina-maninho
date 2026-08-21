@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setSession } from '../lib/api';
 import { Alerta, Spinner, Campo } from '../components/ui';
@@ -7,15 +7,28 @@ import { Marca, Selo } from '../components/Marca';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [oficinaSlug, setOficinaSlug] = useState('');
+  const [oficinas, setOficinas] = useState(null);
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
   const navigate = useNavigate();
+
+  // Carrega oficinas ao montar. Se só tiver uma, pré-seleciona e
+  // esconde o dropdown (login não muda pra quem tem 1 oficina só).
+  useEffect(() => {
+    api.oficinas()
+      .then((lista) => {
+        setOficinas(lista);
+        if (lista.length === 1) setOficinaSlug(lista[0].slug);
+      })
+      .catch(() => setOficinas([]));
+  }, []);
 
   async function enviar(e) {
     e.preventDefault();
     setErro(''); setEnviando(true);
     try {
-      const { token, usuario } = await api.login(email, senha);
+      const { token, usuario } = await api.login(email, senha, oficinaSlug || undefined);
       setSession(token, usuario);
       navigate('/', { replace: true });
     } catch (err) {
@@ -24,6 +37,8 @@ export default function Login() {
       setEnviando(false);
     }
   }
+
+  const mostrarDropdown = (oficinas?.length || 0) > 1;
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
@@ -82,6 +97,18 @@ export default function Login() {
 
           <form onSubmit={enviar} className="anima space-y-4" style={{ animationDelay: '80ms' }}>
             {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+            {mostrarDropdown && (
+              <Campo label="Oficina" obrigatorio>
+                <select className="input" value={oficinaSlug} required
+                  onChange={(e) => setOficinaSlug(e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {oficinas.map((o) => (
+                    <option key={o.id} value={o.slug}>{o.nome}</option>
+                  ))}
+                </select>
+              </Campo>
+            )}
 
             <Campo label="E-mail" obrigatorio>
               <input type="email" className="input" value={email} autoComplete="username"

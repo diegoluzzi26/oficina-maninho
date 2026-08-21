@@ -12,7 +12,14 @@ module.exports = function auth(req, _res, next) {
   }
   try {
     const payload = jwt.verify(token, env.jwtSecret);
-    req.user = { id: payload.sub, nome: payload.nome, email: payload.email, role: payload.role };
+    req.user = {
+      id: payload.sub,
+      nome: payload.nome,
+      email: payload.email,
+      role: payload.role,
+      oficina_id: payload.oficina_id,
+      oficina_slug: payload.oficina_slug,
+    };
     next();
   } catch (err) {
     const msg = err.name === 'TokenExpiredError' ? 'Sessão expirada' : 'Token inválido';

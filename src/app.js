@@ -47,6 +47,9 @@ app.use('/api/whatsapp', require('./routes/whatsapp.routes'));
 // Login é público
 app.use('/api/auth', require('./routes/auth.routes'));
 
+// Lista pública de oficinas (só o dropdown do login)
+app.use('/api/oficinas', require('./routes/oficinas.routes'));
+
 // Daqui pra baixo, tudo exige token. bloquearBasico proíbe exclusões
 // pro papel 'basico' — não afeta admin nem atendente.
 app.use('/api/clientes',   auth, bloquearBasico, require('./routes/clientes.routes'));

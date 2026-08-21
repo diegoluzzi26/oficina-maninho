@@ -62,7 +62,11 @@ async function request(path, { method = 'GET', body, params } = {}) {
 }
 
 export const api = {
-  login: (email, senha) => request('/auth/login', { method: 'POST', body: { email, senha } }),
+  login: (email, senha, oficina_slug) => request('/auth/login', {
+    method: 'POST',
+    body: { email, senha, ...(oficina_slug ? { oficina_slug } : {}) },
+  }),
+  oficinas: () => request('/oficinas'),
 
   dashboard: (params) => request('/relatorios/dashboard', { params }),
   faturamentoSemanal: (params) => request('/relatorios/faturamento/semanal', { params }),

@@ -27,13 +27,16 @@ const placa = z.string()
 const login = z.object({
   email: z.string().email('E-mail inválido'),
   senha: z.string().min(1, 'Senha é obrigatória'),
+  // Opcional: se não vier, o backend tenta única oficina do email
+  oficina_slug: z.string().regex(/^[a-z0-9_]+$/).optional(),
 });
 
 const criarUsuario = z.object({
   nome: z.string().min(2, 'Nome muito curto'),
   email: z.string().email('E-mail inválido'),
   senha: z.string().min(8, 'Senha deve ter ao menos 8 caracteres'),
-  role: z.enum(['admin', 'atendente']).default('atendente'),
+  role: z.enum(['admin', 'atendente', 'basico']).default('atendente'),
+  oficina_id: z.string().uuid().optional(),
 });
 
 // ----- clientes -----
