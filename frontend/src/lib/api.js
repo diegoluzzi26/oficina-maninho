@@ -212,6 +212,11 @@ export const api = {
   followupKanban: (params) => request('/followup/kanban', { params }),
   followupHistorico: (clienteId) => request(`/followup/historico/${clienteId}`),
 
+  // --- IA generativa (Claude) ---
+  iaStatus: () => request('/ia/status'),
+  iaRedigir: (body) => request('/ia/redigir-mensagem', { method: 'POST', body }),
+  iaParecer: (body = {}) => request('/ia/parecer', { method: 'POST', body }),
+
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),

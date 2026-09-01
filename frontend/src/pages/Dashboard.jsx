@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { api, getUser } from '../lib/api';
 import { brl, brlCurto, nomeMes, telefone, rotuloForma } from '../lib/format';
-import { Skeleton, Alerta, Vazio } from '../components/ui';
+import { Skeleton, Alerta, Vazio, Modal, Spinner } from '../components/ui';
 import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
 const AZUL = '#283090';
@@ -81,6 +81,85 @@ function BotoesResumo() {
   );
 }
 
+// Converte markdown básico do parecer (## título, **negrito**) em HTML enxuto.
+// Não usa dangerouslySetInnerHTML — quebra em elementos React.
+function renderMarkdown(texto) {
+  const linhas = texto.split('\n');
+  return linhas.map((l, i) => {
+    if (l.startsWith('## ')) {
+      return <h3 key={i} className="mt-4 mb-1.5 font-display text-[15px] font-bold uppercase tracking-wide text-maninho-700">
+        {l.replace(/^##\s+/, '')}
+      </h3>;
+    }
+    if (l.trim() === '') return null;
+    // Substitui **texto** por <strong>
+    const partes = l.split(/(\*\*[^*]+\*\*)/g).map((p, j) => {
+      if (p.startsWith('**') && p.endsWith('**')) {
+        return <strong key={j}>{p.slice(2, -2)}</strong>;
+      }
+      return p;
+    });
+    return <p key={i} className="mb-1 text-sm text-slate-700">{partes}</p>;
+  });
+}
+
+function ParecerIA({ refMes, aberto, onFechar }) {
+  const [parecer, setParecer] = useState('');
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [iaConfigurada, setIaConfigurada] = useState(true);
+
+  useEffect(() => {
+    if (!aberto) return;
+    setParecer(''); setErro(''); setCarregando(true);
+    api.iaStatus().then((s) => setIaConfigurada(s.configurada)).catch(() => {});
+    api.iaParecer({ ano: refMes.ano, mes: refMes.mes })
+      .then((r) => setParecer(r.parecer))
+      .catch((e) => setErro(e.message))
+      .finally(() => setCarregando(false));
+  }, [aberto, refMes.ano, refMes.mes]);
+
+  async function regerar() {
+    setCarregando(true); setErro(''); setParecer('');
+    try {
+      const r = await api.iaParecer({ ano: refMes.ano, mes: refMes.mes });
+      setParecer(r.parecer);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
+
+  return (
+    <Modal aberto={aberto} largura="max-w-2xl" onFechar={onFechar}
+      titulo={`🧠 Parecer da IA — ${nomeMes(refMes.mes)}/${refMes.ano}`}>
+      {!iaConfigurada && !carregando && (
+        <Alerta tipo="aviso">
+          A IA não está configurada. Peça o admin pra adicionar <code>ANTHROPIC_API_KEY</code> no <code>.env</code> do servidor.
+        </Alerta>
+      )}
+      {erro && <Alerta tipo="erro">{erro}</Alerta>}
+      {carregando ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-10">
+          <Spinner className="h-6 w-6" />
+          <p className="text-sm text-slate-500">Analisando os números do mês…</p>
+          <p className="text-[11px] text-slate-400">isso pode levar 10-30 segundos</p>
+        </div>
+      ) : parecer ? (
+        <>
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-4">
+            {renderMarkdown(parecer)}
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+            <p className="text-[11px] text-slate-400">
+              Gerado por Claude · custo aproximado: R$ 0,05
+            </p>
+            <button onClick={regerar} className="btn-ghost text-xs">↻ Gerar novo</button>
+          </div>
+        </>
+      ) : null}
+    </Modal>
+  );
+}
+
 export default function Dashboard() {
   const hoje = new Date();
   const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 });
@@ -89,6 +168,7 @@ export default function Dashboard() {
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const { densidade, setDensidade, preset } = useDensidade();
+  const [parecerAberto, setParecerAberto] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
@@ -150,6 +230,12 @@ export default function Dashboard() {
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <BotoesResumo />
+            {getUser()?.role === 'admin' && (
+              <button onClick={() => setParecerAberto(true)}
+                className="btn-ghost text-xs">
+                🧠 Parecer da IA
+              </button>
+            )}
             <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
           </div>
         </div>
@@ -430,6 +516,10 @@ export default function Dashboard() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {parecerAberto && (
+        <ParecerIA refMes={ref} aberto onFechar={() => setParecerAberto(false)} />
+      )}
     </div>
   );
 }

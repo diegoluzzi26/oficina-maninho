@@ -134,6 +134,151 @@ function ModalHistorico({ clienteId, onFechar }) {
 
 // ------------------------------------------------------------------ Card
 
+// ------------------------------------------------------------------ Form Manual (com IA)
+
+function FormManual({ aberto, onFechar, onCriado }) {
+  const vazio = {
+    cliente_id: '', tipo: 'promocao',
+    mensagem: '',
+    agendado_para: new Date().toISOString().slice(0, 10),
+  };
+  const [form, setForm] = useState(vazio);
+  const [clientes, setClientes] = useState([]);
+  const [buscaCli, setBuscaCli] = useState('');
+  const [contextoIA, setContextoIA] = useState('');
+  const [gerandoIA, setGerandoIA] = useState(false);
+  const [iaConfigurada, setIaConfigurada] = useState(true);
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (aberto) {
+      setForm(vazio); setErro(''); setBuscaCli(''); setContextoIA('');
+      api.iaStatus().then((s) => setIaConfigurada(s.configurada)).catch(() => {});
+    }
+  }, [aberto]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const t = setTimeout(() => {
+      api.clientes({ busca: buscaCli, por_pagina: 20 })
+        .then((r) => setClientes(r.dados))
+        .catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [aberto, buscaCli]);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const clienteSelecionado = clientes.find((c) => c.id === form.cliente_id);
+
+  async function gerarComIA() {
+    if (!clienteSelecionado) {
+      setErro('Selecione o cliente antes de gerar');
+      return;
+    }
+    setGerandoIA(true); setErro('');
+    try {
+      const r = await api.iaRedigir({
+        tipo: form.tipo,
+        cliente_nome: clienteSelecionado.nome,
+        contexto: contextoIA || undefined,
+      });
+      setForm((f) => ({ ...f, mensagem: r.mensagem }));
+    } catch (e) { setErro(e.message); }
+    finally { setGerandoIA(false); }
+  }
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro(''); setSalvando(true);
+    try {
+      const r = await api.criarFollowupManual({
+        cliente_id: form.cliente_id,
+        tipo: form.tipo,
+        mensagem: form.mensagem,
+        agendado_para: form.agendado_para,
+      });
+      onCriado(r);
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <Modal aberto={aberto} titulo="Follow-up manual" onFechar={onFechar}>
+      <form onSubmit={salvar} className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+        <Campo label="Buscar cliente" obrigatorio>
+          <input className="input" value={buscaCli}
+            onChange={(e) => setBuscaCli(e.target.value)}
+            placeholder="Nome, telefone, CPF ou placa" autoFocus />
+          <select className="input mt-2" value={form.cliente_id}
+            onChange={set('cliente_id')} required>
+            <option value="">Selecione…</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}{c.telefone ? ` · ${c.telefone}` : ''}
+              </option>
+            ))}
+          </select>
+        </Campo>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo label="Tipo" obrigatorio>
+            <select className="input" value={form.tipo} onChange={set('tipo')}>
+              <option value="promocao">Promoção</option>
+              <option value="manutencao">Manutenção</option>
+              <option value="reativacao">Reativação</option>
+              <option value="avaliacao">Avaliação</option>
+              <option value="livre">Livre</option>
+            </select>
+          </Campo>
+          <Campo label="Agendar para" obrigatorio>
+            <input type="date" className="input" value={form.agendado_para}
+              onChange={set('agendado_para')} required />
+          </Campo>
+        </div>
+
+        {/* Bloco de IA — só se estiver configurada */}
+        {iaConfigurada && (
+          <div className="rounded-md border border-maninho-200 bg-maninho-50/40 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-maninho-700">
+                ✨ Assistente de IA
+              </p>
+              <button type="button" onClick={gerarComIA} disabled={gerandoIA || !form.cliente_id}
+                className="btn-primary px-3 py-1 text-xs">
+                {gerandoIA ? <><Spinner className="h-3 w-3" /> Gerando…</> : '✨ Gerar mensagem'}
+              </button>
+            </div>
+            <textarea className="input min-h-[50px] resize-y text-xs" value={contextoIA}
+              onChange={(e) => setContextoIA(e.target.value)}
+              placeholder="Contexto opcional pra IA (ex: 'promoção de ar-condicionado 20% off até fim do mês')" />
+          </div>
+        )}
+        {!iaConfigurada && (
+          <p className="text-[11px] text-slate-400">
+            💡 Dica: configure a IA no <code>.env</code> pra ter um botão de gerar mensagem automática aqui.
+          </p>
+        )}
+
+        <Campo label="Mensagem" obrigatorio>
+          <textarea className="input min-h-[140px] resize-y" value={form.mensagem}
+            onChange={set('mensagem')} required minLength={10} maxLength={2000}
+            placeholder="Digite a mensagem que o cliente vai receber, ou use o botão ✨ acima…" />
+        </Campo>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando || !form.cliente_id || !form.mensagem}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Criar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd }) {
   const tipo = TIPO_META[item.tipo];
   const coluna = {
@@ -254,6 +399,7 @@ export default function Followup() {
   const [gerando, setGerando] = useState(false);
   const [enviandoTodos, setEnviandoTodos] = useState(false);
   const [historicoId, setHistoricoId] = useState(null);
+  const [manualAberto, setManualAberto] = useState(false);
   // Drag & drop
   const [arrastando, setArrastando] = useState(null); // item sendo arrastado
   const [colunaAlvo, setColunaAlvo] = useState(null); // qual coluna está sob o cursor
@@ -384,6 +530,9 @@ export default function Followup() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={() => setManualAberto(true)} className="btn-ghost">
+            + Manual
+          </button>
           {ehAdmin && (
             <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
           )}
@@ -488,6 +637,9 @@ export default function Followup() {
       {historicoId && (
         <ModalHistorico clienteId={historicoId} onFechar={() => setHistoricoId(null)} />
       )}
+
+      <FormManual aberto={manualAberto} onFechar={() => setManualAberto(false)}
+        onCriado={() => { setManualAberto(false); carregar(); }} />
     </div>
   );
 }
