@@ -134,7 +134,7 @@ function ModalHistorico({ clienteId, onFechar }) {
 
 // ------------------------------------------------------------------ Card
 
-function CardFollowup({ item, onAcao, onHistorico, enviando }) {
+function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd }) {
   const tipo = TIPO_META[item.tipo];
   const coluna = {
     pendente: 'a-fazer', enviado: 'enviado',
@@ -148,8 +148,14 @@ function CardFollowup({ item, onAcao, onHistorico, enviando }) {
   else if (item.status === 'converteu') tempo = `✅ converteu ${tempoRelativo(item.respondido_em || item.enviado_em)}`;
   else if (item.status === 'dispensado') tempo = '✕ dispensado';
 
+  // Prévia da mensagem — 2 linhas
+  const previa = (item.mensagem || '').replace(/\s+/g, ' ').trim();
+
   return (
-    <div className={`group relative rounded-md border border-slate-200 border-l-[3px] bg-white p-2.5 shadow-sm transition hover:-translate-y-px hover:shadow-md ${bordaTipo(item.tipo)}`}>
+    <div draggable
+      onDragStart={(e) => onDragStart(e, item)}
+      onDragEnd={onDragEnd}
+      className={`group relative cursor-grab rounded-md border border-slate-200 border-l-[3px] bg-white p-2.5 shadow-sm transition hover:-translate-y-px hover:shadow-md active:cursor-grabbing ${bordaTipo(item.tipo)}`}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${chipTipo(item.tipo)}`}>
           {tipo?.emoji} {tipo?.label}
@@ -157,7 +163,7 @@ function CardFollowup({ item, onAcao, onHistorico, enviando }) {
         <span className="tnum text-[11px] font-medium text-slate-400">{tempo}</span>
       </div>
       <p className="text-sm font-semibold leading-tight text-slate-800">{item.cliente_nome}</p>
-      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
         {item.placa && (
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-700">
             {item.placa}
@@ -167,6 +173,16 @@ function CardFollowup({ item, onAcao, onHistorico, enviando }) {
           <span className="truncate">{item.marca} {item.modelo}</span>
         )}
       </div>
+      {item.cliente_telefone && (
+        <p className="tnum mt-1 font-mono text-[11px] font-semibold text-maninho-700">
+          {telefone(item.cliente_telefone)}
+        </p>
+      )}
+      {previa && (
+        <p className="mt-1.5 line-clamp-2 rounded bg-slate-50 px-2 py-1 text-[11px] leading-snug text-slate-600">
+          {previa}
+        </p>
+      )}
 
       {/* Ações contextuais por coluna — aparecem no hover */}
       <div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 opacity-0 transition group-hover:opacity-100">
@@ -218,6 +234,15 @@ function CardFollowup({ item, onAcao, onHistorico, enviando }) {
 
 // ------------------------------------------------------------------ Página
 
+// Mapa: coluna do kanban → status pra mandar no PATCH quando dropar.
+// "fechado" pergunta na hora se converteu ou dispensou (via confirm).
+const COLUNA_PARA_STATUS = {
+  'a-fazer':     'pendente',
+  'enviado':     'enviado',
+  'em-conversa': 'respondeu',
+  'fechado':     'FECHADO_ESCOLHER', // marcador — a UI resolve
+};
+
 export default function Followup() {
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
@@ -229,6 +254,9 @@ export default function Followup() {
   const [gerando, setGerando] = useState(false);
   const [enviandoTodos, setEnviandoTodos] = useState(false);
   const [historicoId, setHistoricoId] = useState(null);
+  // Drag & drop
+  const [arrastando, setArrastando] = useState(null); // item sendo arrastado
+  const [colunaAlvo, setColunaAlvo] = useState(null); // qual coluna está sob o cursor
 
   const carregar = useCallback(() => {
     setErro('');
@@ -244,6 +272,52 @@ export default function Followup() {
     const t = setTimeout(carregar, busca ? 300 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  // ---------- Drag & drop ----------------------------------------
+  function onDragStart(e, item) {
+    setArrastando(item);
+    e.dataTransfer.effectAllowed = 'move';
+    // Requer setData pro Firefox iniciar o drag
+    e.dataTransfer.setData('text/plain', item.id);
+  }
+  function onDragEnd() {
+    setArrastando(null);
+    setColunaAlvo(null);
+  }
+  function onDragOverColuna(e, colunaChave) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (colunaAlvo !== colunaChave) setColunaAlvo(colunaChave);
+  }
+  async function onDropColuna(e, colunaChave) {
+    e.preventDefault();
+    setColunaAlvo(null);
+    const item = arrastando;
+    setArrastando(null);
+    if (!item) return;
+
+    // Se soltou na mesma coluna, nada a fazer
+    const colunaAtual = {
+      pendente: 'a-fazer', enviado: 'enviado',
+      respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
+    }[item.status];
+    if (colunaAtual === colunaChave) return;
+
+    let novoStatus = COLUNA_PARA_STATUS[colunaChave];
+    // Fechado: pergunta se converteu ou dispensou
+    if (novoStatus === 'FECHADO_ESCOLHER') {
+      const resp = confirm(
+        `Cliente ${item.cliente_nome}:\n\nOK = ✅ Converteu (virou nova OS)\nCancelar = ✕ Dispensou`,
+      );
+      novoStatus = resp ? 'converteu' : 'dispensado';
+    }
+
+    setErro('');
+    try {
+      await api.followupMudarStatus(item.id, { status: novoStatus });
+      carregar();
+    } catch (err) { setErro(err.message); }
+  }
 
   async function acao(item, tipo) {
     setErro('');
@@ -306,7 +380,7 @@ export default function Followup() {
             Follow-up
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Contato ativo com o cliente · Kanban por status
+            Arraste os cards entre colunas pra mudar o status
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -366,8 +440,16 @@ export default function Followup() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {COLUNAS.map((col) => {
             const cards = dados.colunas[col.chave] || [];
+            const alvo = colunaAlvo === col.chave;
             return (
-              <div key={col.chave} className="flex flex-col rounded-lg bg-slate-100/70 p-2">
+              <div key={col.chave}
+                onDragOver={(e) => onDragOverColuna(e, col.chave)}
+                onDragLeave={() => colunaAlvo === col.chave && setColunaAlvo(null)}
+                onDrop={(e) => onDropColuna(e, col.chave)}
+                className={`flex flex-col rounded-lg p-2 transition
+                  ${alvo
+                    ? 'bg-maninho-100 ring-2 ring-maninho-500'
+                    : 'bg-slate-100/70'}`}>
                 <div className="mb-2 flex items-center justify-between border-b border-slate-200 px-1 pb-2">
                   <div className="flex items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${col.marcador}`} />
@@ -381,8 +463,9 @@ export default function Followup() {
                 </div>
 
                 {cards.length === 0 ? (
-                  <p className="rounded border border-dashed border-slate-300 py-6 text-center text-[11px] text-slate-400">
-                    Sem itens
+                  <p className={`rounded border border-dashed py-6 text-center text-[11px]
+                    ${alvo ? 'border-maninho-500 text-maninho-700' : 'border-slate-300 text-slate-400'}`}>
+                    {alvo ? 'Solte aqui' : 'Sem itens'}
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -390,7 +473,9 @@ export default function Followup() {
                       <CardFollowup key={item.id} item={item}
                         enviando={enviandoId}
                         onAcao={acao}
-                        onHistorico={setHistoricoId} />
+                        onHistorico={setHistoricoId}
+                        onDragStart={onDragStart}
+                        onDragEnd={onDragEnd} />
                     ))}
                   </div>
                 )}
