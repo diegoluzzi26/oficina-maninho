@@ -13,10 +13,13 @@ const OURO = '#D4A843';
 const ROSA = '#e11d48';
 const VERDE = '#059669';
 
+// `meses: 1` => `periodoMeses(1)` já devolve inicio=1º dia do mês atual,
+// fim=hoje. Fica com semantica de "só o mês corrente" sem código extra.
 const PERIODOS = [
-  { chave: '3m', texto: '3 meses', meses: 3 },
-  { chave: '6m', texto: '6 meses', meses: 6 },
-  { chave: '12m', texto: '12 meses', meses: 12 },
+  { chave: 'atual', texto: 'Mês atual', meses: 1 },
+  { chave: '3m',    texto: '3 meses',   meses: 3 },
+  { chave: '6m',    texto: '6 meses',   meses: 6 },
+  { chave: '12m',   texto: '12 meses',  meses: 12 },
 ];
 
 function Kpi({ titulo, valor, sub, cor = 'text-slate-800', atraso = 0, preset }) {
@@ -44,52 +47,99 @@ function TooltipFin({ active, payload, label }) {
   );
 }
 
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
 /**
- * OSs pagas em um dia específico — visão financeira do dia.
- * Independente do período dos gráficos (esses são agregados mensais).
+ * OSs pagas — toggle Dia/Mês. Dia mostra tabela simples;
+ * Mês agrupa por dia com totais parciais.
  */
-function OSsDoDia() {
+function OSsRecebidas() {
+  const hoje = new Date();
+  const [modo, setModo] = useState('dia'); // 'dia' | 'mes'
   const [dia, setDia] = useState(hojeISO());
+  const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 });
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
     let cancelado = false;
     setErro(''); setDados(null);
-    api.osDoDia(dia)
+    const req = modo === 'dia' ? api.osDoDia(dia) : api.osDoMes(ref.ano, ref.mes);
+    req
       .then((d) => !cancelado && setDados(d))
       .catch((e) => !cancelado && setErro(e.message));
     return () => { cancelado = true; };
-  }, [dia]);
+  }, [modo, dia, ref.ano, ref.mes]);
 
   function mudarDia(delta) {
     const d = new Date(dia + 'T12:00:00');
     d.setDate(d.getDate() + delta);
     setDia(d.toISOString().slice(0, 10));
   }
+  function mudarMes(delta) {
+    setRef((r) => {
+      let m = r.mes + delta, a = r.ano;
+      if (m > 12) { m = 1; a += 1; }
+      if (m < 1)  { m = 12; a -= 1; }
+      return { ano: a, mes: m };
+    });
+  }
+  const eMesAtual = ref.ano === hoje.getFullYear() && ref.mes === hoje.getMonth() + 1;
 
   return (
     <div className="card anima p-5" style={{ animationDelay: '460ms' }}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="titulo-secao">OSs pagas por dia</h2>
+          <h2 className="titulo-secao">OSs pagas</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Todas as ordens que fecharam pagamento no dia escolhido
+            {modo === 'dia'
+              ? 'Todas as ordens que fecharam pagamento no dia escolhido'
+              : 'Todas as ordens do mês, agrupadas por dia'}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
-          <button onClick={() => mudarDia(-1)}
-            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">◀</button>
-          <input type="date" value={dia} onChange={(e) => setDia(e.target.value)}
-            className="tnum border-0 bg-transparent px-2 text-sm font-semibold text-slate-800
-                       focus:outline-none focus:ring-0" />
-          <button onClick={() => mudarDia(1)}
-            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">▶</button>
-          {dia !== hojeISO() && (
-            <button onClick={() => setDia(hojeISO())}
-              className="ml-1 rounded bg-maninho-50 px-2 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
-              Hoje
-            </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {[['dia', 'Dia'], ['mes', 'Mês']].map(([k, t]) => (
+              <button key={k} onClick={() => setModo(k)}
+                className={`rounded px-2.5 py-1 text-xs font-semibold transition
+                  ${modo === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          {modo === 'dia' ? (
+            <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
+              <button onClick={() => mudarDia(-1)}
+                className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">◀</button>
+              <input type="date" value={dia} onChange={(e) => setDia(e.target.value)}
+                className="tnum border-0 bg-transparent px-2 text-sm font-semibold text-slate-800
+                           focus:outline-none focus:ring-0" />
+              <button onClick={() => mudarDia(1)}
+                className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">▶</button>
+              {dia !== hojeISO() && (
+                <button onClick={() => setDia(hojeISO())}
+                  className="ml-1 rounded bg-maninho-50 px-2 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
+                  Hoje
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
+              <button onClick={() => mudarMes(-1)}
+                className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100">◀</button>
+              <span className="tnum px-3 text-sm font-semibold text-slate-800">
+                {MESES[ref.mes - 1]}/{ref.ano}
+              </span>
+              <button onClick={() => mudarMes(1)} disabled={eMesAtual}
+                className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300">▶</button>
+              {!eMesAtual && (
+                <button onClick={() => setRef({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 })}
+                  className="ml-1 rounded bg-maninho-50 px-2 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
+                  Este mês
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -99,8 +149,10 @@ function OSsDoDia() {
       {!dados ? (
         <Skeleton className="h-24" />
       ) : dados.dados.length === 0 ? (
-        <Vazio titulo="Nenhuma OS paga nesse dia"
-          descricao="Escolha outra data ou espere fechar o primeiro pagamento." />
+        <Vazio titulo={modo === 'dia' ? 'Nenhuma OS paga nesse dia' : 'Nenhuma OS paga neste mês'}
+          descricao={modo === 'dia'
+            ? 'Escolha outra data ou espere fechar o primeiro pagamento.'
+            : 'Ainda não teve pagamento fechado neste mês.'} />
       ) : (
         <>
           <div className="overflow-x-auto">
@@ -110,12 +162,13 @@ function OSsDoDia() {
                   <th className="th w-16">Nº</th>
                   <th className="th">Cliente</th>
                   <th className="th">Veículo</th>
+                  {modo === 'mes' && <th className="th w-24">Data</th>}
                   <th className="th w-28">Forma</th>
                   <th className="th w-24 text-right">Valor</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {dados.dados.map((o) => {
+                {modo === 'dia' ? dados.dados.map((o) => {
                   const pago = o.valor_pago ?? o.valor_total;
                   return (
                     <tr key={o.id} className="transition hover:bg-maninho-50/60">
@@ -131,7 +184,34 @@ function OSsDoDia() {
                       <td className="td tnum text-right font-semibold text-slate-800">{brl(pago)}</td>
                     </tr>
                   );
-                })}
+                }) : dados.dias.flatMap((diaGrupo) => [
+                  <tr key={`h-${diaGrupo.dia}`} className="bg-slate-50/70">
+                    <td colSpan={5} className="td text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {diaGrupo.dia.split('-').reverse().join('/')} · {diaGrupo.oss.length} OS ·
+                      <span className="tnum ml-2 text-emerald-700">{brl(diaGrupo.total)}</span>
+                    </td>
+                  </tr>,
+                  ...diaGrupo.oss.map((o) => {
+                    const pago = o.valor_pago ?? o.valor_total;
+                    return (
+                      <tr key={o.id} className="transition hover:bg-maninho-50/60">
+                        <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
+                        <td className="td">
+                          <p className="text-sm font-medium text-slate-800">{o.cliente_nome}</p>
+                        </td>
+                        <td className="td">
+                          <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
+                          <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
+                        </td>
+                        <td className="td text-xs text-slate-500">
+                          {diaGrupo.dia.split('-').reverse().slice(0, 2).join('/')}
+                        </td>
+                        <td className="td text-xs text-slate-600">{rotuloForma(o.forma_pagamento)}</td>
+                        <td className="td tnum text-right font-semibold text-slate-800">{brl(pago)}</td>
+                      </tr>
+                    );
+                  }),
+                ])}
               </tbody>
             </table>
           </div>
@@ -162,7 +242,7 @@ function OSsDoDia() {
               {dados.totais.qtd} OS{dados.totais.qtd === 1 ? '' : 's'} paga{dados.totais.qtd === 1 ? '' : 's'}
             </span>
             <span className="tnum text-sm">
-              <span className="text-slate-500">Total recebido no dia </span>
+              <span className="text-slate-500">Total recebido {modo === 'dia' ? 'no dia' : 'no mês'} </span>
               <span className="font-display text-lg font-bold text-emerald-700">
                 {brl(dados.totais.recebido)}
               </span>
@@ -177,6 +257,7 @@ function OSsDoDia() {
 export default function Financeiro() {
   const [dados, setDados] = useState(null);
   const [periodo, setPeriodo] = useState('6m');
+  const [escopo, setEscopo] = useState('oficina'); // 'oficina' | 'pessoal' | 'ambos'
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const { densidade, setDensidade, preset } = useDensidade();
@@ -187,13 +268,13 @@ export default function Financeiro() {
 
     setCarregando(true);
     setErro('');
-    api.painelFinanceiro(periodoMeses(meses))
+    api.painelFinanceiro({ ...periodoMeses(meses), escopo })
       .then((d) => !cancelado && setDados(d))
       .catch((e) => !cancelado && setErro(e.message))
       .finally(() => !cancelado && setCarregando(false));
 
     return () => { cancelado = true; };
-  }, [periodo]);
+  }, [periodo, escopo]);
 
   if (carregando && !dados) {
     return (
@@ -236,6 +317,19 @@ export default function Financeiro() {
         <div className="flex flex-wrap items-center gap-2">
           <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
           <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {[
+              ['oficina', 'Oficina'],
+              ['pessoal', 'Pessoal'],
+              ['ambos',   'Ambos'],
+            ].map(([k, t]) => (
+              <button key={k} onClick={() => setEscopo(k)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${escopo === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
             {PERIODOS.map((p) => (
               <button key={p.chave} onClick={() => setPeriodo(p.chave)}
                 className={`rounded px-3 py-1.5 text-xs font-semibold transition
@@ -265,8 +359,8 @@ export default function Financeiro() {
             : 'Nenhuma conta atrasada'} />
       </div>
 
-      {/* OSs pagas por dia */}
-      <OSsDoDia />
+      {/* OSs pagas — Dia / Mês */}
+      <OSsRecebidas />
 
       {/* Fluxo de caixa */}
       <div className="card anima p-5" style={{ animationDelay: '220ms' }}>
