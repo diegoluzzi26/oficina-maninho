@@ -11,7 +11,8 @@ import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui
  */
 
 function FormFuncionario({ aberto, funcionario, onFechar, onSalvo }) {
-  const vazio = { nome: '', cargo: '', salario_base: '', telefone: '', observacoes: '' };
+  const vazio = { nome: '', cargo: '', salario_base: '', periodicidade: 'mensal',
+    telefone: '', observacoes: '' };
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -21,6 +22,7 @@ function FormFuncionario({ aberto, funcionario, onFechar, onSalvo }) {
     setForm(funcionario ? {
       ...vazio, ...funcionario,
       salario_base: funcionario.salario_base != null ? String(funcionario.salario_base) : '',
+      periodicidade: funcionario.periodicidade || 'mensal',
       telefone: funcionario.telefone || '',
     } : vazio);
   }, [funcionario, aberto]);
@@ -35,6 +37,7 @@ function FormFuncionario({ aberto, funcionario, onFechar, onSalvo }) {
         nome: form.nome,
         cargo: form.cargo || null,
         salario_base: form.salario_base === '' ? null : Number(form.salario_base),
+        periodicidade: form.periodicidade || 'mensal',
         telefone: form.telefone || null,
         observacoes: form.observacoes || null,
       };
@@ -65,6 +68,15 @@ function FormFuncionario({ aberto, funcionario, onFechar, onSalvo }) {
               value={form.salario_base} onChange={set('salario_base')} placeholder="2500.00" />
           </Campo>
         </div>
+        <Campo label="Frequência do pagamento"
+          ajuda="Quantas vezes o salário é pago no mês.">
+          <select className="input max-w-[220px]" value={form.periodicidade}
+            onChange={set('periodicidade')}>
+            <option value="mensal">Mensal · 1× por mês</option>
+            <option value="quinzenal">Quinzenal · 15 em 15 dias</option>
+            <option value="semanal">Semanal · toda semana</option>
+          </select>
+        </Campo>
         <Campo label="Telefone (E.164)" ajuda="Ex.: (51) 99888-7777">
           <input className="input" value={form.telefone} onChange={set('telefone')}
             placeholder="(51) 99888-7777" />
@@ -245,6 +257,11 @@ function DetalheFuncionario({ id, onFechar, onAtualizado }) {
               <p className="label mb-0.5">Salário base</p>
               <p className="tnum text-sm font-semibold text-slate-800">
                 {ficha.funcionario.salario_base ? brl(ficha.funcionario.salario_base) : '—'}
+              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ouro-700">
+                {ficha.funcionario.periodicidade === 'semanal'   ? 'toda semana'
+                 : ficha.funcionario.periodicidade === 'quinzenal' ? 'a cada 15 dias'
+                 : 'mensal'}
               </p>
             </div>
             <div>
@@ -441,7 +458,14 @@ export default function Funcionarios() {
                   <p className="text-sm font-semibold text-slate-800">{f.nome}</p>
                   <p className="text-xs text-slate-500">
                     {f.cargo || 'sem cargo'}
-                    {f.salario_base ? ` · salário ${brl(f.salario_base)}` : ''}
+                    {f.salario_base ? ` · ${brl(f.salario_base)}` : ''}
+                    {f.salario_base && (
+                      <span className="ml-1 text-slate-400">/ {
+                        f.periodicidade === 'semanal'   ? 'semana'
+                        : f.periodicidade === 'quinzenal' ? 'quinzena'
+                        : 'mês'
+                      }</span>
+                    )}
                   </p>
                 </div>
                 {f.vales_pendentes > 0 && (

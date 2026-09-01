@@ -11,6 +11,7 @@ const criarFuncionario = z.object({
   nome: z.string().min(2, 'Nome muito curto'),
   cargo: z.string().optional().nullable(),
   salario_base: z.coerce.number().min(0).optional().nullable(),
+  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(),
   telefone: v.telefone.optional().nullable(),
   observacoes: z.string().optional().nullable(),
 });

@@ -117,16 +117,18 @@ async function ficha(id) {
 
 async function criar(d) {
   const { rows } = await db.query(
-    `INSERT INTO funcionarios (nome, cargo, salario_base, telefone, observacoes)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    `INSERT INTO funcionarios
+       (nome, cargo, salario_base, periodicidade, telefone, observacoes)
+     VALUES ($1,$2,$3,COALESCE($4,'mensal'),$5,$6) RETURNING *`,
     [d.nome, d.cargo || null, d.salario_base ?? null,
-     d.telefone || null, d.observacoes || null],
+     d.periodicidade || null, d.telefone || null, d.observacoes || null],
   );
   return buscarPorId(rows[0].id);
 }
 
 async function atualizar(id, d) {
-  const permitidos = ['nome', 'cargo', 'salario_base', 'telefone', 'observacoes', 'ativo'];
+  const permitidos = ['nome', 'cargo', 'salario_base', 'periodicidade',
+    'telefone', 'observacoes', 'ativo'];
   const campos = []; const params = [];
   for (const [k, v] of Object.entries(d)) {
     if (!permitidos.includes(k) || v === undefined) continue;
