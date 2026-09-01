@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../config/db');
+const { runComOficina } = require('../config/db');
 const wa = require('./whatsapp.service');
 const config = require('./config.service');
 
@@ -190,6 +191,9 @@ function agendar() {
     if (agora.getHours() !== HORA_ALVO || chaveCheck === ultimaCheck) return;
     ultimaCheck = chaveCheck;
 
+    // Fase 3 vai fazer loop pra rodar em cada oficina.
+    await runComOficina('maninho', async () => {
+
     // Mensal: se hoje é dia 1, envia relatório do mês passado
     if (agora.getDate() === 1) {
       const anteMes = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
@@ -215,6 +219,7 @@ function agendar() {
         console.error('[relatorio-semanal] falha:', err.message);
       }
     }
+    }); // fecha runComOficina
   }, 10 * 60 * 1000).unref();
 
   console.log(`[relatorio-agendado] mensal (dia 1) e semanal (segunda) às ${HORA_ALVO}h`);

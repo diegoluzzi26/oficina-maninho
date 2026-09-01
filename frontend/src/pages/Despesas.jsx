@@ -313,7 +313,9 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
 
   const carregar = useCallback(() => {
     setErro('');
-    const params = { escopo, busca, status: filtroStatus || undefined, por_pagina: 100 };
+    // 1000 é folga pra caber todo o mês/filtro sem paginar. Se um dia
+    // um mês passar disso, a gente troca por scroll infinito.
+    const params = { escopo, busca, status: filtroStatus || undefined, por_pagina: 1000 };
     if (fornecedorId) params.fornecedor_id = fornecedorId;
     if (categoriaId)  params.categoria_id  = categoriaId;
     if (forma)        params.forma         = forma;

@@ -56,4 +56,17 @@ router.post('/gerar', requireRole('admin'), validate({ body: v.gerar }),
 router.get('/metricas', validate({ query: v.periodoMetricas }),
   h(async (req, res) => res.json(await svc.metricas(req.query))));
 
+// ---------------------------------------------------------------- KANBAN
+const { z } = require('zod');
+router.get('/kanban',
+  validate({ query: z.object({
+    tipo: z.enum(['manutencao','reativacao','promocao','avaliacao']).optional(),
+    busca: z.string().optional(),
+  }) }),
+  h(async (req, res) => res.json(await svc.kanban(req.query))));
+
+router.get('/historico/:cliente_id',
+  validate({ params: z.object({ cliente_id: z.string().uuid() }) }),
+  h(async (req, res) => res.json(await svc.historicoDoCliente(req.params.cliente_id))));
+
 module.exports = router;

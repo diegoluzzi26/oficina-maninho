@@ -13,15 +13,18 @@ const db = require('../config/db');
  * mostra o dinheiro disponível.
  */
 
-function intervalo({ inicio, fim }, coluna = 'competencia') {
+function intervalo({ inicio, fim, escopo }, coluna = 'competencia') {
   const params = [];
   let clause = '';
   if (inicio) { params.push(inicio); clause += ` AND ${coluna} >= $${params.length}::date`; }
   if (fim) { params.push(fim); clause += ` AND ${coluna} <= $${params.length}::date`; }
   if (!inicio && !fim) clause = ` AND ${coluna} >= (now() - interval '12 months')::date`;
-  // Painel/Financeiro é da OFICINA — despesas pessoais ficam confinadas à
-  // tela Pessoal (via painelPessoal em despesas.service.js).
-  clause += ` AND escopo = 'oficina'`;
+  // Escopo: 'oficina' (default), 'pessoal', ou 'ambos' pra ver tudo junto.
+  const esc = escopo || 'oficina';
+  if (esc === 'oficina' || esc === 'pessoal') {
+    params.push(esc);
+    clause += ` AND escopo = $${params.length}`;
+  }
   return { clause, params };
 }
 
@@ -138,17 +141,67 @@ async function evolucaoMensal(filtros) {
   }));
 }
 
-/** Fluxo de caixa: receita de OS pagas vs despesas pagas. */
+/**
+ * Fluxo de caixa: receita de OS pagas vs despesas pagas, agrupadas por mês.
+ * O escopo do filtro afeta as DESPESAS (oficina/pessoal/ambos). Receita
+ * (OSs pagas) só existe pra oficina, então quando escopo='pessoal' a
+ * receita fica zerada — o que faz sentido.
+ */
 async function fluxoCaixa(filtros) {
   const params = [];
-  let clause = '';
-  if (filtros.inicio) { params.push(filtros.inicio); clause += ` AND mes >= date_trunc('month',$${params.length}::date)`; }
-  if (filtros.fim) { params.push(filtros.fim); clause += ` AND mes <= date_trunc('month',$${params.length}::date)`; }
-  if (!filtros.inicio && !filtros.fim) clause = " AND mes >= date_trunc('month', now() - interval '12 months')";
+  let clauseDesp = '';
+  let clauseFat = '';
+  if (filtros.inicio) {
+    params.push(filtros.inicio);
+    clauseDesp += ` AND pago_em >= date_trunc('month',$${params.length}::date)`;
+    clauseFat  += ` AND paga_em >= date_trunc('month',$${params.length}::date)`;
+  }
+  if (filtros.fim) {
+    params.push(filtros.fim);
+    clauseDesp += ` AND pago_em <= date_trunc('month',$${params.length}::date)`;
+    clauseFat  += ` AND paga_em <= date_trunc('month',$${params.length}::date)`;
+  }
+  if (!filtros.inicio && !filtros.fim) {
+    clauseDesp = " AND pago_em >= date_trunc('month', now() - interval '12 months')";
+    clauseFat  = " AND paga_em >= date_trunc('month', now() - interval '12 months')";
+  }
+
+  // Escopo aplicado nas despesas
+  let escopoClauseDesp = '';
+  const esc = filtros.escopo || 'oficina';
+  if (esc === 'oficina' || esc === 'pessoal') {
+    params.push(esc);
+    escopoClauseDesp = ` AND escopo = $${params.length}`;
+  }
+  // Receita vem só de OS pagas — não faz sentido pra escopo='pessoal'
+  const incluiReceita = (esc === 'oficina' || esc === 'ambos');
 
   const { rows } = await db.query(
-    `SELECT mes, receita, despesa, lucro, qtd_os, qtd_despesas
-       FROM vw_fluxo_mensal WHERE 1=1 ${clause} ORDER BY mes`,
+    `WITH receita AS (
+       SELECT date_trunc('month', paga_em)::date AS mes,
+              ${incluiReceita ? 'sum(valor_total)::numeric' : '0::numeric'} AS receita,
+              ${incluiReceita ? 'count(*)::int' : '0'} AS qtd_os
+         FROM vw_faturamento
+        WHERE ${incluiReceita ? '1=1' : '1=0'} ${clauseFat}
+        GROUP BY 1
+     ),
+     despesa AS (
+       SELECT date_trunc('month', pago_em)::date AS mes,
+              sum(COALESCE(valor_pago, valor))::numeric AS despesa,
+              count(*)::int AS qtd_despesas
+         FROM despesas
+        WHERE status='paga' AND pago_em IS NOT NULL
+              ${escopoClauseDesp} ${clauseDesp}
+        GROUP BY 1
+     )
+     SELECT COALESCE(r.mes, d.mes)      AS mes,
+            COALESCE(r.receita, 0)      AS receita,
+            COALESCE(d.despesa, 0)      AS despesa,
+            COALESCE(r.receita, 0) - COALESCE(d.despesa, 0) AS lucro,
+            COALESCE(r.qtd_os, 0)       AS qtd_os,
+            COALESCE(d.qtd_despesas, 0) AS qtd_despesas
+       FROM receita r FULL OUTER JOIN despesa d ON d.mes = r.mes
+      ORDER BY 1`,
     params,
   );
 
@@ -238,7 +291,57 @@ async function osDoDia({ data }) {
   };
 }
 
+/**
+ * Todas as OSs pagas em um mês específico. Retorna a lista completa
+ * (sem paginação) + agrupamento por dia + totais.
+ */
+async function osDoMes({ ano, mes }) {
+  const y = Number(ano) || new Date().getFullYear();
+  const m = Number(mes) || (new Date().getMonth() + 1);
+  const inicio = `${y}-${String(m).padStart(2, '0')}-01`;
+  const proxMes = m === 12 ? `${y + 1}-01-01`
+    : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+  const { rows } = await db.query(
+    `SELECT o.id, o.numero_os, o.valor_total, o.valor_pago,
+            o.forma_pagamento, o.paga_em, o.aberta_em,
+            o.paga_em::date AS dia,
+            c.nome AS cliente_nome,
+            ca.placa, ca.marca, ca.modelo
+       FROM ordens_servico o
+       JOIN clientes c ON c.id = o.cliente_id
+       JOIN carros  ca ON ca.id = o.carro_id
+      WHERE o.status = 'paga'
+        AND o.paga_em >= $1::date AND o.paga_em < $2::date
+      ORDER BY o.paga_em ASC`,
+    [inicio, proxMes],
+  );
+
+  const dados = rows.map((r) => ({
+    ...r,
+    valor_total: Number(r.valor_total),
+    valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
+  }));
+
+  // Agrupa por dia pra facilitar renderização
+  const porDia = {};
+  for (const os of dados) {
+    const chave = String(os.dia).slice(0, 10);
+    if (!porDia[chave]) porDia[chave] = { dia: chave, oss: [], total: 0 };
+    porDia[chave].oss.push(os);
+    porDia[chave].total += os.valor_pago ?? os.valor_total;
+  }
+  const dias = Object.values(porDia).sort((a, b) => a.dia.localeCompare(b.dia));
+
+  const total = dados.reduce((s, o) => s + (o.valor_pago ?? o.valor_total), 0);
+  return {
+    ano: y, mes: m,
+    dados, dias,
+    totais: { qtd: dados.length, recebido: Number(total.toFixed(2)) },
+  };
+}
+
 module.exports = {
   resumo, porCategoria, porFormaPagamento, porFornecedor,
-  evolucaoMensal, fluxoCaixa, painelFinanceiro, osDoDia,
+  evolucaoMensal, fluxoCaixa, painelFinanceiro, osDoDia, osDoMes,
 };

@@ -64,13 +64,14 @@ const filtroDespesas = z.object({
   vence_ate: dataISO.optional(),
   busca: z.string().trim().optional(),
   pagina: z.coerce.number().int().positive().default(1),
-  por_pagina: z.coerce.number().int().positive().max(200).default(50),
+  por_pagina: z.coerce.number().int().positive().max(2000).default(50),
 });
 
 const periodo = z.object({
   inicio: dataISO.optional(),
   fim: dataISO.optional(),
   limite: z.coerce.number().int().positive().max(50).default(10),
+  escopo: z.enum(['oficina', 'pessoal', 'ambos']).default('oficina'),
 }).refine((v) => !v.inicio || !v.fim || v.inicio <= v.fim, {
   message: 'Data inicial não pode ser maior que a final',
 });

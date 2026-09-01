@@ -1,12 +1,14 @@
 'use strict';
 const app = require('./app');
 const env = require('./config/env');
-const { pool } = require('./config/db');
+const { pool, runComOficina } = require('./config/db');
 const config = require('./services/config.service');
 
 const server = app.listen(env.port, async () => {
-  // Carrega overrides do banco antes de qualquer envio de WhatsApp/alerta
-  await config.inicializar();
+  // Carrega overrides do banco antes de qualquer envio de WhatsApp/alerta.
+  // A tabela `configuracoes` vive em oficina_<slug>; hoje só temos maninho.
+  // Fase 3 vai carregar config de todas as oficinas em cache separado.
+  await runComOficina('maninho', () => config.inicializar());
   const w = config.whatsapp();
   console.log(`[api] rodando na porta ${env.port} (${env.nodeEnv})`);
   console.log(`[api] whatsapp: ${w.enabled ? 'configurado' : 'NÃO configurado'}`);

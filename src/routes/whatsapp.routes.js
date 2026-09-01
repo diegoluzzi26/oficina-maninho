@@ -12,14 +12,20 @@ const h = require('../utils/asyncHandler');
  * chama do próprio container, sem passar por header. Se um dia expor
  * externamente, adicione um segredo compartilhado via header.
  */
+const { runComOficina } = require('../config/db');
+
 router.post('/webhook', h(async (req, res) => {
-  // Responde 200 rápido pra Evolution não repetir o evento
-  res.sendStatus(200);
-  try {
-    await wa.processarWebhook(req.body);
-  } catch (err) {
-    console.error('[whatsapp] falha ao processar webhook:', err.message);
-  }
+  // Webhook não tem JWT → seta contexto manualmente.
+  // Hoje só 1 oficina; Fase 3 vai rotear pela instância Evolution.
+  return runComOficina('maninho', async () => {
+    // Responde 200 rápido pra Evolution não repetir o evento
+    res.sendStatus(200);
+    try {
+      await wa.processarWebhook(req.body);
+    } catch (err) {
+      console.error('[whatsapp] falha ao processar webhook:', err.message);
+    }
+  });
 }));
 
 // --- rotas autenticadas ---

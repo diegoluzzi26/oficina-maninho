@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../config/db');
+const { runComOficina } = require('../config/db');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
 const agendamentos = require('./agendamentos.service');
@@ -172,37 +173,37 @@ function agendar() {
   let ultimoDiaExecutado = null;
 
   setInterval(async () => {
-    // Lê hora do banco a cada tick — permite mudar a hora via UI sem reboot.
-    const horaAlvo = config.alerta().hora;
-    const agora = new Date();
-    const hoje = agora.toISOString().slice(0, 10);
+    // Executa dentro do contexto da oficina 'maninho'. Fase 3
+    // vai fazer loop pra rodar em cada oficina cadastrada.
+    await runComOficina('maninho', async () => {
+      // Lê hora do banco a cada tick — permite mudar a hora via UI sem reboot.
+      const horaAlvo = config.alerta().hora;
+      const agora = new Date();
+      const hoje = agora.toISOString().slice(0, 10);
 
-    if (agora.getHours() !== horaAlvo || ultimoDiaExecutado === hoje) return;
-    ultimoDiaExecutado = hoje;
+      if (agora.getHours() !== horaAlvo || ultimoDiaExecutado === hoje) return;
+      ultimoDiaExecutado = hoje;
 
-    // Gera despesas recorrentes ANTES de mandar alerta de contas —
-    // assim uma conta cujo dia chegou hoje já entra no aviso.
-    try {
-      const g = await recorrentes.gerarPendentes();
-      if (g.gerados > 0) console.log(`[recorrentes] gerou ${g.gerados} despesa(s)`);
-    } catch (err) {
-      console.error('[alertas] falha em recorrentes.gerarPendentes:', err.message);
-    }
+      try {
+        const g = await recorrentes.gerarPendentes();
+        if (g.gerados > 0) console.log(`[recorrentes] gerou ${g.gerados} despesa(s)`);
+      } catch (err) {
+        console.error('[alertas] falha em recorrentes.gerarPendentes:', err.message);
+      }
 
-    // Alerta de contas (dono) e lembrete de agendamentos (clientes)
-    // são independentes: uma falha não deve impedir a outra.
-    try {
-      const r = await verificarEEnviar();
-      console.log(`[alertas] contas: ${JSON.stringify(r)}`);
-    } catch (err) {
-      console.error('[alertas] falha em verificarEEnviar:', err.message);
-    }
-    try {
-      const r = await enviarLembretesDeAmanha();
-      console.log(`[alertas] lembretes: ${JSON.stringify(r)}`);
-    } catch (err) {
-      console.error('[alertas] falha em enviarLembretesDeAmanha:', err.message);
-    }
+      try {
+        const r = await verificarEEnviar();
+        console.log(`[alertas] contas: ${JSON.stringify(r)}`);
+      } catch (err) {
+        console.error('[alertas] falha em verificarEEnviar:', err.message);
+      }
+      try {
+        const r = await enviarLembretesDeAmanha();
+        console.log(`[alertas] lembretes: ${JSON.stringify(r)}`);
+      } catch (err) {
+        console.error('[alertas] falha em enviarLembretesDeAmanha:', err.message);
+      }
+    });
   }, 10 * 60 * 1000).unref(); // a cada 10 min; unref não segura o processo
 
   console.log(`[alertas] verificação diária agendada (hora vem da config)`);

@@ -4,270 +4,276 @@ import { api, getUser } from '../lib/api';
 import { data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 
-const TIPO_BADGE = {
-  manutencao: { cor: 'bg-maninho-100 text-maninho-800', label: '🔧 Manutenção' },
-  reativacao: { cor: 'bg-ouro-100 text-ouro-800',       label: '💤 Reativação' },
-  promocao:   { cor: 'bg-emerald-100 text-emerald-800', label: '📢 Promoção' },
-  avaliacao:  { cor: 'bg-amber-100 text-amber-800',     label: '⭐ Avaliação' },
-};
-const STATUS_BADGE = {
-  pendente:   { cor: 'bg-slate-100 text-slate-700',      label: 'Pendente' },
-  enviado:    { cor: 'bg-sky-100 text-sky-800',          label: 'Enviado' },
-  respondeu:  { cor: 'bg-indigo-100 text-indigo-800',    label: 'Respondeu' },
-  converteu:  { cor: 'bg-ouro-100 text-ouro-800',        label: '✓ Converteu' },
-  dispensado: { cor: 'bg-slate-100 text-slate-500',      label: 'Dispensado' },
+/**
+ * Follow-up em Kanban.
+ * 4 colunas por STATUS + chips coloridos por TIPO no topo.
+ * Card de cada follow-up tem borda esquerda colorida do tipo e um
+ * botão "Histórico" que abre modal com todas as interações do cliente.
+ */
+
+const TIPO_META = {
+  manutencao: { emoji: '🔧', label: 'Manutenção', cor: 'azul' },
+  reativacao: { emoji: '💤', label: 'Reativação', cor: 'ouro' },
+  promocao:   { emoji: '📢', label: 'Promoção',   cor: 'verde' },
+  avaliacao:  { emoji: '⭐', label: 'Avaliação',  cor: 'rosa' },
 };
 
-function linkWhatsApp(tel, mensagem) {
-  const numero = String(tel || '').replace(/\D/g, '');
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+const COLUNAS = [
+  { chave: 'a-fazer',     titulo: 'A fazer',             marcador: 'bg-slate-400' },
+  { chave: 'enviado',     titulo: 'Enviado · Aguardando', marcador: 'bg-maninho-600' },
+  { chave: 'em-conversa', titulo: 'Em conversa',         marcador: 'bg-ouro-500' },
+  { chave: 'fechado',     titulo: 'Fechado',             marcador: 'bg-emerald-500' },
+];
+
+const EVENTO_META = {
+  enviado:    { simbolo: '📤', bg: 'bg-maninho-100 text-maninho-700' },
+  respondeu:  { simbolo: '💬', bg: 'bg-ouro-100 text-ouro-700' },
+  converteu:  { simbolo: '✅', bg: 'bg-emerald-100 text-emerald-700' },
+  dispensado: { simbolo: '✕',  bg: 'bg-slate-100 text-slate-500' },
+  criado:     { simbolo: '⏱',  bg: 'bg-slate-100 text-slate-500' },
+};
+
+function bordaTipo(tipo) {
+  const m = { azul: 'border-l-maninho-600', ouro: 'border-l-ouro-500',
+    verde: 'border-l-emerald-500', rosa: 'border-l-rose-500' }[TIPO_META[tipo]?.cor];
+  return m || 'border-l-slate-300';
+}
+function chipTipo(tipo) {
+  const cor = TIPO_META[tipo]?.cor;
+  return {
+    azul:  'bg-maninho-50 text-maninho-700',
+    ouro:  'bg-ouro-100 text-ouro-700',
+    verde: 'bg-emerald-50 text-emerald-700',
+    rosa:  'bg-rose-50 text-rose-700',
+  }[cor] || 'bg-slate-100 text-slate-600';
 }
 
-function CardFollowup({ item, onMudou }) {
-  const [erro, setErro] = useState('');
-  const [enviandoAuto, setEnviandoAuto] = useState(false);
-  const [reagendar, setReagendar] = useState(false);
-  const [novaData, setNovaData] = useState(item.agendado_para?.slice(0, 10) || '');
-
-  async function enviarAutomatico() {
-    if (!item.cliente_telefone) { setErro('Cliente sem telefone cadastrado'); return; }
-    if (!confirm(`Enviar automático pelo Evolution pro número ${item.cliente_telefone}?`)) return;
-    setErro(''); setEnviandoAuto(true);
-    try {
-      const r = await api.enviarFollowup(item.id);
-      onMudou(r);
-    } catch (e) { setErro(e.message); }
-    finally { setEnviandoAuto(false); }
-  }
-
-  async function marcar(status, extra = {}) {
-    setErro('');
-    try {
-      const r = await api.followupMudarStatus(item.id, { status, ...extra });
-      onMudou(r);
-    } catch (e) { setErro(e.message); }
-  }
-
-  async function excluir() {
-    if (!confirm('Remover este follow-up da fila?')) return;
-    try { await api.removerFollowup(item.id); onMudou(null, item.id); }
-    catch (e) { setErro(e.message); }
-  }
-
-  async function salvarReagendar() {
-    if (!novaData) return;
-    try {
-      const r = await api.followupReagendar(item.id, { agendado_para: novaData });
-      setReagendar(false);
-      onMudou(r);
-    } catch (e) { setErro(e.message); }
-  }
-
-  async function copiarMensagem() {
-    try {
-      await navigator.clipboard.writeText(item.mensagem);
-      alert('Mensagem copiada!');
-    } catch { /* ignore */ }
-  }
-
-  async function abrirWhatsApp() {
-    if (!item.cliente_telefone) { setErro('Cliente sem telefone cadastrado'); return; }
-    window.open(linkWhatsApp(item.cliente_telefone, item.mensagem), '_blank');
-    // Pergunta se marca como enviado
-    setTimeout(() => {
-      if (confirm('Mensagem enviada? Marcar como enviado?')) marcar('enviado');
-    }, 500);
-  }
-
-  const tipo = TIPO_BADGE[item.tipo] || TIPO_BADGE.manutencao;
-  const st = STATUS_BADGE[item.status] || STATUS_BADGE.pendente;
-
-  return (
-    <div className="card p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tipo.cor}`}>
-          {tipo.label}
-        </span>
-        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${st.cor}`}>
-          {st.label}
-        </span>
-        {item.regra_nome && (
-          <span className="text-[11px] text-slate-500">· {item.regra_nome}</span>
-        )}
-        <span className="ml-auto text-[11px] text-slate-500">
-          Agendado {data(item.agendado_para)}
-        </span>
-      </div>
-
-      <p className="text-sm font-semibold text-slate-800">{item.cliente_nome}</p>
-      <p className="text-xs text-slate-500">
-        {telefone(item.cliente_telefone)}
-        {item.placa && ` · ${item.marca} ${item.modelo} · ${item.placa}`}
-      </p>
-
-      <div className="my-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-        <p className="whitespace-pre-wrap text-sm text-slate-700">{item.mensagem}</p>
-      </div>
-
-      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
-
-      {reagendar ? (
-        <div className="flex items-center gap-2">
-          <input type="date" className="input flex-1" value={novaData}
-            onChange={(e) => setNovaData(e.target.value)} />
-          <button onClick={salvarReagendar} className="btn-primary text-xs">Salvar</button>
-          <button onClick={() => setReagendar(false)} className="btn-ghost text-xs">Cancelar</button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
-            <button onClick={enviarAutomatico} disabled={enviandoAuto}
-              className="btn-ouro text-xs">
-              {enviandoAuto ? '⌛ Enviando…' : '🚀 Enviar automático'}
-            </button>
-          )}
-          <button onClick={copiarMensagem}
-            className="btn-ghost text-xs">📋 Copiar</button>
-          <button onClick={abrirWhatsApp}
-            className="btn-ghost text-xs">📱 Abrir WhatsApp</button>
-          {item.status !== 'enviado' && item.status !== 'respondeu' && item.status !== 'converteu' && (
-            <button onClick={() => marcar('enviado')}
-              className="btn-ghost text-xs text-emerald-700">✓ Enviado</button>
-          )}
-          {(item.status === 'enviado' || item.status === 'respondeu') && (
-            <button onClick={() => marcar('converteu')}
-              className="btn-ouro text-xs">✓ Converteu</button>
-          )}
-          <button onClick={() => setReagendar(true)}
-            className="btn-ghost text-xs">📅 Reagendar</button>
-          {item.status !== 'dispensado' && (
-            <button onClick={() => marcar('dispensado')}
-              className="btn-ghost text-xs">✕ Dispensar</button>
-          )}
-          <button onClick={excluir}
-            className="ml-auto text-xs font-semibold text-rose-600 hover:underline">
-            🗑
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function tempoRelativo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const hoje = new Date();
+  const dias = Math.round((hoje - d) / 86400000);
+  if (dias === 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  if (dias > 1) return `há ${dias} dias`;
+  if (dias === -1) return 'amanhã';
+  return `em ${-dias} dias`;
 }
 
-function FormManual({ aberto, onFechar, onCriado }) {
-  const vazio = { cliente_id: '', tipo: 'promocao', mensagem: '', agendado_para: new Date().toISOString().slice(0, 10) };
-  const [form, setForm] = useState(vazio);
-  const [clientes, setClientes] = useState([]);
-  const [buscaCli, setBuscaCli] = useState('');
-  const [erro, setErro] = useState('');
-  const [salvando, setSalvando] = useState(false);
+// ------------------------------------------------------------------ Modal Histórico
 
-  useEffect(() => { if (aberto) { setForm(vazio); setErro(''); setBuscaCli(''); } }, [aberto]);
+function ModalHistorico({ clienteId, onFechar }) {
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+
   useEffect(() => {
-    if (!aberto) return;
-    const t = setTimeout(() => {
-      api.clientes({ busca: buscaCli, por_pagina: 20 }).then((r) => setClientes(r.dados)).catch(() => {});
-    }, 300);
-    return () => clearTimeout(t);
-  }, [aberto, buscaCli]);
+    if (!clienteId) return;
+    api.followupHistorico(clienteId)
+      .then(setDados)
+      .catch((e) => setErro(e.message));
+  }, [clienteId]);
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  async function salvar(e) {
-    e.preventDefault();
-    setErro(''); setSalvando(true);
-    try {
-      const r = await api.criarFollowupManual({
-        cliente_id: form.cliente_id,
-        tipo: form.tipo,
-        mensagem: form.mensagem,
-        agendado_para: form.agendado_para,
-      });
-      onCriado(r);
-    } catch (err) { setErro(err.message); }
-    finally { setSalvando(false); }
-  }
+  if (!clienteId) return null;
 
   return (
-    <Modal aberto={aberto} titulo="Follow-up manual" onFechar={onFechar}>
-      <form onSubmit={salvar} className="space-y-4">
-        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
-
-        <Campo label="Buscar cliente" obrigatorio>
-          <input className="input" value={buscaCli}
-            onChange={(e) => setBuscaCli(e.target.value)}
-            placeholder="Nome, telefone, CPF ou placa" autoFocus />
-          <select className="input mt-2" value={form.cliente_id}
-            onChange={set('cliente_id')} required>
-            <option value="">Selecione…</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}{c.telefone ? ` · ${c.telefone}` : ''}
-              </option>
-            ))}
-          </select>
-        </Campo>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Campo label="Tipo" obrigatorio>
-            <select className="input" value={form.tipo} onChange={set('tipo')}>
-              <option value="promocao">Promoção</option>
-              <option value="manutencao">Manutenção</option>
-              <option value="reativacao">Reativação</option>
-              <option value="avaliacao">Avaliação</option>
-            </select>
-          </Campo>
-          <Campo label="Agendar para" obrigatorio>
-            <input type="date" className="input" value={form.agendado_para}
-              onChange={set('agendado_para')} required />
-          </Campo>
-        </div>
-
-        <Campo label="Mensagem" obrigatorio>
-          <textarea className="input min-h-[140px] resize-y" value={form.mensagem}
-            onChange={set('mensagem')} required minLength={10} maxLength={2000}
-            placeholder="Digite a mensagem que o cliente vai receber…" />
-        </Campo>
-
-        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
-          <button type="submit" className="btn-primary" disabled={salvando || !form.cliente_id}>
-            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Criar'}
-          </button>
-        </div>
-      </form>
+    <Modal aberto largura="max-w-lg"
+      titulo={dados?.cliente ? `Histórico — ${dados.cliente.nome}` : 'Histórico'}
+      onFechar={onFechar}>
+      {erro && <Alerta tipo="erro">{erro}</Alerta>}
+      {!dados ? (
+        <Skeleton className="h-48" />
+      ) : dados.historico.length === 0 ? (
+        <Vazio titulo="Nenhum follow-up ainda"
+          descricao="Esse cliente ainda não teve nenhum follow-up gerado." />
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-slate-500">
+            {dados.historico.length} follow-up(s) registrado(s)
+          </p>
+          <ul className="space-y-2">
+            {dados.historico.map((h) => {
+              const evento = h.status === 'pendente' ? 'criado' : h.status;
+              const meta = EVENTO_META[evento] || EVENTO_META.criado;
+              const tipo = TIPO_META[h.tipo];
+              const quando = h.respondido_em || h.enviado_em || h.criado_em;
+              return (
+                <li key={h.id} className="flex gap-3 rounded-md bg-slate-50 p-3">
+                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm ${meta.bg}`}>
+                    {meta.simbolo}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-1">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {tipo?.emoji} {tipo?.label} · {h.status}
+                      </p>
+                      {h.convertido_os_numero && (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          OS #{h.convertido_os_numero}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {data(quando)} · {tempoRelativo(quando)}
+                      {h.regra_nome && ` · ${h.regra_nome}`}
+                    </p>
+                    {h.mensagem && (
+                      <p className="mt-1.5 whitespace-pre-wrap rounded bg-white p-2 text-xs text-slate-600">
+                        {h.mensagem.slice(0, 160)}{h.mensagem.length > 160 ? '…' : ''}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </Modal>
   );
 }
 
+// ------------------------------------------------------------------ Card
+
+function CardFollowup({ item, onAcao, onHistorico, enviando }) {
+  const tipo = TIPO_META[item.tipo];
+  const coluna = {
+    pendente: 'a-fazer', enviado: 'enviado',
+    respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
+  }[item.status];
+
+  let tempo = '';
+  if (item.status === 'pendente') tempo = tempoRelativo(item.agendado_para);
+  else if (item.status === 'enviado')   tempo = `enviado ${tempoRelativo(item.enviado_em)}`;
+  else if (item.status === 'respondeu') tempo = `respondeu ${tempoRelativo(item.respondido_em)}`;
+  else if (item.status === 'converteu') tempo = `✅ converteu ${tempoRelativo(item.respondido_em || item.enviado_em)}`;
+  else if (item.status === 'dispensado') tempo = '✕ dispensado';
+
+  return (
+    <div className={`group relative rounded-md border border-slate-200 border-l-[3px] bg-white p-2.5 shadow-sm transition hover:-translate-y-px hover:shadow-md ${bordaTipo(item.tipo)}`}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${chipTipo(item.tipo)}`}>
+          {tipo?.emoji} {tipo?.label}
+        </span>
+        <span className="tnum text-[11px] font-medium text-slate-400">{tempo}</span>
+      </div>
+      <p className="text-sm font-semibold leading-tight text-slate-800">{item.cliente_nome}</p>
+      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+        {item.placa && (
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-700">
+            {item.placa}
+          </span>
+        )}
+        {(item.marca || item.modelo) && (
+          <span className="truncate">{item.marca} {item.modelo}</span>
+        )}
+      </div>
+
+      {/* Ações contextuais por coluna — aparecem no hover */}
+      <div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 opacity-0 transition group-hover:opacity-100">
+        {coluna === 'a-fazer' && (
+          <>
+            <button onClick={() => onAcao(item, 'enviar')} disabled={enviando === item.id}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">
+              {enviando === item.id ? '⌛' : '🚀 Enviar'}
+            </button>
+            <button onClick={() => onAcao(item, 'wa')}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+              title="Abrir no WhatsApp Web">
+              📱
+            </button>
+          </>
+        )}
+        {coluna === 'enviado' && (
+          <>
+            <button onClick={() => onAcao(item, 'respondeu')}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-ouro-700 hover:bg-ouro-50">
+              💬 Respondeu
+            </button>
+            <button onClick={() => onAcao(item, 'dispensar')}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
+              Dispensar
+            </button>
+          </>
+        )}
+        {coluna === 'em-conversa' && (
+          <>
+            <button onClick={() => onAcao(item, 'converteu')}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">
+              ✅ Converteu
+            </button>
+            <button onClick={() => onAcao(item, 'dispensar')}
+              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
+              Dispensar
+            </button>
+          </>
+        )}
+        <button onClick={() => onHistorico(item.cliente_id)}
+          className="ml-auto rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
+          Histórico
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ Página
+
 export default function Followup() {
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
-  const [lista, setLista] = useState(null);
-  const [metricas, setMetricas] = useState(null);
-  const [filtroStatus, setFiltroStatus] = useState('pendente');
-  const [filtroTipo, setFiltroTipo]     = useState('');
+  const [dados, setDados] = useState(null);
+  const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
+  const [enviandoId, setEnviandoId] = useState('');
   const [gerando, setGerando] = useState(false);
   const [enviandoTodos, setEnviandoTodos] = useState(false);
-  const [manualAberto, setManualAberto] = useState(false);
+  const [historicoId, setHistoricoId] = useState(null);
 
   const carregar = useCallback(() => {
     setErro('');
-    const params = { por_pagina: 100 };
-    if (filtroStatus) params.status = filtroStatus;
-    if (filtroTipo)   params.tipo   = filtroTipo;
-    if (busca)        params.busca  = busca;
-    Promise.all([api.followupFila(params), api.metricasFollowup(30)])
-      .then(([l, m]) => { setLista(l); setMetricas(m); })
+    const params = {};
+    if (tipoFiltro !== 'todos') params.tipo = tipoFiltro;
+    if (busca) params.busca = busca;
+    api.followupKanban(params)
+      .then(setDados)
       .catch((e) => setErro(e.message));
-  }, [filtroStatus, filtroTipo, busca]);
+  }, [tipoFiltro, busca]);
 
   useEffect(() => {
     const t = setTimeout(carregar, busca ? 300 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  async function acao(item, tipo) {
+    setErro('');
+    try {
+      if (tipo === 'enviar') {
+        if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
+        if (!confirm(`Enviar automático pelo Evolution pro ${item.cliente_telefone}?`)) return;
+        setEnviandoId(item.id);
+        await api.enviarFollowup(item.id);
+      } else if (tipo === 'wa') {
+        if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
+        const num = String(item.cliente_telefone).replace(/\D/g, '');
+        window.open(`https://wa.me/${num}?text=${encodeURIComponent(item.mensagem)}`, '_blank');
+        setTimeout(() => {
+          if (confirm('Mensagem enviada? Marcar como enviado?')) {
+            api.followupMudarStatus(item.id, { status: 'enviado' }).then(carregar);
+          }
+        }, 400);
+        return;
+      } else if (tipo === 'respondeu') {
+        await api.followupMudarStatus(item.id, { status: 'respondeu' });
+      } else if (tipo === 'converteu') {
+        await api.followupMudarStatus(item.id, { status: 'converteu' });
+      } else if (tipo === 'dispensar') {
+        await api.followupMudarStatus(item.id, { status: 'dispensado' });
+      }
+      carregar();
+    } catch (e) { setErro(e.message); }
+    finally { setEnviandoId(''); }
+  }
 
   async function gerar() {
     setGerando(true); setErro('');
@@ -279,109 +285,124 @@ export default function Followup() {
     finally { setGerando(false); }
   }
 
-  async function enviarTodosPendentes() {
-    if (!confirm('Enviar TODOS os follow-ups pendentes (agendados até hoje) via Evolution API?')) return;
+  async function enviarTodos() {
+    if (!confirm('Enviar TODOS os follow-ups pendentes (agendados até hoje)?')) return;
     setEnviandoTodos(true); setErro('');
     try {
       const r = await api.enviarFollowupsPendentes();
-      const msg = `Enviados: ${r.enviados}/${r.total}` +
-        (r.falhas.length ? `\nFalhas: ${r.falhas.length}` : '');
-      alert(msg);
+      alert(`Enviados: ${r.enviados}/${r.total}` + (r.falhas.length ? `\nFalhas: ${r.falhas.length}` : ''));
       carregar();
     } catch (e) { setErro(e.message); }
     finally { setEnviandoTodos(false); }
   }
 
-  function itemMudou(atualizado, removidoId) {
-    if (removidoId) {
-      setLista((l) => l ? { ...l, dados: l.dados.filter((x) => x.id !== removidoId) } : l);
-    } else if (atualizado) {
-      setLista((l) => l ? { ...l, dados: l.dados.map((x) => x.id === atualizado.id ? atualizado : x) } : l);
-    }
-    api.metricasFollowup(30).then(setMetricas).catch(() => {});
-  }
+  const c = dados?.contagens || { todos: 0, manutencao: 0, reativacao: 0, promocao: 0, avaliacao: 0 };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Follow-up</h1>
+          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
+            Follow-up
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Contato ativo com o cliente via WhatsApp
+            Contato ativo com o cliente · Kanban por status
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost" onClick={() => setManualAberto(true)}>+ Manual</button>
           {ehAdmin && (
-            <>
-              <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
-              <button className="btn-primary" onClick={gerar} disabled={gerando}>
-                {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar fila'}
-              </button>
-              <button className="btn-ouro" onClick={enviarTodosPendentes} disabled={enviandoTodos}>
-                {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar pendentes'}
-              </button>
-            </>
+            <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
+          )}
+          {ehAdmin && (
+            <button onClick={gerar} disabled={gerando} className="btn-primary">
+              {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar fila'}
+            </button>
+          )}
+          {ehAdmin && (
+            <button onClick={enviarTodos} disabled={enviandoTodos} className="btn-ouro">
+              {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar pendentes'}
+            </button>
           )}
         </div>
       </div>
 
-      {metricas && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ['Hoje', metricas.pendentes_hoje],
-            ['Enviados (30d)', metricas.enviados],
-            ['Resposta', `${metricas.taxa_resposta}%`],
-            ['Conversão', `${metricas.taxa_conversao}%`],
-          ].map(([l, v]) => (
-            <div key={l} className="card p-3 text-center">
-              <p className="tnum font-display text-2xl font-bold text-maninho-700">{v}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{l}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* Chips de filtro por tipo */}
       <div className="flex flex-wrap items-center gap-2">
-        <select className="input max-w-[160px] py-1.5 text-xs"
-          value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
-          <option value="">Todos os status</option>
-          <option value="pendente">Pendentes</option>
-          <option value="enviado">Enviados</option>
-          <option value="respondeu">Responderam</option>
-          <option value="converteu">Converteram</option>
-          <option value="dispensado">Dispensados</option>
-        </select>
-        <select className="input max-w-[160px] py-1.5 text-xs"
-          value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
-          <option value="">Todos os tipos</option>
-          <option value="manutencao">Manutenção</option>
-          <option value="reativacao">Reativação</option>
-          <option value="promocao">Promoção</option>
-          <option value="avaliacao">Avaliação</option>
-        </select>
-        <input className="input max-w-xs" placeholder="Buscar cliente ou placa"
+        {[
+          ['todos',      'Todos',        ''],
+          ['manutencao', 'Manutenção',   '🔧'],
+          ['reativacao', 'Reativação',   '💤'],
+          ['promocao',   'Promoção',     '📢'],
+          ['avaliacao',  'Avaliação',    '⭐'],
+        ].map(([k, label, emoji]) => (
+          <button key={k} onClick={() => setTipoFiltro(k)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition
+              ${tipoFiltro === k
+                ? (k === 'todos' ? 'border-slate-800 bg-slate-800 text-white'
+                   : k === 'manutencao' ? 'border-maninho-600 bg-maninho-50 text-maninho-700'
+                   : k === 'reativacao' ? 'border-ouro-500 bg-ouro-100 text-ouro-700'
+                   : k === 'promocao'   ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                   : 'border-rose-500 bg-rose-50 text-rose-700')
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>
+            <span>{emoji} {label}</span>
+            <span className={`tnum rounded px-1.5 py-0.5 text-[10px] font-bold
+              ${tipoFiltro === k ? 'bg-black/15' : 'bg-slate-100'}`}>
+              {c[k] || 0}
+            </span>
+          </button>
+        ))}
+        <input className="input ml-auto max-w-xs" placeholder="Buscar cliente ou placa…"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
-      {!lista ? (
-        <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-32" />)}</div>
-      ) : lista.dados.length === 0 ? (
-        <Vazio titulo="Nenhum follow-up na fila"
-          descricao="Clique em ⚡ Gerar fila pra criar follow-ups automáticos a partir das regras."
-        />
+      {/* Kanban */}
+      {!dados ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {COLUNAS.map((c) => <Skeleton key={c.chave} className="h-64" />)}
+        </div>
       ) : (
-        <div className="space-y-3">
-          {lista.dados.map((item) => (
-            <CardFollowup key={item.id} item={item} onMudou={itemMudou} />
-          ))}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {COLUNAS.map((col) => {
+            const cards = dados.colunas[col.chave] || [];
+            return (
+              <div key={col.chave} className="flex flex-col rounded-lg bg-slate-100/70 p-2">
+                <div className="mb-2 flex items-center justify-between border-b border-slate-200 px-1 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${col.marcador}`} />
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                      {col.titulo}
+                    </p>
+                  </div>
+                  <span className="tnum rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                    {cards.length}
+                  </span>
+                </div>
+
+                {cards.length === 0 ? (
+                  <p className="rounded border border-dashed border-slate-300 py-6 text-center text-[11px] text-slate-400">
+                    Sem itens
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {cards.map((item) => (
+                      <CardFollowup key={item.id} item={item}
+                        enviando={enviandoId}
+                        onAcao={acao}
+                        onHistorico={setHistoricoId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <FormManual aberto={manualAberto} onFechar={() => setManualAberto(false)}
-        onCriado={() => { setManualAberto(false); carregar(); }} />
+      {historicoId && (
+        <ModalHistorico clienteId={historicoId} onFechar={() => setHistoricoId(null)} />
+      )}
     </div>
   );
 }

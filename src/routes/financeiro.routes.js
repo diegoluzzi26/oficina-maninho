@@ -33,6 +33,14 @@ router.get('/os-do-dia',
   validate({ query: z.object({ data: z.string().date().optional() }) }),
   h(async (req, res) => res.json(await fin.osDoDia(req.query))));
 
+// TODAS as OSs pagas de um mês, agrupadas por dia. Sem paginação.
+router.get('/os-do-mes',
+  validate({ query: z.object({
+    ano: z.coerce.number().int().min(2000).max(2100).optional(),
+    mes: z.coerce.number().int().min(1).max(12).optional(),
+  }) }),
+  h(async (req, res) => res.json(await fin.osDoMes(req.query))));
+
 router.get('/categorias', validate({ query: v.filtroCategorias }),
   h(async (req, res) => res.json(await desp.listarCategorias(req.query))));
 

@@ -447,9 +447,132 @@ async function metricas({ periodo = 30 } = {}) {
   };
 }
 
+// ---------------------------------------------------------------- KANBAN
+
+/**
+ * Mapeia os 5 status internos pras 4 colunas do kanban da UI:
+ *   pendente  -> a-fazer
+ *   enviado   -> enviado
+ *   respondeu -> em-conversa
+ *   converteu -> fechado (badge: convertido)
+ *   dispensado-> fechado (badge: dispensado)
+ */
+const COLUNA_POR_STATUS = {
+  pendente:   'a-fazer',
+  enviado:    'enviado',
+  respondeu:  'em-conversa',
+  converteu:  'fechado',
+  dispensado: 'fechado',
+};
+
+/**
+ * Retorna 4 colunas já com os cards dentro + contagem por tipo (pra
+ * alimentar os chips de filtro). Tudo em uma requisição só.
+ *
+ * Filtros opcionais:
+ *   tipo    — 'manutencao' | 'reativacao' | 'promocao' | 'avaliacao'
+ *   busca   — nome do cliente ou placa
+ */
+async function kanban({ tipo, busca } = {}) {
+  const params = [];
+  const where = [];
+  if (tipo) { params.push(tipo); where.push(`tipo = $${params.length}`); }
+  if (busca) {
+    params.push(`%${busca}%`);
+    where.push(`(cliente_nome ILIKE $${params.length}
+                 OR upper(replace(placa,'-','')) LIKE upper(replace($${params.length},'-','')))`);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const { rows } = await db.query(
+    `SELECT * FROM vw_followup_fila ${clause}
+      ORDER BY
+        CASE status
+          WHEN 'pendente' THEN 1 WHEN 'enviado' THEN 2
+          WHEN 'respondeu' THEN 3 WHEN 'converteu' THEN 4 ELSE 5
+        END,
+        agendado_para ASC, criado_em DESC
+      LIMIT 500`, params,
+  );
+
+  // Agrupa por coluna do kanban
+  const colunas = {
+    'a-fazer':     [],
+    'enviado':     [],
+    'em-conversa': [],
+    'fechado':     [],
+  };
+  for (const item of rows) {
+    const col = COLUNA_POR_STATUS[item.status] || 'fechado';
+    colunas[col].push(item);
+  }
+
+  // Contagem por tipo pros chips (SEMPRE em cima do total, ignora o
+  // filtro de tipo — o chip clicado ainda deve mostrar seu contador).
+  const contagemQ = await db.query(
+    `SELECT tipo, count(*)::int AS qtd
+       FROM vw_followup_fila ${busca ? clause.replace(/AND tipo = \$1/, '') : ''}
+       GROUP BY tipo`,
+    busca ? params.slice(tipo ? 1 : 0) : [],
+  );
+  const porTipo = {
+    manutencao: 0, reativacao: 0, promocao: 0, avaliacao: 0,
+  };
+  let total = 0;
+  for (const r of contagemQ.rows) {
+    porTipo[r.tipo] = r.qtd;
+    total += r.qtd;
+  }
+
+  return {
+    colunas,
+    contagens: { todos: total, ...porTipo },
+    totais: {
+      'a-fazer':     colunas['a-fazer'].length,
+      'enviado':     colunas['enviado'].length,
+      'em-conversa': colunas['em-conversa'].length,
+      'fechado':     colunas['fechado'].length,
+    },
+  };
+}
+
+/**
+ * Histórico completo de follow-ups de um cliente (todos os tipos,
+ * todos os status, ordenados do mais recente pro mais antigo).
+ * Alimenta o modal "Ver histórico" no card do kanban.
+ */
+async function historicoDoCliente(clienteId) {
+  const { rows } = await db.query(
+    `SELECT f.id, f.tipo, f.status, f.mensagem,
+            f.agendado_para, f.enviado_em, f.respondido_em,
+            f.criado_em, f.notas,
+            r.nome AS regra_nome,
+            o.numero_os AS convertido_os_numero
+       FROM followup_fila f
+       LEFT JOIN followup_regras r ON r.id = f.regra_id
+       LEFT JOIN ordens_servico o  ON o.id = f.convertido_os_id
+      WHERE f.cliente_id = $1
+      ORDER BY GREATEST(
+        COALESCE(f.respondido_em, '1970-01-01'::timestamptz),
+        COALESCE(f.enviado_em,    '1970-01-01'::timestamptz),
+        f.criado_em
+      ) DESC
+      LIMIT 100`, [clienteId],
+  );
+
+  // Também busca o nome do cliente pra o cabeçalho do modal
+  const cli = await db.query('SELECT nome FROM clientes WHERE id = $1', [clienteId]);
+
+  return {
+    cliente: cli.rows[0] || null,
+    historico: rows,
+  };
+}
+
 module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
   gerarFila, metricas,
   enviarAgora, enviarPendentesAgora,
+  kanban, historicoDoCliente,
 };

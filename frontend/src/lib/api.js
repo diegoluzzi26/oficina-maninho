@@ -159,6 +159,7 @@ export const api = {
   painelFinanceiro: (params) => request('/financeiro/painel', { params }),
   fluxoCaixa: (params) => request('/financeiro/fluxo-caixa', { params }),
   osDoDia: (data) => request('/financeiro/os-do-dia', { params: data ? { data } : undefined }),
+  osDoMes: (ano, mes) => request('/financeiro/os-do-mes', { params: { ano, mes } }),
   categorias: (params) => request('/financeiro/categorias', { params }),
   criarCategoria: (body) => request('/financeiro/categorias', { method: 'POST', body }),
   atualizarCategoria: (id, body) => request(`/financeiro/categorias/${id}`, { method: 'PATCH', body }),
@@ -208,6 +209,8 @@ export const api = {
   enviarFollowup: (id) => request(`/followup/fila/${id}/enviar`, { method: 'POST', body: {} }),
   enviarFollowupsPendentes: () => request('/followup/fila/enviar-pendentes', { method: 'POST', body: {} }),
   metricasFollowup: (periodo = 30) => request('/followup/metricas', { params: { periodo } }),
+  followupKanban: (params) => request('/followup/kanban', { params }),
+  followupHistorico: (clienteId) => request(`/followup/historico/${clienteId}`),
 
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
