@@ -57,4 +57,19 @@ router.post('/enviar-mensal', requireRole('admin'),
 router.post('/enviar-semanal', requireRole('admin'),
   h(async (_req, res) => res.json(await agendado.enviarSemanalUltimo())));
 
+// Exporta um Excel com o resumo do mês (receita, despesas, OSs pagas e top serviços)
+const exportar = require('../services/exportar.service');
+router.get('/exportar-mes',
+  validate({ query: z.object({
+    ano: z.coerce.number().int().min(2000).max(2100).optional(),
+    mes: z.coerce.number().int().min(1).max(12).optional(),
+  }) }),
+  h(async (req, res) => {
+    const { buffer, nomeArquivo } = await exportar.gerarResumoMensal(req.query);
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+    res.send(Buffer.from(buffer));
+  }));
+
 module.exports = router;

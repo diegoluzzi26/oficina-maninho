@@ -217,6 +217,31 @@ export const api = {
   iaRedigir: (body) => request('/ia/redigir-mensagem', { method: 'POST', body }),
   iaParecer: (body = {}) => request('/ia/parecer', { method: 'POST', body }),
 
+  /**
+   * Baixa o Excel do mês. Como o backend exige JWT, não dá pra usar
+   * <a href> puro — o browser não manda header. Faz fetch com Authorization,
+   * transforma em blob e dispara download programaticamente.
+   */
+  async baixarExcelMes(ano, mes) {
+    const token = getToken();
+    const res = await fetch(`${BASE}/relatorios/exportar-mes?ano=${ano}&mes=${mes}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new ApiError(err.erro || `Erro ${res.status}`, res.status);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resumo-${ano}-${String(mes).padStart(2, '0')}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  },
+
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),

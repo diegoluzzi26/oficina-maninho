@@ -169,6 +169,16 @@ export default function Dashboard() {
   const [carregando, setCarregando] = useState(true);
   const { densidade, setDensidade, preset } = useDensidade();
   const [parecerAberto, setParecerAberto] = useState(false);
+  const [baixando, setBaixando] = useState(false);
+
+  async function baixarExcel() {
+    setBaixando(true);
+    try {
+      await api.baixarExcelMes(ref.ano, ref.mes);
+    } catch (e) {
+      alert(`Erro ao baixar: ${e.message}`);
+    } finally { setBaixando(false); }
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -236,6 +246,10 @@ export default function Dashboard() {
                 🧠 Parecer da IA
               </button>
             )}
+            <button onClick={baixarExcel} disabled={baixando}
+              className="btn-ghost text-xs">
+              {baixando ? '⌛ Gerando…' : '📥 Baixar Excel'}
+            </button>
             <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
           </div>
         </div>
