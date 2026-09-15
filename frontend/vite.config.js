@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Alguns arquivos em src/lib/*.js contêm JSX (ex.: densidade.js).
+  // Faz o esbuild tratar todo .js como JSX pra build não quebrar.
+  esbuild: { loader: 'jsx', include: /src\/.*\.jsx?$/, exclude: [] },
+  optimizeDeps: {
+    esbuildOptions: { loader: { '.js': 'jsx' } },
+  },
   server: {
     port: 5173,
     // Em dev, o front chama /api e o Vite repassa pro Express.
