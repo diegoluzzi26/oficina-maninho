@@ -41,11 +41,15 @@ const FILTROS = [
   { chave: 'paga', texto: 'Pagas' },
 ];
 
+// Transições que a UI oferece via botão "Mudar para". Espelha o
+// TRANSICOES do backend (src/services/os.service.js) — as duas
+// precisam bater. OS paga PODE voltar pra finalizada agora
+// ("reabrir OS"), então a lista deixou de ser vazia.
 const PROXIMOS = {
   aberta: ['em_andamento', 'finalizada'],
   em_andamento: ['finalizada', 'aberta'],
   finalizada: ['paga', 'em_andamento'],
-  paga: [],
+  paga: ['finalizada'],
 };
 
 /**
@@ -1332,7 +1336,7 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           </div>
         </div>
 
-        {(PROXIMOS[os.status].length > 0 || os.status !== 'paga') && (
+        {(PROXIMOS[os.status].length > 0 || podeExcluir()) && (
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
             {PROXIMOS[os.status].length > 0 && (
               <>
