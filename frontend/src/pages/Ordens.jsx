@@ -662,6 +662,42 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   const [adiantamentos, setAdiantamentos] = useState([]);
   const [novoAdiant, setNovoAdiant] = useState({ valor: '', forma: 'pix', recebido_em: hojeISO() });
   const [addAdiantAberto, setAddAdiantAberto] = useState(false);
+  // Modal pra editar km/observações/desconto da OS.
+  const [dadosOSAberto, setDadosOSAberto] = useState(false);
+  const [dadosOS, setDadosOS] = useState({ km_entrada: '', observacoes: '', desconto: '' });
+
+  function abrirEditarDados() {
+    setDadosOS({
+      km_entrada: os.km_entrada != null ? String(os.km_entrada) : '',
+      observacoes: os.observacoes || '',
+      desconto: os.desconto != null ? String(os.desconto) : '',
+    });
+    setDadosOSAberto(true);
+  }
+  async function salvarDadosOS() {
+    setErro('');
+    try {
+      const atualizada = await api.atualizarOS(os.id, {
+        km_entrada: dadosOS.km_entrada === '' ? null : Number(dadosOS.km_entrada),
+        observacoes: dadosOS.observacoes || null,
+        desconto: dadosOS.desconto === '' ? null : Number(dadosOS.desconto),
+      });
+      setDadosOSAberto(false);
+      onMudou(atualizada);
+    } catch (e) { setErro(e.message); }
+  }
+
+  // Reabrir OS paga → volta pra 'finalizada' pra permitir ajustes e
+  // depois refechar. Backend agora aceita esse fluxo.
+  async function reabrirOS() {
+    if (!confirm(`Reabrir a OS nº ${os.numero_os}?\nElá volta pra "Finalizada" e o pagamento fica preservado. Você pode ajustar itens/valores e marcar como paga de novo depois.`)) return;
+    setCarregando(true); setErro('');
+    try {
+      const atualizada = await api.mudarStatus(os.id, 'finalizada', false);
+      onMudou(atualizada);
+    } catch (e) { setErro(e.message); }
+    finally { setCarregando(false); }
+  }
 
   useEffect(() => {
     if (!os) { setAdiantamentos([]); return; }
@@ -895,8 +931,20 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             Aberta em {dataHora(os.aberta_em)}
             {os.criado_por_nome && <> · por <b className="text-slate-700">{os.criado_por_nome}</b></>}
           </span>
+          <button type="button" onClick={abrirEditarDados}
+            className="ml-auto rounded bg-maninho-50 px-2.5 py-1 text-[11px] font-semibold text-maninho-700 hover:bg-maninho-100"
+            title="Editar KM, observações e desconto">
+            ✎ Editar dados
+          </button>
+          {foiPaga && (
+            <button type="button" onClick={reabrirOS} disabled={carregando}
+              className="rounded bg-ouro-100 px-2.5 py-1 text-[11px] font-semibold text-ouro-800 hover:bg-ouro-200 disabled:opacity-50"
+              title="Voltar OS pra 'Finalizada' pra ajustar itens e refechar depois">
+              ↶ Reabrir OS
+            </button>
+          )}
           <a href={`#/os/${os.id}/imprimir`} target="_blank" rel="noopener"
-            className="ml-auto rounded bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+            className="rounded bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
             title={os.status === 'paga' ? 'Imprimir recibo' : 'Imprimir OS para o cliente assinar'}>
             🖨 {os.status === 'paga' ? 'Recibo' : 'Imprimir'}
           </a>
@@ -1386,6 +1434,38 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           setCarroEditando(null);
           try { onMudou(await api.ordem(os.id)); } catch (e) { setErro(e.message); }
         }} />
+
+      {/* Edição dos campos "gerais" da OS: km, observações, desconto */}
+      <Modal aberto={dadosOSAberto} titulo="Editar dados da OS"
+        onFechar={() => setDadosOSAberto(false)}>
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo label="KM de entrada">
+              <input type="number" min="0" className="input tnum" value={dadosOS.km_entrada}
+                onChange={(e) => setDadosOS((d) => ({ ...d, km_entrada: e.target.value }))}
+                placeholder="120000" />
+            </Campo>
+            <Campo label="Desconto (R$)" ajuda="Desconto dado no valor total.">
+              <input type="number" step="0.01" min="0" className="input tnum" value={dadosOS.desconto}
+                onChange={(e) => setDadosOS((d) => ({ ...d, desconto: e.target.value }))}
+                placeholder="50.00" />
+            </Campo>
+          </div>
+          <Campo label="Observações">
+            <textarea className="input min-h-[80px] resize-y" value={dadosOS.observacoes}
+              onChange={(e) => setDadosOS((d) => ({ ...d, observacoes: e.target.value }))}
+              placeholder="Detalhes internos, orientações pro mecânico, etc." />
+          </Campo>
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+            <button type="button" className="btn-ghost" onClick={() => setDadosOSAberto(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn-primary" onClick={salvarDadosOS}>
+              Salvar
+            </button>
+          </div>
+        </div>
+      </Modal>
     </Modal>
   );
 }

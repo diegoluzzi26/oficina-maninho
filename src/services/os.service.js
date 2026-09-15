@@ -266,11 +266,14 @@ async function atualizar(id, dados) {
   return buscarPorId(id);
 }
 
+// Fluxo completamente livre — dono pode voltar OS paga pra finalizada
+// (reabrir) pra ajustar itens/valor e depois refechar. Antes tinha
+// bloqueio em 'paga' mas cria mais atrito do que segurança.
 const TRANSICOES = {
-  aberta: ['em_andamento', 'finalizada'],
-  em_andamento: ['finalizada', 'aberta'],
-  finalizada: ['paga', 'em_andamento'],
-  paga: [],
+  aberta:       ['em_andamento', 'finalizada', 'paga'],
+  em_andamento: ['aberta', 'finalizada', 'paga'],
+  finalizada:   ['aberta', 'em_andamento', 'paga'],
+  paga:         ['aberta', 'em_andamento', 'finalizada'],
 };
 
 async function mudarStatus(id, novo, dadosPagamento = {}) {
