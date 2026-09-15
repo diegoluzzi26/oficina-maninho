@@ -36,7 +36,7 @@ services:
       - "443:443"
       - "443:443/udp"     # HTTP/3
     environment:
-      DOMINIO: ${DOMINIO:?defina DOMINIO no .env (ex: autoeletricamaninho.com.br)}
+      DOMINIO: "${DOMINIO:?defina DOMINIO no .env, ex autoeletricamaninho.com.br}"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
