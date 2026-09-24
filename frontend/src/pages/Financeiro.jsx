@@ -304,6 +304,10 @@ export default function Financeiro() {
   }));
 
   const lucroPositivo = fluxo.totais.lucro >= 0;
+  // Qtd de despesas PAGAS no período (caixa) — bate com o valor do KPI, que
+  // também é caixa. `resumo.quantidade` conta por competência (inclui
+  // pendentes), então não serve de legenda pra um valor de caixa.
+  const qtdDespesasPagas = fluxo.dados.reduce((s, m) => s + m.qtd_despesas, 0);
 
   return (
     <div className="space-y-6">
@@ -346,7 +350,7 @@ export default function Financeiro() {
         <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)} preset={preset}
           sub="Ordens de serviço pagas" cor="text-emerald-700" atraso={0} />
         <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)} preset={preset}
-          sub={`${resumo.quantidade} lançamentos`} cor="text-rose-600" atraso={60} />
+          sub={`${qtdDespesasPagas} pagamento${qtdDespesasPagas === 1 ? '' : 's'}`} cor="text-rose-600" atraso={60} />
         <Kpi titulo={lucroPositivo ? 'Lucro' : 'Prejuízo'} valor={brl(Math.abs(fluxo.totais.lucro))} preset={preset}
           cor={lucroPositivo ? 'text-maninho-600' : 'text-rose-600'} atraso={120}
           sub={fluxo.totais.margem !== null

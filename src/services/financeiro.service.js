@@ -158,8 +158,11 @@ async function fluxoCaixa(filtros) {
   }
   if (filtros.fim) {
     params.push(filtros.fim);
-    clauseDesp += ` AND pago_em <= date_trunc('month',$${params.length}::date)`;
-    clauseFat  += ` AND paga_em <= date_trunc('month',$${params.length}::date)`;
+    // Inclui o mês inteiro do `fim`: soma [1º dia, 1º dia do mês seguinte).
+    // Truncar direto em date_trunc('month', fim) jogava fora tudo depois do
+    // dia 1º — no "Mês atual" isso zerava quase o mês inteiro.
+    clauseDesp += ` AND pago_em < (date_trunc('month',$${params.length}::date) + interval '1 month')`;
+    clauseFat  += ` AND paga_em < (date_trunc('month',$${params.length}::date) + interval '1 month')`;
   }
   if (!filtros.inicio && !filtros.fim) {
     clauseDesp = " AND pago_em >= date_trunc('month', now() - interval '12 months')";
