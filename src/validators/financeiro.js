@@ -64,7 +64,7 @@ const filtroDespesas = z.object({
   vence_ate: dataISO.optional(),
   busca: z.string().trim().optional(),
   pagina: z.coerce.number().int().positive().default(1),
-  por_pagina: z.coerce.number().int().positive().max(2000).default(50),
+  por_pagina: z.coerce.number().int().positive().max(100).default(20),
 });
 
 const periodo = z.object({

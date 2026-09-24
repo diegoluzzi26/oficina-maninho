@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import {
   brl, data, paraInput, hojeISO, rotuloForma, FORMAS_PAGAMENTO,
   STATUS_DESPESA, textoVencimento, nomeMes,
 } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
+import Paginacao from '../components/Paginacao';
 
 function BadgeDespesa({ status }) {
   const s = STATUS_DESPESA[status] || STATUS_DESPESA.pendente;
@@ -288,17 +290,45 @@ function ModalPagar({ despesa, onFechar, onPago }) {
 
 export default function Despesas({ escopo = 'oficina' } = {}) {
   const hoje = new Date();
-  const [aba, setAba] = useState('todas');
+  const [sp, setSp] = useSearchParams();
+
+  // Página e filtros vivem na URL (compartilhável, sobrevive ao refresh e ao
+  // botão voltar). O estado local guarda só o que não é filtro.
+  const aba = sp.get('aba') || 'todas';
+  const filtroStatus = sp.get('status') || '';
+  const buscaURL = sp.get('busca') || '';
+  const fornecedorId = sp.get('fornecedor') || '';
+  const categoriaId = sp.get('categoria') || '';
+  const forma = sp.get('forma') || '';
+  const todos = sp.get('todos') === '1';
+  const ano = Number(sp.get('ano')) || hoje.getFullYear();
+  const mes = Number(sp.get('mes')) || hoje.getMonth() + 1;
+  const pagina = Number(sp.get('pagina')) || 1;
+  const porPagina = Number(sp.get('por_pagina')) || 20;
+
+  /** Mescla mudanças na query; some com valores default/vazios pra URL limpa. */
+  const patchSp = useCallback((patch, { resetPagina = true } = {}) => {
+    setSp((prev) => {
+      const next = new URLSearchParams(prev);
+      const merged = { ...patch };
+      if (resetPagina && !('pagina' in patch)) merged.pagina = 1;
+      for (const [k, val] of Object.entries(merged)) {
+        const vazio = val === '' || val == null || val === false;
+        const ehPadrao = (k === 'pagina' && Number(val) === 1)
+          || (k === 'por_pagina' && Number(val) === 20)
+          || (k === 'aba' && val === 'todas');
+        if (vazio || ehPadrao) next.delete(k);
+        else next.set(k, String(val));
+      }
+      return next;
+    }, { replace: true });
+  }, [setSp]);
+
   const [lista, setLista] = useState(null);
   const [alertas, setAlertas] = useState(null);
-  const [filtroStatus, setFiltroStatus] = useState('');
-  const [busca, setBusca] = useState('');
-  const [fornecedorId, setFornecedorId] = useState('');
-  const [categoriaId, setCategoriaId] = useState('');
-  const [forma, setForma] = useState('');
+  const [buscaInput, setBuscaInput] = useState(buscaURL);
   const [fornecedores, setFornecedores] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false });
   const [erro, setErro] = useState('');
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -311,19 +341,29 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
     api.categorias({ escopo }).then(setCategorias).catch(() => {});
   }, [escopo]);
 
+  // Busca é digitada localmente e escrita na URL com debounce (350ms), pra
+  // não recarregar a cada tecla nem poluir o histórico.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (buscaInput !== buscaURL) patchSp({ busca: buscaInput });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [buscaInput, buscaURL, patchSp]);
+
   const carregar = useCallback(() => {
     setErro('');
-    // 1000 é folga pra caber todo o mês/filtro sem paginar. Se um dia
-    // um mês passar disso, a gente troca por scroll infinito.
-    const params = { escopo, busca, status: filtroStatus || undefined, por_pagina: 1000 };
+    const params = {
+      escopo, busca: buscaURL, status: filtroStatus || undefined,
+      pagina, por_pagina: porPagina,
+    };
     if (fornecedorId) params.fornecedor_id = fornecedorId;
     if (categoriaId)  params.categoria_id  = categoriaId;
     if (forma)        params.forma         = forma;
-    if (!ref.todos) {
+    if (!todos) {
       // Filtra por competência do mês.
-      const inicio = `${ref.ano}-${String(ref.mes).padStart(2, '0')}-01`;
-      const ultDia = new Date(ref.ano, ref.mes, 0).getDate();
-      const fim = `${ref.ano}-${String(ref.mes).padStart(2, '0')}-${ultDia}`;
+      const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
+      const ultDia = new Date(ano, mes, 0).getDate();
+      const fim = `${ano}-${String(mes).padStart(2, '0')}-${ultDia}`;
       params.inicio = inicio; params.fim = fim;
     }
     const req = aba === 'boletos' ? api.boletos(params) : api.despesas(params);
@@ -331,31 +371,24 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
     Promise.all([req, api.alertas(7)])
       .then(([l, a]) => { setLista(l); setAlertas(a); })
       .catch((e) => setErro(e.message));
-  }, [escopo, aba, busca, filtroStatus, fornecedorId, categoriaId, forma,
-       ref.ano, ref.mes, ref.todos]);
+  }, [escopo, aba, buscaURL, filtroStatus, fornecedorId, categoriaId, forma,
+       ano, mes, todos, pagina, porPagina]);
+
+  useEffect(() => { carregar(); }, [carregar]);
 
   function limparFiltros() {
-    setFiltroStatus(''); setBusca(''); setFornecedorId('');
-    setCategoriaId(''); setForma('');
+    setBuscaInput('');
+    patchSp({ status: '', busca: '', fornecedor: '', categoria: '', forma: '' });
   }
-  const temFiltroAtivo = filtroStatus || busca || fornecedorId || categoriaId || forma;
+  const temFiltroAtivo = filtroStatus || buscaURL || fornecedorId || categoriaId || forma;
 
   function mudarMes(delta) {
-    setRef((r) => {
-      let m = r.mes + delta, a = r.ano;
-      if (m > 12) { m = 1; a += 1; }
-      if (m < 1)  { m = 12; a -= 1; }
-      return { ano: a, mes: m, todos: false };
-    });
+    let m = mes + delta; let a = ano;
+    if (m > 12) { m = 1; a += 1; }
+    if (m < 1)  { m = 12; a -= 1; }
+    patchSp({ ano: a, mes: m, todos: '' });
   }
-  const eMesAtual = !ref.todos && ref.ano === hoje.getFullYear() && ref.mes === hoje.getMonth() + 1;
-
-  useEffect(() => {
-    const t = setTimeout(carregar, busca ? 350 : 0);
-    return () => clearTimeout(t);
-  }, [carregar, busca]);
-
-  const totalListado = lista?.dados.reduce((s, d) => s + d.valor, 0) || 0;
+  const eMesAtual = !todos && ano === hoje.getFullYear() && mes === hoje.getMonth() + 1;
 
   return (
     <div className="space-y-5">
@@ -396,7 +429,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                 ))}
               </ul>
             </div>
-            <button className="btn-ghost text-xs" onClick={() => { setAba('boletos'); setFiltroStatus('atrasada'); }}>
+            <button className="btn-ghost text-xs" onClick={() => patchSp({ aba: 'boletos', status: 'atrasada' })}>
               Ver todas
             </button>
           </div>
@@ -406,20 +439,20 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
       {/* Seletor de mês */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
-          <button onClick={() => mudarMes(-1)} disabled={ref.todos}
+          <button onClick={() => mudarMes(-1)} disabled={todos}
             className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:text-slate-300">◀</button>
           <span className="tnum px-3 text-sm font-semibold text-slate-800">
-            {ref.todos ? 'Todos os meses' : `${nomeMes(ref.mes)}/${ref.ano}`}
+            {todos ? 'Todos os meses' : `${nomeMes(mes)}/${ano}`}
           </span>
-          <button onClick={() => mudarMes(1)} disabled={ref.todos}
+          <button onClick={() => mudarMes(1)} disabled={todos}
             className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300">▶</button>
         </div>
-        <button onClick={() => setRef({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false })}
+        <button onClick={() => patchSp({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: '' })}
           className="btn-ghost px-3 py-1.5 text-xs" disabled={eMesAtual}>Mês atual</button>
-        <button onClick={() => setRef((r) => ({ ...r, todos: !r.todos }))}
+        <button onClick={() => patchSp({ todos: todos ? '' : '1' })}
           className={`px-3 py-1.5 text-xs font-semibold rounded-md
-            ${ref.todos ? 'bg-maninho-600 text-white' : 'btn-ghost'}`}>
-          {ref.todos ? '✓ Todos' : 'Ver todos os meses'}
+            ${todos ? 'bg-maninho-600 text-white' : 'btn-ghost'}`}>
+          {todos ? '✓ Todos' : 'Ver todos os meses'}
         </button>
       </div>
 
@@ -427,7 +460,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
           {[['todas', 'Todas as despesas'], ['boletos', 'Boletos a pagar']].map(([k, t]) => (
-            <button key={k} onClick={() => { setAba(k); setFiltroStatus(''); }}
+            <button key={k} onClick={() => patchSp({ aba: k, status: '' })}
               className={`rounded px-3.5 py-1.5 text-xs font-semibold transition
                 ${aba === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
               {t}
@@ -441,7 +474,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
         </div>
 
         <select className="input max-w-[180px]" value={filtroStatus}
-          onChange={(e) => setFiltroStatus(e.target.value)}>
+          onChange={(e) => patchSp({ status: e.target.value })}>
           <option value="">Todas as situações</option>
           <option value="pendente">Pendentes</option>
           <option value="atrasada">Atrasadas</option>
@@ -449,27 +482,27 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
         </select>
 
         <input className="input max-w-xs" placeholder="Buscar por descrição, fornecedor ou nota"
-          value={busca} onChange={(e) => setBusca(e.target.value)} />
+          value={buscaInput} onChange={(e) => setBuscaInput(e.target.value)} />
       </div>
 
       {/* Filtros extras */}
       <div className="flex flex-wrap items-center gap-2">
         <select className="input w-auto min-w-[160px] max-w-[240px] py-1.5 text-xs"
-          value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
+          value={fornecedorId} onChange={(e) => patchSp({ fornecedor: e.target.value })}>
           <option value="">Todos os fornecedores</option>
           {fornecedores.map((f) => (
             <option key={f.id} value={f.id}>{f.nome}</option>
           ))}
         </select>
         <select className="input w-auto min-w-[140px] max-w-[220px] py-1.5 text-xs"
-          value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+          value={categoriaId} onChange={(e) => patchSp({ categoria: e.target.value })}>
           <option value="">Todas as categorias</option>
           {categorias.map((c) => (
             <option key={c.id} value={c.id}>{c.nome}</option>
           ))}
         </select>
         <select className="input w-auto min-w-[140px] py-1.5 text-xs"
-          value={forma} onChange={(e) => setForma(e.target.value)}>
+          value={forma} onChange={(e) => patchSp({ forma: e.target.value })}>
           <option value="">Qualquer forma</option>
           {FORMAS_PAGAMENTO.map((f) => (
             <option key={f.valor} value={f.valor}>{f.rotulo}</option>
@@ -578,18 +611,19 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t border-slate-200
-                            bg-slate-50/60 px-4 py-2.5">
-              <span className="text-xs text-slate-500">
-                {lista.dados.length} de {lista.paginacao.total} despesas
-              </span>
-              <span className="tnum text-sm">
-                <span className="text-slate-500">Total listado </span>
-                <span className="font-display text-lg font-bold text-maninho-700">
-                  {brl(totalListado)}
+            <Paginacao
+              paginacao={lista.paginacao}
+              onPagina={(n) => patchSp({ pagina: n }, { resetPagina: false })}
+              onPorPagina={(n) => patchSp({ por_pagina: n })}
+              resumo={(
+                <span className="tnum text-sm">
+                  <span className="text-slate-500">Total do filtro </span>
+                  <span className="font-display text-base font-bold text-maninho-700">
+                    {brl(lista.paginacao.total_valor)}
+                  </span>
                 </span>
-              </span>
-            </div>
+              )}
+            />
           </>
         )}
       </div>

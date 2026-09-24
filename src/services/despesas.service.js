@@ -204,22 +204,36 @@ async function listarDespesas(f = {}) {
 
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const pagina = f.pagina || 1;
-  const porPagina = f.por_pagina || 50;
+  const porPagina = f.por_pagina || 20;
 
-  const total = await db.query(`SELECT count(*) FROM vw_despesas ${clause}`, params);
+  // total_valor soma o filtro inteiro (não só a página) — alimenta o rodapé
+  // "Total do filtro" mesmo com a lista paginada.
+  const agg = await db.query(
+    `SELECT count(*)::int AS total, COALESCE(sum(valor), 0)::numeric AS total_valor
+       FROM vw_despesas ${clause}`,
+    params,
+  );
 
+  // Ordenação estável: id como desempate final evita que um registro pule
+  // de página quando vencimento/competencia/criado_em coincidem.
   params.push(porPagina, (pagina - 1) * porPagina);
   const { rows } = await db.query(
     `SELECT * FROM vw_despesas ${clause}
-      ORDER BY COALESCE(vencimento, competencia) DESC, criado_em DESC
+      ORDER BY COALESCE(vencimento, competencia) DESC, criado_em DESC, id DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
 
-  const t = Number(total.rows[0].count);
+  const t = Number(agg.rows[0].total);
   return {
     dados: rows.map(normalizar),
-    paginacao: { pagina, por_pagina: porPagina, total: t, paginas: Math.ceil(t / porPagina) },
+    paginacao: {
+      pagina,
+      por_pagina: porPagina,
+      total: t,
+      paginas: Math.ceil(t / porPagina),
+      total_valor: Number(agg.rows[0].total_valor),
+    },
   };
 }
 
