@@ -376,6 +376,15 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  async function excluirDespesa(d) {
+    const aviso = d.status === 'paga'
+      ? `Excluir a despesa "${d.descricao}"? Ela já foi paga — o registro do pagamento vai sumir.`
+      : `Excluir a despesa "${d.descricao}"?`;
+    if (!confirm(aviso)) return;
+    try { await api.cancelarDespesa(d.id); carregar(); }
+    catch (e) { setErro(e.message); }
+  }
+
   function limparFiltros() {
     setBuscaInput('');
     patchSp({ status: '', busca: '', fornecedor: '', categoria: '', forma: '' });
@@ -533,7 +542,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
             </button>} />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto lg:block">
               <table className="w-full">
                 <thead className="border-b border-slate-200 bg-slate-50/80">
                   <tr>
@@ -592,14 +601,7 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                               Pagar
                             </button>
                           )}
-                          <button onClick={async () => {
-                            const aviso = d.status === 'paga'
-                              ? `Excluir a despesa "${d.descricao}"? Ela já foi paga — o registro do pagamento vai sumir.`
-                              : `Excluir a despesa "${d.descricao}"?`;
-                            if (!confirm(aviso)) return;
-                            try { await api.cancelarDespesa(d.id); carregar(); }
-                            catch (e) { setErro(e.message); }
-                          }}
+                          <button onClick={() => excluirDespesa(d)}
                             className="text-xs font-semibold text-rose-700 hover:underline"
                             title="Excluir despesa">
                             Excluir
@@ -611,6 +613,83 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
                 </tbody>
               </table>
             </div>
+
+            {/* Abaixo de lg a tabela larga rolaria pro lado; aqui cada despesa
+                vira um card empilhado, mostrando tudo sem rolagem horizontal. */}
+            <ul className="divide-y divide-slate-100 lg:hidden">
+              {lista.dados.map((d) => (
+                <li key={d.id}
+                  className={`p-3 ${d.status === 'atrasada' ? 'bg-rose-50/40' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <button onClick={() => { setEditando(d); setFormAberto(true); }}
+                      className="min-w-0 text-left">
+                      <p className="flex items-center gap-2">
+                        <span className="tnum text-[11px] font-semibold text-maninho-600">
+                          nº {d.numero_despesa}
+                        </span>
+                        <BadgeDespesa status={d.status} />
+                      </p>
+                      <p className="mt-0.5 font-medium text-slate-800">{d.descricao}</p>
+                      {d.numero_doc && <p className="text-xs text-slate-500">{d.numero_doc}</p>}
+                    </button>
+                    <div className="shrink-0 text-right">
+                      <p className="tnum font-semibold text-slate-800">{brl(d.valor)}</p>
+                      {d.valor_pago !== null && Math.abs(d.valor_pago - d.valor) > 0.005 && (
+                        <p className="text-[11px] text-slate-500">pago {brl(d.valor_pago)}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
+                    <div className="flex gap-1.5">
+                      <dt className="text-slate-400">Fornecedor:</dt>
+                      <dd className="truncate">{d.fornecedor_nome || '—'}</dd>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <dt className="text-slate-400">Categoria:</dt>
+                      <dd className="truncate">
+                        {d.categoria_nome ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ background: d.categoria_cor }} />
+                            {d.categoria_nome}
+                          </span>
+                        ) : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <dt className="text-slate-400">Forma:</dt>
+                      <dd>{rotuloForma(d.forma)}</dd>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <dt className="text-slate-400">Vencimento:</dt>
+                      <dd>
+                        {d.vencimento
+                          ? <span className="tnum">{data(d.vencimento)}
+                              <span className="ml-1 text-[11px] text-slate-400">
+                                ({textoVencimento(d.dias_para_vencer)})
+                              </span>
+                            </span>
+                          : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-2 flex items-center justify-end gap-4 border-t border-slate-100 pt-2">
+                    {d.status !== 'paga' && (
+                      <button onClick={() => setPagando(d)}
+                        className="text-xs font-semibold text-emerald-700 hover:underline">
+                        Pagar
+                      </button>
+                    )}
+                    <button onClick={() => excluirDespesa(d)}
+                      className="text-xs font-semibold text-rose-700 hover:underline">
+                      Excluir
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
             <Paginacao
               paginacao={lista.paginacao}
               onPagina={(n) => patchSp({ pagina: n }, { resetPagina: false })}
