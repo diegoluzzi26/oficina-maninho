@@ -5,7 +5,7 @@ import {
   PieChart, Pie,
 } from 'recharts';
 import { api, getUser } from '../lib/api';
-import { brl, brlCurto, nomeMes, telefone, rotuloForma } from '../lib/format';
+import { brl, brlCurto, nomeMes, telefone, rotuloForma, data } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Spinner } from '../components/ui';
 import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
@@ -16,19 +16,28 @@ const VERMELHO = '#DC2626';
 
 const CORES_FORMA = ['#283090', '#D4A843', '#059669', '#0EA5E9', '#EC4899', '#F97316', '#7C3AED', '#64748B'];
 
-function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0, preset }) {
+function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0, preset, onClick }) {
   const cor = {
     normal: 'text-slate-800',
     marca: 'text-maninho-600',
     verde: 'text-emerald-600',
     vermelho: 'text-rose-600',
   }[tomValor];
+  const clicavel = typeof onClick === 'function';
+  const Tag = clicavel ? 'button' : 'div';
   return (
-    <div className={`card anima ${preset?.kpiPad || 'p-5'}`} style={{ animationDelay: `${atraso}ms` }}>
-      <p className="label">{titulo}</p>
+    <Tag onClick={onClick}
+      className={`card anima block w-full text-left ${preset?.kpiPad || 'p-5'}
+        ${clicavel ? 'cursor-pointer transition hover:border-maninho-400 hover:shadow-md'
+          + ' focus:outline-none focus:ring-2 focus:ring-maninho-600/30' : ''}`}
+      style={{ animationDelay: `${atraso}ms` }}>
+      <p className="label flex items-center gap-1">
+        {titulo}
+        {clicavel && <span className="text-maninho-500" aria-hidden>›</span>}
+      </p>
       <p className={`numero mt-2 ${preset?.kpiValor || 'text-[30px]'} ${cor}`}>{valor}</p>
       {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
-    </div>
+    </Tag>
   );
 }
 
@@ -160,6 +169,83 @@ function ParecerIA({ refMes, aberto, onFechar }) {
   );
 }
 
+/** Lista as OSs por trás do KPI "Desconto dado" — abre ao clicar no card. */
+function ModalDescontos({ refMes, aberto, onFechar }) {
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    if (!aberto) return undefined;
+    let cancelado = false;
+    setDados(null); setErro('');
+    api.descontosDoMes(refMes)
+      .then((d) => !cancelado && setDados(d))
+      .catch((e) => !cancelado && setErro(e.message));
+    return () => { cancelado = true; };
+  }, [aberto, refMes.ano, refMes.mes]);
+
+  return (
+    <Modal aberto={aberto} largura="max-w-2xl" onFechar={onFechar}
+      titulo={`Descontos dados — ${nomeMes(refMes.mes)}/${refMes.ano}`}>
+      {erro && <Alerta tipo="erro">{erro}</Alerta>}
+      {!dados ? (
+        <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+      ) : dados.dados.length === 0 ? (
+        <Vazio titulo="Nenhum desconto neste mês"
+          descricao="Aqui aparecem as OSs pagas por menos que o valor cobrado." />
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-slate-200 bg-slate-50/80">
+                <tr>
+                  <th className="th w-14">Nº</th>
+                  <th className="th">Cliente</th>
+                  <th className="th">Veículo</th>
+                  <th className="th w-24 text-right">Cobrado</th>
+                  <th className="th w-24 text-right">Pago</th>
+                  <th className="th w-24 text-right">Desconto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dados.dados.map((o) => (
+                  <tr key={o.id} className="transition hover:bg-maninho-50/60">
+                    <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
+                    <td className="td">
+                      <p className="text-sm font-medium text-slate-800">{o.cliente_nome}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {data(o.paga_em)} · {rotuloForma(o.forma_pagamento)}
+                      </p>
+                    </td>
+                    <td className="td">
+                      <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
+                      <p className="text-xs text-slate-500">{o.marca} {o.modelo}</p>
+                    </td>
+                    <td className="td tnum text-right text-slate-600">{brl(o.valor_cobrado)}</td>
+                    <td className="td tnum text-right text-slate-800">{brl(o.valor_pago)}</td>
+                    <td className="td tnum text-right font-semibold text-rose-600">
+                      −{brl(o.desconto_dado)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
+            <span className="text-xs text-slate-500">
+              {dados.dados.length} OS com desconto
+            </span>
+            <span className="tnum text-sm">
+              <span className="text-slate-500">Total de desconto </span>
+              <span className="font-display text-lg font-bold text-rose-600">−{brl(dados.total)}</span>
+            </span>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 export default function Dashboard() {
   const hoje = new Date();
   const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 });
@@ -169,6 +255,7 @@ export default function Dashboard() {
   const [carregando, setCarregando] = useState(true);
   const { densidade, setDensidade, preset } = useDensidade();
   const [parecerAberto, setParecerAberto] = useState(false);
+  const [descontosAberto, setDescontosAberto] = useState(false);
   const [baixando, setBaixando] = useState(false);
 
   async function baixarExcel() {
@@ -334,8 +421,9 @@ export default function Dashboard() {
         <Kpi titulo="Desconto dado" preset={preset}
           valor={brl(painel.desconto_total_mes || 0)}
           tomValor={painel.desconto_total_mes > 0 ? 'vermelho' : 'normal'}
+          onClick={painel.desconto_total_mes > 0 ? () => setDescontosAberto(true) : undefined}
           sub={painel.desconto_total_mes > 0
-            ? 'Diferença entre cobrado e recebido'
+            ? 'Clique para ver as OS com desconto'
             : 'Nenhum desconto no mês'}
           atraso={260} />
         <Kpi titulo="Mês anterior" valor={brl(painel.comparativo.mes_anterior)} preset={preset}
@@ -534,6 +622,9 @@ export default function Dashboard() {
       {parecerAberto && (
         <ParecerIA refMes={ref} aberto onFechar={() => setParecerAberto(false)} />
       )}
+
+      <ModalDescontos refMes={ref} aberto={descontosAberto}
+        onFechar={() => setDescontosAberto(false)} />
     </div>
   );
 }

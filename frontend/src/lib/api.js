@@ -167,6 +167,7 @@ export const api = {
 
   // --- painel do mês ---
   painelMes: (params) => request('/relatorios/painel-mes', { params }),
+  descontosDoMes: (params) => request('/relatorios/descontos-mes', { params }),
   enviarResumoMensal: () => request('/relatorios/enviar-mensal', { method: 'POST', body: {} }),
   enviarResumoSemanal: () => request('/relatorios/enviar-semanal', { method: 'POST', body: {} }),
 
