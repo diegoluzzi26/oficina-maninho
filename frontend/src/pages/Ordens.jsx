@@ -573,13 +573,9 @@ function CardKanban({ o, onClick }) {
   return (
     <button onClick={onClick}
       className="w-full overflow-hidden rounded-md border border-slate-200 bg-white text-left shadow-sm transition hover:border-maninho-400 hover:shadow-md">
-      {o.foto_id ? (
+      {o.foto_id && (
         <AnexoImg id={o.foto_id} alt={`Foto OS ${o.numero_os}`}
           className="h-28 w-full object-cover" />
-      ) : (
-        <div className="flex h-28 w-full items-center justify-center bg-slate-100 text-3xl text-slate-300">
-          🚗
-        </div>
       )}
       <div className="p-2.5">
         <div className="flex items-center justify-between">
