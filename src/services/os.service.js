@@ -71,11 +71,17 @@ const SELECT_OS = `
 
 async function comItens(client, os) {
   const q = client || db;
-  const [servicos, pecas] = await Promise.all([
+  const [servicos, pecas, pagamentos] = await Promise.all([
     q.query('SELECT * FROM os_servicos WHERE os_id = $1 ORDER BY criado_em', [os.id]),
     q.query('SELECT * FROM os_pecas    WHERE os_id = $1 ORDER BY criado_em', [os.id]),
+    q.query('SELECT id, forma, valor FROM os_pagamentos WHERE os_id = $1 ORDER BY criado_em', [os.id]),
   ]);
-  return { ...os, servicos: servicos.rows, pecas: pecas.rows };
+  return {
+    ...os,
+    servicos: servicos.rows,
+    pecas: pecas.rows,
+    pagamentos: pagamentos.rows.map((p) => ({ ...p, valor: Number(p.valor) })),
+  };
 }
 
 async function buscarPorId(id) {
@@ -257,12 +263,33 @@ async function atualizar(id, dados) {
   }
   if (!campos.length) return buscarPorId(id);
 
+  // Editar a forma/valor por aqui é sempre uma correção de forma ÚNICA
+  // (o editor inline não faz split), então ressincronizamos os_pagamentos
+  // pra não sobrar um split antigo divergente do forma_pagamento/valor_pago.
+  const tocouPagamento = dadosNorm.forma_pagamento !== undefined
+    || dadosNorm.valor_pago !== undefined;
+
   params.push(id);
-  const { rows } = await db.query(
-    `UPDATE ordens_servico SET ${campos.join(', ')} WHERE id = $${params.length} RETURNING id`,
-    params,
-  );
-  if (!rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+  await db.withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `UPDATE ordens_servico SET ${campos.join(', ')} WHERE id = $${params.length}
+       RETURNING id, status, forma_pagamento, valor_pago, valor_total`,
+      params,
+    );
+    if (!rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+
+    const os = rows[0];
+    if (tocouPagamento && os.status === 'paga' && os.forma_pagamento) {
+      const valor = Number(os.valor_pago ?? os.valor_total);
+      await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
+      if (valor > 0) {
+        await client.query(
+          'INSERT INTO os_pagamentos (os_id, forma, valor) VALUES ($1, $2, $3)',
+          [id, os.forma_pagamento, valor],
+        );
+      }
+    }
+  });
   return buscarPorId(id);
 }
 
@@ -293,21 +320,65 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
 
   // Ao pagar, exigimos forma. Data e valor têm defaults sensatos.
   if (novo === 'paga') {
-    const { forma_pagamento, pago_em, valor_pago } = dadosPagamento;
-    if (!forma_pagamento) {
-      throw new AppError('Informe a forma de pagamento para dar baixa na OS', 422);
+    const { forma_pagamento, pago_em, valor_pago, pagamentos } = dadosPagamento;
+
+    // Normaliza a lista de formas usadas no fechamento. O split manda um
+    // array `pagamentos`; o fluxo antigo manda só `forma_pagamento`
+    // (+ valor_pago opcional). Nos dois casos gravamos em os_pagamentos.
+    let lista = Array.isArray(pagamentos)
+      ? pagamentos.filter((p) => p && p.forma)
+      : [];
+    const usaSplit = lista.length > 0;
+
+    if (!usaSplit) {
+      if (!forma_pagamento) {
+        throw new AppError('Informe a forma de pagamento para dar baixa na OS', 422);
+      }
+      lista = [{ forma: forma_pagamento, valor: valor_pago ?? Number(atual.rows[0].valor_total) }];
     }
-    await db.query(
-      `UPDATE ordens_servico
-          SET status = $1,
-              forma_pagamento = $2,
-              paga_em  = COALESCE($3::timestamptz, now()),
-              valor_pago = COALESCE($4, valor_total)
-        WHERE id = $5`,
-      [novo, forma_pagamento, pago_em || null, valor_pago ?? null, id],
-    );
+
+    for (const p of lista) {
+      p.valor = Number(p.valor);
+      if (!Number.isFinite(p.valor) || p.valor <= 0) {
+        throw new AppError('Cada forma de pagamento precisa de um valor maior que zero', 422);
+      }
+    }
+
+    const totalSplit = Number(lista.reduce((s, p) => s + p.valor, 0).toFixed(2));
+    // forma "principal" (a de maior valor) mantém a coluna legada útil.
+    const principal = lista.reduce((a, b) => (b.valor > a.valor ? b : a)).forma;
+    // Com split o valor_pago é a soma das partes; sem split respeitamos o
+    // que veio (null cai no default valor_total via COALESCE, como antes).
+    const valorPagoFinal = usaSplit ? totalSplit : (valor_pago ?? null);
+
+    await db.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE ordens_servico
+            SET status = $1,
+                forma_pagamento = $2,
+                paga_em  = COALESCE($3::timestamptz, now()),
+                valor_pago = COALESCE($4, valor_total)
+          WHERE id = $5`,
+        [novo, principal, pago_em || null, valorPagoFinal, id],
+      );
+      // Regrava as parcelas do zero (idempotente em re-pagamento).
+      await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
+      for (const p of lista) {
+        await client.query(
+          'INSERT INTO os_pagamentos (os_id, forma, valor) VALUES ($1, $2, $3)',
+          [id, p.forma, p.valor],
+        );
+      }
+    });
   } else {
-    await db.query('UPDATE ordens_servico SET status = $1 WHERE id = $2', [novo, id]);
+    await db.withTransaction(async (client) => {
+      await client.query('UPDATE ordens_servico SET status = $1 WHERE id = $2', [novo, id]);
+      // Reabrir uma OS paga zera as parcelas — senão ficariam órfãs com a
+      // OS de volta em aberto e contariam num futuro re-fechamento.
+      if (de === 'paga') {
+        await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
+      }
+    });
   }
   return buscarPorId(id);
 }

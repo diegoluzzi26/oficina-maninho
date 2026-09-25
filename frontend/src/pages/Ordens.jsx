@@ -468,9 +468,10 @@ function NovaOS({ aberto, onFechar, onCriada }) {
 // Modal marcar como paga
 // ---------------------------------------------------------------------
 function PagarOS({ os, onFechar, onPago }) {
-  const [forma, setForma] = useState('dinheiro');
+  // Cada linha é uma forma de pagamento. 1 linha = fluxo simples;
+  // 2+ linhas = split (parte no PIX, parte no cartão, etc.).
+  const [linhas, setLinhas] = useState([{ forma: 'dinheiro', valor: '' }]);
   const [pagoEm, setPagoEm] = useState(hojeISO());
-  const [valor, setValor] = useState('');
   const [notificarRecibo, setNotificarRecibo] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -478,21 +479,44 @@ function PagarOS({ os, onFechar, onPago }) {
 
   useEffect(() => {
     if (os) {
-      setValor(String(os.valor_total || ''));
-      setForma('dinheiro'); setPagoEm(hojeISO()); setNotificarRecibo(false);
+      setLinhas([{ forma: 'dinheiro', valor: String(os.valor_total || '') }]);
+      setPagoEm(hojeISO()); setNotificarRecibo(false);
       setErro(''); setAviso('');
     }
   }, [os?.id]);
 
   if (!os) return null;
 
+  const split = linhas.length > 1;
+  const totalPago = linhas.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+  const diferenca = totalPago - Number(os.valor_total);
+
+  const setLinha = (i, campo, val) =>
+    setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: val } : l)));
+  const addLinha = () =>
+    setLinhas((ls) => (ls.length >= 5 ? ls : [...ls, { forma: 'pix', valor: '' }]));
+  const removeLinha = (i) =>
+    setLinhas((ls) => (ls.length <= 1 ? ls : ls.filter((_, j) => j !== i)));
+
   async function salvar(e) {
     e.preventDefault();
-    setErro(''); setAviso(''); setSalvando(true);
+    setErro(''); setAviso('');
+
+    for (const l of linhas) {
+      if (!(Number(l.valor) > 0)) {
+        setErro('Cada forma de pagamento precisa de um valor maior que zero.');
+        return;
+      }
+    }
+
+    setSalvando(true);
+    // 1 forma → mantém o payload antigo (forma_pagamento + valor_pago).
+    // 2+ formas → manda o array `pagamentos` (o backend prioriza ele).
+    const payload = split
+      ? { pagamentos: linhas.map((l) => ({ forma: l.forma, valor: Number(l.valor) })), pago_em: pagoEm }
+      : { forma_pagamento: linhas[0].forma, valor_pago: Number(linhas[0].valor), pago_em: pagoEm };
     try {
-      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, {
-        forma_pagamento: forma, pago_em: pagoEm, valor_pago: Number(valor),
-      });
+      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, payload);
       if (notificarRecibo && atualizada.whatsapp && !atualizada.whatsapp.enviado) {
         setAviso(`Pagamento registrado. Recibo por WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
         // não fecha — dá tempo do usuário ler o aviso
@@ -518,24 +542,55 @@ function PagarOS({ os, onFechar, onPago }) {
           <p className="numero text-2xl text-maninho-700">{brl(os.valor_total)}</p>
         </div>
 
-        <Campo label="Forma de pagamento" obrigatorio>
-          <select className="input" value={forma} onChange={(e) => setForma(e.target.value)}>
-            {FORMAS_PAGAMENTO.map((f) => (
-              <option key={f.valor} value={f.valor}>{f.rotulo}</option>
-            ))}
-          </select>
-        </Campo>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Campo label="Data" obrigatorio>
-            <input type="date" className="input" value={pagoEm} required
-              onChange={(e) => setPagoEm(e.target.value)} />
-          </Campo>
-          <Campo label="Valor pago" obrigatorio>
-            <input type="number" step="0.01" min="0" className="input tnum" value={valor} required
-              onChange={(e) => setValor(e.target.value)} />
-          </Campo>
+        <div className="space-y-2">
+          <p className="label">{split ? 'Formas de pagamento' : 'Forma de pagamento'}</p>
+          {linhas.map((l, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <select className="input flex-1" value={l.forma}
+                onChange={(e) => setLinha(i, 'forma', e.target.value)}>
+                {FORMAS_PAGAMENTO.map((f) => (
+                  <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                ))}
+              </select>
+              <input type="number" step="0.01" min="0" required
+                className="input tnum w-32" placeholder="0,00" value={l.valor}
+                onChange={(e) => setLinha(i, 'valor', e.target.value)} />
+              {linhas.length > 1 && (
+                <button type="button" onClick={() => removeLinha(i)}
+                  className="rounded px-2 py-1 text-rose-600 hover:bg-rose-50" title="Remover forma">
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          {linhas.length < 5 && (
+            <button type="button" onClick={addLinha}
+              className="text-xs font-semibold text-maninho-600 hover:underline">
+              + Adicionar outra forma de pagamento
+            </button>
+          )}
         </div>
+
+        {split && (
+          <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
+            <span className="text-slate-500">Total recebido</span>
+            <span className={`tnum font-bold ${Math.abs(diferenca) < 0.005 ? 'text-emerald-700' : 'text-slate-800'}`}>
+              {brl(totalPago)}
+            </span>
+          </div>
+        )}
+        {split && Math.abs(diferenca) > 0.005 && (
+          <Alerta tipo="aviso">
+            {diferenca > 0
+              ? `Recebido ${brl(diferenca)} a mais que o total da OS.`
+              : `Pagamento parcial: faltam ${brl(Math.abs(diferenca))}. O saldo fica em aberto.`}
+          </Alerta>
+        )}
+
+        <Campo label="Data" obrigatorio>
+          <input type="date" className="input" value={pagoEm} required
+            onChange={(e) => setPagoEm(e.target.value)} />
+        </Campo>
 
         <label className="flex cursor-pointer items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           <input type="checkbox" checked={notificarRecibo}
@@ -544,9 +599,11 @@ function PagarOS({ os, onFechar, onPago }) {
           Enviar recibo por WhatsApp ao cliente
         </label>
 
-        <p className="text-xs text-slate-500">
-          Valor menor que o total é aceito (pagamento parcial). O saldo fica em aberto na OS.
-        </p>
+        {!split && (
+          <p className="text-xs text-slate-500">
+            Valor menor que o total é aceito (pagamento parcial). O saldo fica em aberto na OS.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
@@ -573,13 +630,9 @@ function CardKanban({ o, onClick }) {
   return (
     <button onClick={onClick}
       className="w-full overflow-hidden rounded-md border border-slate-200 bg-white text-left shadow-sm transition hover:border-maninho-400 hover:shadow-md">
-      {o.foto_id ? (
+      {o.foto_id && (
         <AnexoImg id={o.foto_id} alt={`Foto OS ${o.numero_os}`}
           className="h-28 w-full object-cover" />
-      ) : (
-        <div className="flex h-28 w-full items-center justify-center bg-slate-100 text-3xl text-slate-300">
-          🚗
-        </div>
       )}
       <div className="p-2.5">
         <div className="flex items-center justify-between">
@@ -954,9 +1007,14 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           </a>
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
-              · Paga em {data(os.paga_em)} · {rotuloForma(os.forma_pagamento)}
-              {os.valor_pago && Number(os.valor_pago) !== Number(os.valor_total)
-                ? ` (${brl(os.valor_pago)})` : ''}
+              · Paga em {data(os.paga_em)} ·{' '}
+              {os.pagamentos && os.pagamentos.length > 1
+                ? os.pagamentos.map((p) => `${rotuloForma(p.forma)} ${brl(p.valor)}`).join(' + ')
+                : <>
+                    {rotuloForma(os.forma_pagamento)}
+                    {os.valor_pago && Number(os.valor_pago) !== Number(os.valor_total)
+                      ? ` (${brl(os.valor_pago)})` : ''}
+                  </>}
               <button type="button" onClick={() => setEditPag((v) => !v)}
                 className="ml-2 text-[11px] font-semibold text-maninho-600 hover:underline">
                 {editPag ? 'cancelar edição' : 'editar pagamento'}

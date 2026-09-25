@@ -5,6 +5,7 @@ const db = require('../config/db');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const auth = require('../middleware/auth');
+const oficinaContext = require('../middleware/oficinaContext');
 const h = require('../utils/asyncHandler');
 
 /**
@@ -29,12 +30,12 @@ router.post('/webhook', h(async (req, res) => {
 }));
 
 // --- rotas autenticadas ---
-router.post('/enviar/texto', auth, validate({ body: v.enviarTexto }),
+router.post('/enviar/texto', auth, oficinaContext, validate({ body: v.enviarTexto }),
   h(async (req, res) => res.status(201).json(await wa.enviarTexto(req.body))));
 
 // Retrocompat: rota /enviar/template existia com Meta. Com Evolution,
 // tudo vira texto livre. Mantida pra não quebrar integração antiga.
-router.post('/enviar/template', auth, validate({ body: v.enviarTemplate }),
+router.post('/enviar/template', auth, oficinaContext, validate({ body: v.enviarTemplate }),
   h(async (req, res) => {
     const { telefone, mensagem, parametros, cliente_id, os_id } = req.body;
     // Se o cliente veio no formato template + parametros mas sem mensagem,
@@ -44,7 +45,7 @@ router.post('/enviar/template', auth, validate({ body: v.enviarTemplate }),
     res.status(201).json(await wa.enviarTexto({ telefone, mensagem: texto, cliente_id, os_id }));
   }));
 
-router.get('/mensagens', auth, h(async (req, res) => {
+router.get('/mensagens', auth, oficinaContext, h(async (req, res) => {
   const { telefone, cliente_id, os_id, limite = 50 } = req.query;
   const params = []; const where = [];
   if (telefone)   { params.push(telefone);   where.push(`telefone = $${params.length}`); }
@@ -62,7 +63,7 @@ router.get('/mensagens', auth, h(async (req, res) => {
   res.json(rows);
 }));
 
-router.get('/janela/:telefone', auth, h(async (req, res) => {
+router.get('/janela/:telefone', auth, oficinaContext, h(async (req, res) => {
   const { toE164 } = require('../utils/phone');
   const tel = toE164(req.params.telefone);
   res.json({ telefone: tel, janela_aberta: await wa.janelaAberta(tel) });
@@ -71,13 +72,13 @@ router.get('/janela/:telefone', auth, h(async (req, res) => {
 // --- Conexão / QR code (só admin) ---
 const requireRole = require('../middleware/requireRole');
 
-router.get('/conexao', auth, requireRole('admin'),
+router.get('/conexao', auth, oficinaContext, requireRole('admin'),
   h(async (_req, res) => res.json(await wa.estadoConexao())));
 
-router.post('/conexao/qrcode', auth, requireRole('admin'),
+router.post('/conexao/qrcode', auth, oficinaContext, requireRole('admin'),
   h(async (_req, res) => res.json(await wa.qrCode())));
 
-router.post('/conexao/desconectar', auth, requireRole('admin'),
+router.post('/conexao/desconectar', auth, oficinaContext, requireRole('admin'),
   h(async (_req, res) => res.json(await wa.desconectar())));
 
 module.exports = router;
