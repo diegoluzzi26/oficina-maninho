@@ -72,6 +72,9 @@ const periodo = z.object({
   fim: dataISO.optional(),
   limite: z.coerce.number().int().positive().max(50).default(10),
   escopo: z.enum(['oficina', 'pessoal', 'ambos']).default('oficina'),
+  // Granularidade das séries temporais (fluxo/evolução): agrupa por dia,
+  // semana ou mês. Default 'mes' mantém o comportamento antigo.
+  granularidade: z.enum(['dia', 'semana', 'mes']).default('mes'),
 }).refine((v) => !v.inicio || !v.fim || v.inicio <= v.fim, {
   message: 'Data inicial não pode ser maior que a final',
 });

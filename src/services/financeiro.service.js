@@ -151,6 +151,9 @@ async function fluxoCaixa(filtros) {
   const params = [];
   let clauseDesp = '';
   let clauseFat = '';
+  // Granularidade do agrupamento das barras (a janela do período não muda).
+  const TRUNC = { dia: 'day', semana: 'week', mes: 'month' };
+  const gran = TRUNC[filtros.granularidade] || 'month';
   if (filtros.inicio) {
     params.push(filtros.inicio);
     clauseDesp += ` AND pago_em >= date_trunc('month',$${params.length}::date)`;
@@ -181,7 +184,7 @@ async function fluxoCaixa(filtros) {
 
   const { rows } = await db.query(
     `WITH receita AS (
-       SELECT date_trunc('month', paga_em)::date AS mes,
+       SELECT date_trunc('${gran}', paga_em)::date AS mes,
               ${incluiReceita ? 'sum(valor_total)::numeric' : '0::numeric'} AS receita,
               ${incluiReceita ? 'count(*)::int' : '0'} AS qtd_os
          FROM vw_faturamento
@@ -189,7 +192,7 @@ async function fluxoCaixa(filtros) {
         GROUP BY 1
      ),
      despesa AS (
-       SELECT date_trunc('month', pago_em)::date AS mes,
+       SELECT date_trunc('${gran}', pago_em)::date AS mes,
               sum(COALESCE(valor_pago, valor))::numeric AS despesa,
               count(*)::int AS qtd_despesas
          FROM despesas
