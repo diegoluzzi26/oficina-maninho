@@ -8,6 +8,7 @@ import {
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
 import ResumoDiario from './ResumoDiario';
+import { useTema, ToggleTema } from '../lib/tema';
 
 // paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
 // só admin/atendente enxergam. somenteAdmin restringe ainda mais.
@@ -34,6 +35,7 @@ export default function Layout() {
   const local = useLocation();
   const [alertas, setAlertas] = useState(null);
   const [abertoMobile, setAbertoMobile] = useState(false);
+  const { tema, alternar } = useTema();
 
   // Recarrega ao trocar de tela: o contador não pode ficar velho
   // depois que o usuário dá baixa num boleto.
@@ -99,12 +101,15 @@ export default function Layout() {
               {usuario?.role}
             </p>
           </div>
-          <button onClick={sair}
-            className="w-full rounded border border-white/20 px-3 py-1.5 font-display text-[11px]
-                       font-medium uppercase tracking-[.1em] text-white/80
-                       transition hover:border-white/40 hover:bg-white/5 hover:text-white">
-            Sair
-          </button>
+          <div className="flex flex-col gap-2">
+            <ToggleTema tema={tema} alternar={alternar} className="w-full justify-center" />
+            <button onClick={sair}
+              className="w-full rounded border border-white/20 px-3 py-1.5 font-display text-[11px]
+                         font-medium uppercase tracking-[.1em] text-white/80
+                         transition hover:border-white/40 hover:bg-white/5 hover:text-white">
+              Sair
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -150,11 +155,14 @@ export default function Layout() {
               </div>
               <div className="border-t border-white/10 p-4">
                 <p className="mb-2 truncate text-sm font-semibold text-white">{usuario?.nome}</p>
-                <button onClick={sair}
-                  className="w-full rounded border border-white/20 px-3 py-1.5 font-display text-[11px]
-                             font-medium uppercase tracking-[.1em] text-white/80 hover:bg-white/5">
-                  Sair
-                </button>
+                <div className="flex flex-col gap-2">
+                  <ToggleTema tema={tema} alternar={alternar} className="w-full justify-center" />
+                  <button onClick={sair}
+                    className="w-full rounded border border-white/20 px-3 py-1.5 font-display text-[11px]
+                               font-medium uppercase tracking-[.1em] text-white/80 hover:bg-white/5">
+                    Sair
+                  </button>
+                </div>
               </div>
             </aside>
           </div>

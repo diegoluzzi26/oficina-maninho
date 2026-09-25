@@ -100,3 +100,104 @@
 @media (prefers-reduced-motion: reduce) {
   .anima, .pulso { animation: none; }
 }
+
+/* =====================================================================
+   TEMA ESCURO
+   Ativado por [data-tema="escuro"] no <html> (ver lib/tema.js e index.html).
+   O app foi feito com classes de cor cruas do Tailwind, então em vez de
+   reescrever cada tela, sobrescrevemos aqui as classes de superfície,
+   texto e borda mais usadas. Modo claro fica intacto (tudo escopado).
+   ===================================================================== */
+[data-tema="escuro"] {
+  --sup-0: #0e0f15;  /* fundo da página            */
+  --sup-1: #191a21;  /* card / bg-white            */
+  --sup-2: #21222c;  /* superfície sutil / bg-slate-50 / cabeçalho tabela */
+  --sup-3: #2a2b37;  /* hover / bg-slate-100       */
+  --linha: #30313e;  /* bordas e divisores         */
+  --txt-1: #e8e9f0;  /* texto forte  (slate-800/900) */
+  --txt-2: #c4c6d2;  /* texto médio  (slate-700/600) */
+  --txt-3: #9a9cab;  /* texto fraco  (slate-500)     */
+  --txt-4: #74768a;  /* texto muito fraco (slate-400/300) */
+  --marca: #9aa6ea;  /* azul da marca clareado p/ títulos em fundo escuro */
+}
+
+[data-tema="escuro"] body {
+  background-color: var(--sup-0);
+  color: var(--txt-1);
+  background-image:
+    repeating-linear-gradient(100deg,
+      rgba(255,255,255,.02) 0px, rgba(255,255,255,.02) 1px,
+      transparent 1px, transparent 5px);
+}
+
+/* Componentes (.card/.input/.btn-ghost/.th/.td/.label/.titulo-secao) */
+[data-tema="escuro"] .card { background-color: var(--sup-1); border-color: var(--linha); box-shadow: none; }
+[data-tema="escuro"] .input { background-color: var(--sup-2); border-color: var(--linha); color: var(--txt-1); }
+[data-tema="escuro"] .input::placeholder { color: var(--txt-4); }
+[data-tema="escuro"] .btn-ghost { background-color: var(--sup-2); border-color: var(--linha); color: var(--txt-2); }
+[data-tema="escuro"] .btn-ghost:hover { background-color: var(--sup-3); border-color: var(--linha); }
+[data-tema="escuro"] .th { color: var(--txt-3); }
+[data-tema="escuro"] .td { color: var(--txt-2); }
+[data-tema="escuro"] .label { color: var(--txt-3); }
+[data-tema="escuro"] .titulo-secao { color: var(--marca); }
+
+/* Fundos */
+[data-tema="escuro"] .bg-white { background-color: var(--sup-1); }
+[data-tema="escuro"] .bg-slate-50,
+[data-tema="escuro"] .bg-slate-50\/50,
+[data-tema="escuro"] .bg-slate-50\/60,
+[data-tema="escuro"] .bg-slate-50\/70,
+[data-tema="escuro"] .bg-slate-50\/80 { background-color: var(--sup-2); }
+[data-tema="escuro"] .bg-slate-100 { background-color: var(--sup-3); }
+[data-tema="escuro"] .bg-slate-200 { background-color: #363746; }
+[data-tema="escuro"] .bg-maninho-50,
+[data-tema="escuro"] .bg-maninho-50\/40,
+[data-tema="escuro"] .bg-maninho-50\/60 { background-color: rgba(58,72,168,.16); }
+[data-tema="escuro"] .bg-maninho-100 { background-color: rgba(58,72,168,.24); }
+
+/* Hover de fundo (linhas de tabela, botões-fantasma inline) */
+[data-tema="escuro"] .hover\:bg-slate-50:hover { background-color: var(--sup-2); }
+[data-tema="escuro"] .hover\:bg-slate-100:hover { background-color: var(--sup-3); }
+[data-tema="escuro"] .hover\:bg-maninho-50:hover,
+[data-tema="escuro"] .hover\:bg-maninho-50\/60:hover { background-color: rgba(58,72,168,.16); }
+
+/* Texto */
+[data-tema="escuro"] .text-slate-900,
+[data-tema="escuro"] .text-slate-800 { color: var(--txt-1); }
+[data-tema="escuro"] .text-slate-700,
+[data-tema="escuro"] .text-slate-600 { color: var(--txt-2); }
+[data-tema="escuro"] .text-slate-500 { color: var(--txt-3); }
+[data-tema="escuro"] .text-slate-400,
+[data-tema="escuro"] .text-slate-300 { color: var(--txt-4); }
+[data-tema="escuro"] .text-maninho-800,
+[data-tema="escuro"] .text-maninho-700,
+[data-tema="escuro"] .text-maninho-600 { color: var(--marca); }
+
+/* Bordas, divisores e rings neutros */
+[data-tema="escuro"] .border-slate-100,
+[data-tema="escuro"] .border-slate-200,
+[data-tema="escuro"] .border-slate-300,
+[data-tema="escuro"] .border-slate-400 { border-color: var(--linha); }
+[data-tema="escuro"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--linha); }
+[data-tema="escuro"] .ring-slate-200,
+[data-tema="escuro"] .ring-slate-300 { --tw-ring-color: var(--linha); }
+
+/* Tons de alerta/estado: escurece o fundo e clareia o texto pra manter contraste */
+[data-tema="escuro"] .bg-rose-50,
+[data-tema="escuro"] .bg-rose-50\/40 { background-color: rgba(225,29,72,.14); }
+[data-tema="escuro"] .bg-rose-100 { background-color: rgba(225,29,72,.24); }
+[data-tema="escuro"] .text-rose-600,
+[data-tema="escuro"] .text-rose-700,
+[data-tema="escuro"] .text-rose-800 { color: #fca5a5; }
+[data-tema="escuro"] .bg-emerald-50,
+[data-tema="escuro"] .bg-emerald-50\/40,
+[data-tema="escuro"] .bg-emerald-50\/50 { background-color: rgba(5,150,105,.14); }
+[data-tema="escuro"] .bg-emerald-100 { background-color: rgba(5,150,105,.24); }
+[data-tema="escuro"] .text-emerald-600,
+[data-tema="escuro"] .text-emerald-700,
+[data-tema="escuro"] .text-emerald-800 { color: #6ee7b7; }
+[data-tema="escuro"] .border-emerald-200 { border-color: rgba(5,150,105,.35); }
+[data-tema="escuro"] .bg-ouro-100,
+[data-tema="escuro"] .bg-ouro-100\/40 { background-color: rgba(212,168,67,.16); }
+[data-tema="escuro"] .text-ouro-700,
+[data-tema="escuro"] .text-ouro-800 { color: #e8c97e; }

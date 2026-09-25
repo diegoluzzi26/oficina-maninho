@@ -12,6 +12,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Aplica o tema salvo antes do React montar, pra não piscar branco.
+      // Sem preferência salva, segue o sistema.
+      (function () {
+        try {
+          var t = localStorage.getItem('ui_tema');
+          if (t !== 'claro' && t !== 'escuro') {
+            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'escuro' : 'claro';
+          }
+          document.documentElement.dataset.tema = t;
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
