@@ -22,6 +22,48 @@ const PERIODOS = [
   { chave: '12m',   texto: '12 meses',  meses: 12 },
 ];
 
+const GRANS = [['dia', 'Dia'], ['semana', 'Semana'], ['mes', 'Mês']];
+
+// Catálogo de widgets disponíveis. `tipo` controla a largura na grade:
+// kpi = 1 coluna, meio = metade (no xl), bloco = largura total.
+const CATALOGO = [
+  { id: 'kpi_receita',  titulo: 'Receita no período',     tipo: 'kpi' },
+  { id: 'kpi_despesas', titulo: 'Despesas no período',    tipo: 'kpi' },
+  { id: 'kpi_lucro',    titulo: 'Lucro / Prejuízo',       tipo: 'kpi' },
+  { id: 'kpi_apagar',   titulo: 'A pagar',                tipo: 'kpi' },
+  { id: 'fluxo',        titulo: 'Entrou × Saiu',          tipo: 'bloco' },
+  { id: 'os_pagas',     titulo: 'OSs pagas',              tipo: 'bloco' },
+  { id: 'categoria',    titulo: 'Despesas por categoria', tipo: 'meio' },
+  { id: 'forma',        titulo: 'Por forma de pagamento', tipo: 'meio' },
+  { id: 'fornecedores', titulo: 'Maiores fornecedores',   tipo: 'bloco' },
+];
+const LAYOUT_PADRAO = CATALOGO.map((w) => w.id);
+const CHAVE_LAYOUT = 'fin_layout_v1';
+
+function carregaLayout() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CHAVE_LAYOUT));
+    if (Array.isArray(raw)) {
+      const validos = raw.filter((id) => CATALOGO.some((w) => w.id === id));
+      if (validos.length) return validos;
+    }
+  } catch { /* ignore */ }
+  return LAYOUT_PADRAO;
+}
+
+const SPAN = {
+  kpi: '',
+  meio: 'sm:col-span-2 xl:col-span-2',
+  bloco: 'sm:col-span-2 xl:col-span-4',
+};
+
+/** Rótulo do eixo X conforme a granularidade escolhida. */
+function rotuloBucket(iso, gran) {
+  if (gran === 'mes') return mesCurto(iso);
+  const [, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+
 function Kpi({ titulo, valor, sub, cor = 'text-slate-800', atraso = 0, preset }) {
   return (
     <div className={`card anima ${preset?.kpiPad || 'p-5'}`} style={{ animationDelay: `${atraso}ms` }}>
@@ -263,10 +305,18 @@ function OSsRecebidas() {
 export default function Financeiro() {
   const [dados, setDados] = useState(null);
   const [periodo, setPeriodo] = useState('6m');
+  const [granularidade, setGranularidade] = useState('mes');
   const [escopo, setEscopo] = useState('oficina'); // 'oficina' | 'pessoal' | 'ambos'
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const { densidade, setDensidade, preset } = useDensidade();
+
+  // Layout personalizável (montado pelo usuário), salvo neste navegador.
+  const [layout, setLayout] = useState(carregaLayout);
+  const [editando, setEditando] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_LAYOUT, JSON.stringify(layout)); } catch { /* ignore */ }
+  }, [layout]);
 
   useEffect(() => {
     let cancelado = false;
@@ -274,13 +324,13 @@ export default function Financeiro() {
 
     setCarregando(true);
     setErro('');
-    api.painelFinanceiro({ ...periodoMeses(meses), escopo })
+    api.painelFinanceiro({ ...periodoMeses(meses), escopo, granularidade })
       .then((d) => !cancelado && setDados(d))
       .catch((e) => !cancelado && setErro(e.message))
       .finally(() => !cancelado && setCarregando(false));
 
     return () => { cancelado = true; };
-  }, [periodo, escopo]);
+  }, [periodo, escopo, granularidade]);
 
   if (carregando && !dados) {
     return (
@@ -303,84 +353,47 @@ export default function Financeiro() {
     por_fornecedor: fornecedores, fluxo_caixa: fluxo } = dados;
 
   const serieFluxo = fluxo.dados.map((m) => ({
-    rotulo: mesCurto(m.mes),
+    rotulo: rotuloBucket(m.mes, granularidade),
     Receita: m.receita,
     Despesa: m.despesa,
     Lucro: m.lucro,
   }));
 
   const lucroPositivo = fluxo.totais.lucro >= 0;
-  // Qtd de despesas PAGAS no período (caixa) — bate com o valor do KPI, que
-  // também é caixa. `resumo.quantidade` conta por competência (inclui
-  // pendentes), então não serve de legenda pra um valor de caixa.
   const qtdDespesasPagas = fluxo.dados.reduce((s, m) => s + m.qtd_despesas, 0);
+  const rotuloGran = { dia: 'dia', semana: 'semana', mes: 'mês' }[granularidade];
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Análises financeiras</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Despesas por competência · fluxo de caixa por pagamento efetivo
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
-          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
-            {[
-              ['oficina', 'Oficina'],
-              ['pessoal', 'Pessoal'],
-              ['ambos',   'Ambos'],
-            ].map(([k, t]) => (
-              <button key={k} onClick={() => setEscopo(k)}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition
-                  ${escopo === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
-            {PERIODOS.map((p) => (
-              <button key={p.chave} onClick={() => setPeriodo(p.chave)}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition
-                  ${periodo === p.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-                {p.texto}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)} preset={preset}
-          sub="Ordens de serviço pagas" cor="text-emerald-700" atraso={0} />
-        <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)} preset={preset}
-          sub={`${qtdDespesasPagas} pagamento${qtdDespesasPagas === 1 ? '' : 's'}`} cor="text-rose-600" atraso={60} />
-        <Kpi titulo={lucroPositivo ? 'Lucro' : 'Prejuízo'} valor={brl(Math.abs(fluxo.totais.lucro))} preset={preset}
-          cor={lucroPositivo ? 'text-maninho-600' : 'text-rose-600'} atraso={120}
-          sub={fluxo.totais.margem !== null
-            ? `Margem de ${fluxo.totais.margem.toFixed(1).replace('.', ',')}%`
-            : 'Sem receita para calcular margem'} />
-        <Kpi titulo="A pagar" valor={brl(resumo.total_pendente + resumo.total_atrasado)} preset={preset}
-          cor={resumo.total_atrasado > 0 ? 'text-rose-600' : 'text-slate-800'} atraso={180}
-          sub={resumo.qtd_atrasadas > 0
-            ? `${resumo.qtd_atrasadas} conta(s) atrasada(s)`
-            : 'Nenhuma conta atrasada'} />
-      </div>
-
-      {/* OSs pagas — Dia / Mês */}
-      <OSsRecebidas />
-
-      {/* Fluxo de caixa */}
-      <div className="card anima p-5" style={{ animationDelay: '220ms' }}>
-        <h2 className="titulo-secao">
-          Entrou × Saiu por mês
-        </h2>
+  // Conteúdo de cada widget. A ordem/visibilidade é controlada por `layout`.
+  const conteudo = {
+    kpi_receita: (
+      <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)} preset={preset}
+        sub="Ordens de serviço pagas" cor="text-emerald-700" />
+    ),
+    kpi_despesas: (
+      <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)} preset={preset}
+        sub={`${qtdDespesasPagas} pagamento${qtdDespesasPagas === 1 ? '' : 's'}`} cor="text-rose-600" />
+    ),
+    kpi_lucro: (
+      <Kpi titulo={lucroPositivo ? 'Lucro' : 'Prejuízo'} valor={brl(Math.abs(fluxo.totais.lucro))}
+        preset={preset} cor={lucroPositivo ? 'text-maninho-600' : 'text-rose-600'}
+        sub={fluxo.totais.margem !== null
+          ? `Margem de ${fluxo.totais.margem.toFixed(1).replace('.', ',')}%`
+          : 'Sem receita para calcular margem'} />
+    ),
+    kpi_apagar: (
+      <Kpi titulo="A pagar" valor={brl(resumo.total_pendente + resumo.total_atrasado)} preset={preset}
+        cor={resumo.total_atrasado > 0 ? 'text-rose-600' : 'text-slate-800'}
+        sub={resumo.qtd_atrasadas > 0
+          ? `${resumo.qtd_atrasadas} conta(s) atrasada(s)`
+          : 'Nenhuma conta atrasada'} />
+    ),
+    os_pagas: <OSsRecebidas />,
+    fluxo: (
+      <div className="card anima p-5">
+        <h2 className="titulo-secao">Entrou × Saiu por {rotuloGran}</h2>
         <p className="mb-4 text-xs text-slate-500">
-          Barras: receita e despesa. Linha: o que sobrou no mês.
+          Barras: receita e despesa. Linha: o que sobrou no período.
         </p>
-
         {serieFluxo.length === 0 ? (
           <Vazio titulo="Sem movimentação no período" />
         ) : (
@@ -401,82 +414,70 @@ export default function Financeiro() {
           </ResponsiveContainer>
         )}
       </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Por categoria */}
-        <div className="card anima p-5" style={{ animationDelay: '280ms' }}>
-          <h2 className="titulo-secao">
-            Despesas por categoria
-          </h2>
-          <p className="mb-4 text-xs text-slate-500">Onde o dinheiro está indo</p>
-
-          {categorias.length === 0 ? (
-            <Vazio titulo="Nenhuma despesa no período" />
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <ResponsiveContainer width="100%" height={preset.graficoMedio} className="!w-full sm:!w-1/2">
-                <PieChart>
-                  <Pie data={categorias} dataKey="total" nameKey="categoria"
-                    cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2}>
-                    {categorias.map((c) => <Cell key={c.categoria} fill={c.cor} />)}
-                  </Pie>
-                  <Tooltip content={<TooltipFin />} />
-                </PieChart>
-              </ResponsiveContainer>
-
-              <ul className="flex-1 space-y-1.5">
-                {categorias.map((c) => (
-                  <li key={c.categoria} className="flex items-center gap-2 text-sm">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: c.cor }} />
-                    <span className="flex-1 truncate text-slate-700">{c.categoria}</span>
-                    <span className="tnum font-semibold text-slate-800">{brl(c.total)}</span>
-                    <span className="tnum w-12 text-right text-xs text-slate-500">
-                      {c.percentual.toFixed(0)}%
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Por forma de pagamento */}
-        <div className="card anima p-5" style={{ animationDelay: '340ms' }}>
-          <h2 className="titulo-secao">
-            Por forma de pagamento
-          </h2>
-          <p className="mb-4 text-xs text-slate-500">Como as contas foram pagas</p>
-
-          {formas.length === 0 ? (
-            <Vazio titulo="Nenhuma despesa no período" />
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(preset.graficoMedio, formas.length * 40)}>
-              <BarChart data={formas} layout="vertical"
-                margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                <XAxis type="number" tickFormatter={(v) => `R$ ${brlCurto(v)}`}
-                  tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="rotulo" width={124}
-                  tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<TooltipFin />} cursor={{ fill: AZUL, fillOpacity: 0.05 }} />
-                <Bar dataKey="total" name="Total" radius={[0, 4, 4, 0]} maxBarSize={24}>
-                  {formas.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? OURO : AZUL} fillOpacity={i === 0 ? 1 : 0.8} />
-                  ))}
-                </Bar>
-              </BarChart>
+    ),
+    categoria: (
+      <div className="card anima p-5">
+        <h2 className="titulo-secao">Despesas por categoria</h2>
+        <p className="mb-4 text-xs text-slate-500">Onde o dinheiro está indo</p>
+        {categorias.length === 0 ? (
+          <Vazio titulo="Nenhuma despesa no período" />
+        ) : (
+          <div className="flex flex-wrap items-center gap-4">
+            <ResponsiveContainer width="100%" height={preset.graficoMedio} className="!w-full sm:!w-1/2">
+              <PieChart>
+                <Pie data={categorias} dataKey="total" nameKey="categoria"
+                  cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2}>
+                  {categorias.map((c) => <Cell key={c.categoria} fill={c.cor} />)}
+                </Pie>
+                <Tooltip content={<TooltipFin />} />
+              </PieChart>
             </ResponsiveContainer>
-          )}
-        </div>
+            <ul className="flex-1 space-y-1.5">
+              {categorias.map((c) => (
+                <li key={c.categoria} className="flex items-center gap-2 text-sm">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: c.cor }} />
+                  <span className="flex-1 truncate text-slate-700">{c.categoria}</span>
+                  <span className="tnum font-semibold text-slate-800">{brl(c.total)}</span>
+                  <span className="tnum w-12 text-right text-xs text-slate-500">
+                    {c.percentual.toFixed(0)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
-
-      {/* Fornecedores */}
-      <div className="card anima p-5" style={{ animationDelay: '400ms' }}>
-        <h2 className="titulo-secao">
-          Maiores fornecedores
-        </h2>
+    ),
+    forma: (
+      <div className="card anima p-5">
+        <h2 className="titulo-secao">Por forma de pagamento</h2>
+        <p className="mb-4 text-xs text-slate-500">Como as contas foram pagas</p>
+        {formas.length === 0 ? (
+          <Vazio titulo="Nenhuma despesa no período" />
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(preset.graficoMedio, formas.length * 40)}>
+            <BarChart data={formas} layout="vertical"
+              margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+              <XAxis type="number" tickFormatter={(v) => `R$ ${brlCurto(v)}`}
+                tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="rotulo" width={124}
+                tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
+              <Tooltip content={<TooltipFin />} cursor={{ fill: AZUL, fillOpacity: 0.05 }} />
+              <Bar dataKey="total" name="Total" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                {formas.map((_, i) => (
+                  <Cell key={i} fill={i === 0 ? OURO : AZUL} fillOpacity={i === 0 ? 1 : 0.8} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    ),
+    fornecedores: (
+      <div className="card anima p-5">
+        <h2 className="titulo-secao">Maiores fornecedores</h2>
         <p className="mb-4 text-xs text-slate-500">Quanto você gastou com cada um no período</p>
-
         {fornecedores.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">
             Nenhuma despesa vinculada a fornecedor no período.
@@ -494,7 +495,6 @@ export default function Financeiro() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-800">{f.fornecedor}</p>
-                    {/* Barra proporcional dá noção de escala sem outro gráfico */}
                     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div className="h-full rounded-full bg-maninho-600/70"
                         style={{ width: `${maior > 0 ? (f.total / maior) * 100 : 0}%` }} />
@@ -510,6 +510,131 @@ export default function Financeiro() {
           </ul>
         )}
       </div>
+    ),
+  };
+
+  const catalogoFora = CATALOGO.filter((w) => !layout.includes(w.id));
+
+  function mover(id, delta) {
+    setLayout((L) => {
+      const i = L.indexOf(id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= L.length) return L;
+      const n = [...L];
+      [n[i], n[j]] = [n[j], n[i]];
+      return n;
+    });
+  }
+  const remover = (id) => setLayout((L) => L.filter((x) => x !== id));
+  const adicionar = (id) => setLayout((L) => (L.includes(id) ? L : [...L, id]));
+  const restaurar = () => setLayout(LAYOUT_PADRAO);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
+            Análises financeiras
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Monte o painel do seu jeito · período e granularidade à sua escolha
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleDensidade densidade={densidade} setDensidade={setDensidade} />
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {[['oficina', 'Oficina'], ['pessoal', 'Pessoal'], ['ambos', 'Ambos']].map(([k, t]) => (
+              <button key={k} onClick={() => setEscopo(k)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${escopo === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {PERIODOS.map((p) => (
+              <button key={p.chave} onClick={() => setPeriodo(p.chave)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${periodo === p.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {p.texto}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm"
+            title="Agrupar as barras do fluxo por dia, semana ou mês">
+            {GRANS.map(([k, t]) => (
+              <button key={k} onClick={() => setGranularidade(k)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${granularidade === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setEditando((v) => !v)}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold shadow-sm transition
+              ${editando ? 'bg-ouro-500 text-painel-900' : 'btn-ghost'}`}>
+            {editando ? '✓ Concluir' : '✎ Personalizar'}
+          </button>
+        </div>
+      </div>
+
+      {/* Barra de edição: adicionar widgets ocultos + restaurar padrão */}
+      {editando && (
+        <div className="card anima border-l-4 border-l-ouro-500 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-700">
+              Modo de edição — use ↑ ↓ pra ordenar e ✕ pra remover cada bloco.
+            </p>
+            <button onClick={restaurar}
+              className="rounded bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+              Restaurar padrão
+            </button>
+          </div>
+          {catalogoFora.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Adicionar:</span>
+              {catalogoFora.map((w) => (
+                <button key={w.id} onClick={() => adicionar(w.id)}
+                  className="rounded-full bg-maninho-50 px-3 py-1 text-xs font-semibold text-maninho-700 hover:bg-maninho-100">
+                  + {w.titulo}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-slate-400">Todos os blocos já estão no painel.</p>
+          )}
+        </div>
+      )}
+
+      {layout.length === 0 ? (
+        <Vazio titulo="Painel vazio"
+          descricao="Clique em Personalizar e adicione os blocos que quiser ver aqui."
+          acao={<button className="btn-primary mt-3" onClick={() => setEditando(true)}>✎ Personalizar</button>} />
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {layout.map((id) => {
+            const w = CATALOGO.find((c) => c.id === id);
+            if (!w) return null;
+            return (
+              <div key={id}
+                className={`relative ${SPAN[w.tipo]}
+                  ${editando ? 'rounded-lg ring-2 ring-dashed ring-maninho-300' : ''}`}>
+                {editando && (
+                  <div className="absolute right-1.5 top-1.5 z-10 flex gap-1">
+                    <button onClick={() => mover(id, -1)} title="Mover pra cima"
+                      className="rounded bg-white/90 px-1.5 py-0.5 text-xs shadow ring-1 ring-slate-200 hover:bg-slate-100">↑</button>
+                    <button onClick={() => mover(id, 1)} title="Mover pra baixo"
+                      className="rounded bg-white/90 px-1.5 py-0.5 text-xs shadow ring-1 ring-slate-200 hover:bg-slate-100">↓</button>
+                    <button onClick={() => remover(id)} title="Remover do painel"
+                      className="rounded bg-white/90 px-1.5 py-0.5 text-xs font-bold text-rose-600 shadow ring-1 ring-slate-200 hover:bg-rose-50">✕</button>
+                  </div>
+                )}
+                {conteudo[id]}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
