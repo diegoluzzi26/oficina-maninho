@@ -278,7 +278,45 @@ async function painelMes({ ano, mes } = {}) {
   };
 }
 
+/**
+ * OSs que tiveram desconto num mês — o detalhe por trás do KPI "Desconto
+ * dado" do Painel. Desconto = valor cobrado − valor pago (mesma conta da
+ * vw_faturamento), datado por paga_em (quando o dinheiro entrou).
+ */
+async function descontosDoMes({ ano, mes } = {}) {
+  const hoje = new Date();
+  const y = Number(ano) || hoje.getUTCFullYear();
+  const m = Number(mes) || hoje.getUTCMonth() + 1;
+  const inicio = `${y}-${String(m).padStart(2, '0')}-01`;
+  const proxMes = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+  const { rows } = await db.query(
+    `SELECT os_id AS id, numero_os, cliente_nome,
+            placa, marca, modelo, paga_em, forma_pagamento,
+            valor_cobrado, valor_pago, desconto_dado
+       FROM vw_faturamento
+      WHERE paga_em >= $1::date AND paga_em < $2::date
+        AND desconto_dado > 0
+      ORDER BY desconto_dado DESC, paga_em DESC`,
+    [inicio, proxMes],
+  );
+
+  const dados = rows.map((r) => ({
+    ...r,
+    valor_cobrado: Number(r.valor_cobrado),
+    valor_pago: Number(r.valor_pago),
+    desconto_dado: Number(r.desconto_dado),
+  }));
+  const total = dados.reduce((s, d) => s + d.desconto_dado, 0);
+
+  return {
+    referencia: { ano: y, mes: m, inicio, fim: proxMes },
+    dados,
+    total: Number(total.toFixed(2)),
+  };
+}
+
 module.exports = {
   resumo, faturamentoPorPeriodo, servicosMaisVendidos,
-  clientesRecorrentes, comparativoMensal, painelMes,
+  clientesRecorrentes, comparativoMensal, painelMes, descontosDoMes,
 };

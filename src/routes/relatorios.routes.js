@@ -15,6 +15,13 @@ router.get('/painel-mes',
   }) }),
   h(async (req, res) => res.json(await svc.painelMes(req.query))));
 
+router.get('/descontos-mes',
+  validate({ query: z.object({
+    ano: z.coerce.number().int().min(2000).max(2100).optional(),
+    mes: z.coerce.number().int().min(1).max(12).optional(),
+  }) }),
+  h(async (req, res) => res.json(await svc.descontosDoMes(req.query))));
+
 router.get('/resumo', validate({ query: v.periodo }),
   h(async (req, res) => res.json(await svc.resumo(req.query))));
 
