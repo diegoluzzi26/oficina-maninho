@@ -148,6 +148,13 @@ const atualizarOS = z.object({
 const FORMAS_PAG = ['dinheiro', 'pix', 'boleto', 'cartao_credito',
   'cartao_debito', 'transferencia', 'cheque', 'outro'];
 
+// Uma parcela do pagamento (split): forma + valor. Usado quando o
+// cliente fecha a OS pagando em mais de uma forma.
+const parcelaPagamento = z.object({
+  forma: z.enum(FORMAS_PAG),
+  valor: z.coerce.number().positive(),
+});
+
 const mudarStatus = z.object({
   status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']),
   notificar_whatsapp: z.boolean().default(false),
@@ -155,6 +162,8 @@ const mudarStatus = z.object({
   forma_pagamento: z.enum(FORMAS_PAG).optional(),
   pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   valor_pago: z.coerce.number().min(0).optional(),
+  // Split: quando presente (2+ formas), tem prioridade sobre forma_pagamento.
+  pagamentos: z.array(parcelaPagamento).min(1).max(5).optional(),
 });
 
 // ----- relatórios -----

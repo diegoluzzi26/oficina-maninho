@@ -269,7 +269,9 @@ async function osDoDia({ data }) {
     `SELECT o.id, o.numero_os, o.valor_total, o.valor_pago,
             o.forma_pagamento, o.paga_em, o.aberta_em,
             c.nome AS cliente_nome,
-            ca.placa, ca.marca, ca.modelo
+            ca.placa, ca.marca, ca.modelo,
+            (SELECT json_agg(json_build_object('forma', p.forma, 'valor', p.valor))
+               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos
        FROM ordens_servico o
        JOIN clientes c ON c.id = o.cliente_id
        JOIN carros  ca ON ca.id = o.carro_id
@@ -282,6 +284,7 @@ async function osDoDia({ data }) {
     ...r,
     valor_total: Number(r.valor_total),
     valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
+    pagamentos: (r.pagamentos || []).map((p) => ({ ...p, valor: Number(p.valor) })),
   }));
   const total = dados.reduce((s, d) => s + (d.valor_pago ?? d.valor_total), 0);
   return {
@@ -310,7 +313,9 @@ async function osDoMes({ ano, mes }) {
             o.forma_pagamento, o.paga_em, o.aberta_em,
             o.paga_em::date AS dia,
             c.nome AS cliente_nome,
-            ca.placa, ca.marca, ca.modelo
+            ca.placa, ca.marca, ca.modelo,
+            (SELECT json_agg(json_build_object('forma', p.forma, 'valor', p.valor))
+               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos
        FROM ordens_servico o
        JOIN clientes c ON c.id = o.cliente_id
        JOIN carros  ca ON ca.id = o.carro_id
@@ -324,6 +329,7 @@ async function osDoMes({ ano, mes }) {
     ...r,
     valor_total: Number(r.valor_total),
     valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
+    pagamentos: (r.pagamentos || []).map((p) => ({ ...p, valor: Number(p.valor) })),
   }));
 
   // Agrupa por dia pra facilitar renderização

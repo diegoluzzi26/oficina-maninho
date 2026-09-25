@@ -218,8 +218,14 @@ function OSsRecebidas() {
           {/* Resumo por forma de pagamento — soma quanto entrou em cada tipo */}
           {(() => {
             const porForma = dados.dados.reduce((acc, o) => {
-              const chave = o.forma_pagamento || 'outro';
-              acc[chave] = (acc[chave] || 0) + (o.valor_pago ?? o.valor_total);
+              // Com split, cada parcela entra na sua forma. Sem split (ou OS
+              // antiga sem parcelas), cai no forma_pagamento único.
+              if (o.pagamentos && o.pagamentos.length) {
+                for (const p of o.pagamentos) acc[p.forma] = (acc[p.forma] || 0) + p.valor;
+              } else {
+                const chave = o.forma_pagamento || 'outro';
+                acc[chave] = (acc[chave] || 0) + (o.valor_pago ?? o.valor_total);
+              }
               return acc;
             }, {});
             const entradas = Object.entries(porForma).sort((a, b) => b[1] - a[1]);
