@@ -304,7 +304,9 @@ export default function Despesas({ escopo = 'oficina' } = {}) {
   const ano = Number(sp.get('ano')) || hoje.getFullYear();
   const mes = Number(sp.get('mes')) || hoje.getMonth() + 1;
   const pagina = Number(sp.get('pagina')) || 1;
-  const porPagina = Number(sp.get('por_pagina')) || 20;
+  // Blinda contra valor fora do contrato vindo de URL antiga/bookmark
+  // (o backend rejeita >100). Mantém dentro de [1, 100], default 20.
+  const porPagina = Math.min(100, Math.max(1, Number(sp.get('por_pagina')) || 20));
 
   /** Mescla mudanças na query; some com valores default/vazios pra URL limpa. */
   const patchSp = useCallback((patch, { resetPagina = true } = {}) => {
