@@ -65,6 +65,16 @@ async function notificarSeguro(os, tipo) {
 router.get('/', validate({ query: listaQuery }),
   h(async (req, res) => res.json(await svc.listar(req.query))));
 
+// Quadro Kanban: OS ativas + pagas recentes, sem paginação nem filtro de
+// mês. Precisa vir antes de '/:id' pra não ser capturada como um id.
+const kanbanQuery = z.object({
+  busca: z.string().trim().optional(),
+  cliente_id: v.uuid.optional(),
+  marca: z.string().trim().optional(),
+});
+router.get('/kanban', validate({ query: kanbanQuery }),
+  h(async (req, res) => res.json(await svc.listarKanban(req.query))));
+
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarPorId(req.params.id))));
 
@@ -88,6 +98,21 @@ router.patch('/:id/status', validate({ params: v.idParam, body: v.mudarStatus })
     const resposta = { ...os };
     if (notificar_whatsapp && (status === 'finalizada' || status === 'paga')) {
       resposta.whatsapp = await notificarSeguro(os, status);
+    }
+    res.json(resposta);
+  }));
+
+// Move a OS de etapa no Kanban. Se a etapa mapeia um status, o service
+// dispara a transição; a notificação segue a mesma regra do status
+// (só sai com opt-in explícito e quando cai em finalizada/paga).
+router.patch('/:id/etapa', validate({ params: v.idParam, body: v.mudarEtapa }),
+  h(async (req, res) => {
+    const { etapa_id, notificar_whatsapp, forma_pagamento, pago_em, valor_pago, pagamentos } = req.body;
+    const os = await svc.mudarEtapa(req.params.id, etapa_id,
+      { forma_pagamento, pago_em, valor_pago, pagamentos });
+    const resposta = { ...os };
+    if (notificar_whatsapp && (os.status === 'finalizada' || os.status === 'paga')) {
+      resposta.whatsapp = await notificarSeguro(os, os.status);
     }
     res.json(resposta);
   }));

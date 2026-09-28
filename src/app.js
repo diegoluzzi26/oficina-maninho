@@ -60,6 +60,7 @@ app.use('/api/pecas',      auth, oficinaContext, bloquearBasico, require('./rout
 app.use('/api/funcionarios', auth, oficinaContext, bloquearBasico, require('./routes/funcionarios.routes'));
 app.use('/api/despesas-recorrentes', auth, oficinaContext, bloquearBasico, require('./routes/despesas-recorrentes.routes'));
 app.use('/api/os',         auth, oficinaContext, bloquearBasico, require('./routes/os.routes'));
+app.use('/api/etapas',     auth, oficinaContext, bloquearBasico, require('./routes/etapas.routes'));
 app.use('/api/relatorios', auth, oficinaContext, bloquearBasico, require('./routes/relatorios.routes'));
 app.use('/api/despesas',     auth, oficinaContext, bloquearBasico, require('./routes/despesas.routes'));
 app.use('/api/fornecedores', auth, oficinaContext, bloquearBasico, require('./routes/fornecedores.routes'));
