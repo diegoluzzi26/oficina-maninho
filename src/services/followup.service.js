@@ -216,15 +216,26 @@ async function enviarAgora(id, userId) {
 }
 
 /**
- * Enfileira envios para todos os pendentes com agendado_para <= hoje.
- * Retorna contagem de sucessos e falhas.
+ * Enfileira envios para os pendentes com agendado_para <= hoje.
+ * Se `ids` vier preenchido, restringe a esses itens — mas a trava de
+ * "pendente até hoje" continua valendo, então nunca dispara algo futuro,
+ * já enviado ou fora da seleção. Sem `ids`, mantém o comportamento antigo
+ * (todos os pendentes até hoje). Retorna contagem de sucessos e falhas.
  */
-async function enviarPendentesAgora(userId) {
+async function enviarPendentesAgora(userId, { ids } = {}) {
+  const temSelecao = Array.isArray(ids) && ids.length > 0;
+  const params = [];
+  let filtroIds = '';
+  if (temSelecao) {
+    params.push(ids);
+    filtroIds = `AND id = ANY($${params.length}::uuid[])`;
+  }
   const { rows } = await db.query(
     `SELECT id FROM followup_fila
       WHERE status='pendente' AND agendado_para <= CURRENT_DATE
+        ${filtroIds}
       ORDER BY agendado_para ASC, criado_em ASC
-      LIMIT 100`,
+      LIMIT 100`, params,
   );
 
   let enviados = 0;

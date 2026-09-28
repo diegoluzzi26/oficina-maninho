@@ -75,6 +75,40 @@ export function Modal({ aberto, titulo, onFechar, children, largura = 'max-w-lg'
   );
 }
 
+/**
+ * Diálogo de confirmação controlado — substitui o confirm() nativo.
+ * Uso: guarde um objeto no estado e renderize <Confirmar dados={...} onFechar={...} />.
+ *   dados = { titulo, mensagem, rotulo?, tom?, onConfirmar }
+ *     tom: 'primary' (padrão) | 'ouro' | 'perigo'
+ * Para escolhas com mais de dois botões, passe `acoes` (render-prop que
+ * recebe `fechar` e devolve os botões).
+ */
+export function Confirmar({ dados, onFechar }) {
+  if (!dados) return null;
+  const { titulo, mensagem, rotulo = 'Confirmar', tom = 'primary', onConfirmar, acoes } = dados;
+  const classeBtn = tom === 'ouro'
+    ? 'btn-ouro'
+    : tom === 'perigo'
+      ? 'btn bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
+      : 'btn-primary';
+  return (
+    <Modal aberto largura="max-w-sm" titulo={titulo} onFechar={onFechar}>
+      {typeof mensagem === 'string'
+        ? <p className="whitespace-pre-wrap text-sm text-slate-600">{mensagem}</p>
+        : mensagem}
+      <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4">
+        {acoes ? acoes(onFechar) : (
+          <>
+            <button className="btn-ghost" onClick={onFechar}>Cancelar</button>
+            <button className={classeBtn}
+              onClick={() => { onFechar(); onConfirmar?.(); }}>{rotulo}</button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export function Campo({ label, erro, children, obrigatorio, ajuda }) {
   return (
     <label className="block">
