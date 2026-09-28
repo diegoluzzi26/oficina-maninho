@@ -226,6 +226,353 @@ function FormCategoria({ aberto, categoria, onFechar, onSalvo }) {
   );
 }
 
+// ---------------------------------------------------------------------
+// Etapas do Kanban de OS
+// ---------------------------------------------------------------------
+const STATUS_ETAPA = [
+  { valor: '', rotulo: '— nenhum (só move o card) —' },
+  { valor: 'aberta', rotulo: 'Aberta' },
+  { valor: 'em_andamento', rotulo: 'Em andamento' },
+  { valor: 'finalizada', rotulo: 'Finalizada' },
+  { valor: 'paga', rotulo: 'Paga' },
+];
+const rotuloStatus = (v) => (STATUS_ETAPA.find((s) => s.valor === (v || ''))?.rotulo) || v;
+
+/**
+ * CRUD das colunas do Kanban de OS. Cada etapa pode mapear (opcional) um
+ * status financeiro: aí arrastar a OS pra ela dispara o fluxo (finalizar,
+ * dar baixa). Reordenar muda a ordem das colunas no quadro.
+ */
+function EtapasKanban() {
+  const [etapas, setEtapas] = useState(null);
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [regrasDe, setRegrasDe] = useState(null); // etapa cujas automações estão abertas
+
+  function carregar() {
+    setErro('');
+    api.etapas().then(setEtapas).catch((e) => setErro(e.message));
+  }
+  useEffect(() => { carregar(); }, []);
+
+  async function mover(idx, delta) {
+    const nova = [...etapas];
+    const alvo = idx + delta;
+    if (alvo < 0 || alvo >= nova.length) return;
+    [nova[idx], nova[alvo]] = [nova[alvo], nova[idx]];
+    setEtapas(nova); // otimista
+    try { await api.reordenarEtapas(nova.map((e) => e.id)); }
+    catch (err) { setErro(err.message); carregar(); }
+  }
+
+  async function excluir(etapa) {
+    if (!confirm(`Remover a coluna "${etapa.nome}"? As OS precisam estar em outra coluna antes.`)) return;
+    try {
+      await api.removerEtapa(etapa.id);
+      setOk(`Coluna "${etapa.nome}" removida.`);
+      carregar();
+    } catch (err) { setErro(err.message); }
+  }
+
+  function fechou(salvo) {
+    setModalAberto(false);
+    if (salvo) { setOk('Etapa salva.'); carregar(); }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="titulo-secao">Etapas do Kanban</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            As colunas do quadro de ordens. Crie etapas próprias (ex.:
+            <b> Aguardando peça</b>, <b>Em teste</b>). Se a etapa apontar pra um
+            status, arrastar a OS pra ela já <b>finaliza</b> ou <b>dá baixa</b>.
+          </p>
+        </div>
+        <button type="button" className="btn-primary"
+          onClick={() => { setEditando(null); setModalAberto(true); }}>
+          + Nova etapa
+        </button>
+      </div>
+
+      {erro && <div className="mt-3"><Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta></div>}
+      {ok   && <div className="mt-3"><Alerta tipo="ok"   onFechar={() => setOk('')}>{ok}</Alerta></div>}
+
+      <div className="mt-4 overflow-hidden rounded-md border border-slate-200">
+        {!etapas ? (
+          <div className="space-y-2 p-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}</div>
+        ) : etapas.length === 0 ? (
+          <Vazio titulo="Nenhuma etapa" descricao="Crie a primeira coluna do Kanban." />
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+              <tr>
+                <th className="th w-20">Ordem</th>
+                <th className="th w-10"></th>
+                <th className="th">Nome</th>
+                <th className="th w-40">Muda status para</th>
+                <th className="th w-40 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {etapas.map((e, idx) => (
+                <tr key={e.id}>
+                  <td className="td">
+                    <div className="flex items-center gap-1">
+                      <button type="button" disabled={idx === 0} onClick={() => mover(idx, -1)}
+                        className="rounded px-1.5 text-slate-500 hover:bg-slate-100 disabled:text-slate-300">↑</button>
+                      <button type="button" disabled={idx === etapas.length - 1} onClick={() => mover(idx, 1)}
+                        className="rounded px-1.5 text-slate-500 hover:bg-slate-100 disabled:text-slate-300">↓</button>
+                    </div>
+                  </td>
+                  <td className="td">
+                    <span className="inline-block h-4 w-4 rounded ring-1 ring-slate-200"
+                      style={{ background: e.cor || '#cbd5e1' }} title={e.cor} />
+                  </td>
+                  <td className="td font-medium text-slate-800">{e.nome}</td>
+                  <td className="td text-xs text-slate-600">
+                    {e.status_ao_entrar
+                      ? <span className="inline-flex rounded-full bg-maninho-50 px-2 py-0.5 font-semibold text-maninho-800 ring-1 ring-inset ring-maninho-200">
+                          {rotuloStatus(e.status_ao_entrar)}
+                        </span>
+                      : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="td text-right">
+                    <button type="button" className="btn-ghost px-2 py-1 text-xs"
+                      onClick={() => setRegrasDe(e)} title="Automações ao entrar nesta etapa">⚙ Automações</button>
+                    <button type="button" className="ml-1 btn-ghost px-2 py-1 text-xs"
+                      onClick={() => { setEditando(e); setModalAberto(true); }}>Editar</button>
+                    <button type="button"
+                      className="ml-1 rounded bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                      onClick={() => excluir(e)}>Remover</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <FormEtapa aberto={modalAberto} etapa={editando}
+        onFechar={() => setModalAberto(false)} onSalvo={() => fechou(true)} />
+
+      <RegrasEtapaModal etapa={regrasDe} onFechar={() => setRegrasDe(null)} />
+    </div>
+  );
+}
+
+const ACOES_REGRA = [
+  { valor: 'criar_retorno', rotulo: 'Agendar um retorno/lembrete' },
+  { valor: 'enfileirar_followup', rotulo: 'Enfileirar follow-up (fica pendente)' },
+];
+const TIPOS_FOLLOWUP = [
+  { valor: 'manutencao', rotulo: 'Manutenção' },
+  { valor: 'reativacao', rotulo: 'Reativação' },
+  { valor: 'promocao', rotulo: 'Promoção' },
+];
+
+function descreveRegra(r) {
+  const p = r.params || {};
+  if (r.acao === 'criar_retorno') {
+    return `Agendar retorno em ${Number(p.dias) || 0} dia(s)${p.motivo ? ` — "${p.motivo}"` : ''}`;
+  }
+  if (r.acao === 'enfileirar_followup') {
+    const tipo = TIPOS_FOLLOWUP.find((t) => t.valor === p.tipo)?.rotulo || p.tipo || 'manutenção';
+    return `Follow-up (${tipo}) em ${Number(p.dias) || 0} dia(s), pendente pra envio manual`;
+  }
+  return r.acao;
+}
+
+/**
+ * Automações de uma etapa: "ao entrar aqui, faça X". Nenhuma envia
+ * WhatsApp sozinha — o follow-up entra como pendente.
+ */
+function RegrasEtapaModal({ etapa, onFechar }) {
+  const [regras, setRegras] = useState(null);
+  const [erro, setErro] = useState('');
+  const [nova, setNova] = useState({ acao: 'criar_retorno', dias: 7, motivo: '', tipo: 'manutencao', mensagem: '' });
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!etapa) { setRegras(null); return; }
+    setErro('');
+    api.regrasEtapa(etapa.id).then(setRegras).catch((e) => setErro(e.message));
+  }, [etapa?.id]);
+
+  if (!etapa) return null;
+
+  async function adicionar() {
+    setSalvando(true); setErro('');
+    try {
+      const params = nova.acao === 'criar_retorno'
+        ? { dias: Number(nova.dias) || 0, motivo: nova.motivo || undefined }
+        : { tipo: nova.tipo, dias: Number(nova.dias) || 0, mensagem: nova.mensagem || undefined };
+      await api.criarRegraEtapa(etapa.id, { acao: nova.acao, params });
+      setNova({ acao: 'criar_retorno', dias: 7, motivo: '', tipo: 'manutencao', mensagem: '' });
+      setRegras(await api.regrasEtapa(etapa.id));
+    } catch (e) { setErro(e.message); }
+    finally { setSalvando(false); }
+  }
+
+  async function remover(id) {
+    setErro('');
+    try {
+      await api.removerRegraEtapa(etapa.id, id);
+      setRegras((rs) => rs.filter((r) => r.id !== id));
+    } catch (e) { setErro(e.message); }
+  }
+
+  return (
+    <Modal aberto={!!etapa} onFechar={onFechar} titulo={`Automações — "${etapa.nome}"`} largura="max-w-lg">
+      <div className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+        <p className="text-xs text-slate-500">
+          Estas ações rodam quando uma OS é arrastada pra esta etapa. Nada é enviado
+          por WhatsApp automaticamente — o follow-up fica <b>pendente</b> pra você enviar.
+        </p>
+
+        {!regras ? (
+          <Skeleton className="h-16" />
+        ) : regras.length === 0 ? (
+          <p className="rounded border border-dashed border-slate-300 py-4 text-center text-xs text-slate-400">
+            Nenhuma automação nesta etapa ainda.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+            {regras.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <span className="flex-1 text-slate-700">{descreveRegra(r)}</span>
+                <button type="button" onClick={() => remover(r.id)}
+                  className="rounded px-1.5 text-xs text-rose-600 hover:bg-rose-50" title="Remover">✕</button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="space-y-2 rounded-md bg-slate-50 p-3">
+          <p className="label">Nova automação</p>
+          <select className="input" value={nova.acao}
+            onChange={(e) => setNova((n) => ({ ...n, acao: e.target.value }))}>
+            {ACOES_REGRA.map((a) => <option key={a.valor} value={a.valor}>{a.rotulo}</option>)}
+          </select>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Daqui a</span>
+            <input type="number" min="0" max="365" className="input tnum w-20 py-1.5 text-sm"
+              value={nova.dias} onChange={(e) => setNova((n) => ({ ...n, dias: e.target.value }))} />
+            <span className="text-xs text-slate-500">dia(s)</span>
+          </div>
+
+          {nova.acao === 'criar_retorno' ? (
+            <input className="input py-1.5 text-sm" placeholder="Motivo (opcional)"
+              value={nova.motivo} onChange={(e) => setNova((n) => ({ ...n, motivo: e.target.value }))} />
+          ) : (
+            <>
+              <select className="input py-1.5 text-sm" value={nova.tipo}
+                onChange={(e) => setNova((n) => ({ ...n, tipo: e.target.value }))}>
+                {TIPOS_FOLLOWUP.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
+              </select>
+              <textarea className="input py-1.5 text-sm" rows={2} placeholder="Mensagem do follow-up (opcional)"
+                value={nova.mensagem} onChange={(e) => setNova((n) => ({ ...n, mensagem: e.target.value }))} />
+            </>
+          )}
+
+          <div className="flex justify-end">
+            <button type="button" className="btn-primary px-3 py-1.5 text-xs"
+              onClick={adicionar} disabled={salvando}>
+              {salvando ? <><Spinner className="h-4 w-4" /> Adicionando…</> : '+ Adicionar automação'}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function FormEtapa({ aberto, etapa, onFechar, onSalvo }) {
+  const vazio = { nome: '', cor: '#64748b', status_ao_entrar: '' };
+  const [form, setForm] = useState(vazio);
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    setErro('');
+    setForm(etapa
+      ? { nome: etapa.nome, cor: etapa.cor || '#64748b', status_ao_entrar: etapa.status_ao_entrar || '' }
+      : vazio);
+  }, [etapa, aberto]);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function salvar(e) {
+    e.preventDefault();
+    setSalvando(true); setErro('');
+    try {
+      const body = { nome: form.nome.trim(), cor: form.cor, status_ao_entrar: form.status_ao_entrar || null };
+      if (etapa) await api.atualizarEtapa(etapa.id, body);
+      else await api.criarEtapa(body);
+      onSalvo();
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <Modal aberto={aberto} onFechar={onFechar}
+      titulo={etapa ? `Editar etapa "${etapa.nome}"` : 'Nova etapa'}>
+      <form onSubmit={salvar} className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+        <Campo label="Nome" obrigatorio>
+          <input className="input" value={form.nome} onChange={set('nome')}
+            required autoFocus minLength={1} maxLength={40} placeholder="Ex.: Aguardando peça" />
+        </Campo>
+
+        <Campo label="Muda o status para"
+          ajuda="Ao arrastar uma OS pra esta coluna. 'Finalizada' e 'Paga' pedem confirmação. Deixe em 'nenhum' pra só mover o card.">
+          <select className="input" value={form.status_ao_entrar} onChange={set('status_ao_entrar')}>
+            {STATUS_ETAPA.map((s) => (
+              <option key={s.valor || 'none'} value={s.valor}>{s.rotulo}</option>
+            ))}
+          </select>
+        </Campo>
+
+        <Campo label="Cor" ajuda="Faixa colorida no topo da coluna.">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {CORES_SUGERIDAS.map((c) => (
+                <button type="button" key={c} onClick={() => setForm((f) => ({ ...f, cor: c }))}
+                  className={`h-7 w-7 rounded-full ring-2 transition
+                    ${form.cor === c ? 'ring-slate-800' : 'ring-transparent hover:ring-slate-400'}`}
+                  style={{ background: c }} title={c} />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input className="input font-mono text-sm w-32" value={form.cor} onChange={set('cor')}
+                pattern="^#[0-9a-fA-F]{6}$" placeholder="#2B3D8F" />
+              <span className="inline-block h-8 w-8 rounded ring-1 ring-slate-200"
+                style={{ background: form.cor }} />
+            </div>
+          </div>
+        </Campo>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : (etapa ? 'Salvar alterações' : 'Criar etapa')}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /**
  * Configurações do sistema — WhatsApp (Evolution API) + Meta mensal.
  * Só admin acessa (backend recusa com 403 pra não-admin; menu esconde).
@@ -552,6 +899,9 @@ export default function Configuracoes() {
 
       {/* Categorias de despesa — fora do formulário, tem CRUD próprio */}
       <CategoriasDespesa />
+
+      {/* Etapas do Kanban de OS — CRUD próprio */}
+      <EtapasKanban />
 
       {/* Conexão do WhatsApp — fora do formulário porque não faz save */}
       <div className="card p-5">
