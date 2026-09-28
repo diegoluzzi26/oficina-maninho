@@ -43,4 +43,39 @@ router.post('/parecer', validate({ body: parecerBody }),
     res.json({ parecer, referencia: painel.referencia });
   }));
 
+// --- Assistentes do follow-up (só sugerem; nada é gravado aqui) ---
+
+// Sugere o próximo follow-up de um cliente (tipo + data + mensagem).
+const sugerirFollowupBody = z.object({
+  cliente_id: z.string().uuid(),
+});
+
+router.post('/sugerir-followup', validate({ body: sugerirFollowupBody }),
+  h(async (req, res) => {
+    res.json(await svc.sugerirFollowup(req.body));
+  }));
+
+// Sugere a recorrência ideal de um serviço (intervalo_dias + template).
+const sugerirRecorrenciaBody = z.object({
+  servico_id: z.string().uuid(),
+});
+
+router.post('/sugerir-recorrencia', validate({ body: sugerirRecorrenciaBody }),
+  h(async (req, res) => {
+    res.json(await svc.sugerirRecorrencia(req.body));
+  }));
+
+// Reescreve uma mensagem já digitada, preservando as variáveis {…}.
+const melhorarBody = z.object({
+  texto: z.string().min(1).max(2000),
+  tipo: z.string().max(40).optional(),
+  contexto: z.string().max(500).optional(),
+});
+
+router.post('/melhorar-mensagem', validate({ body: melhorarBody }),
+  h(async (req, res) => {
+    const mensagem = await svc.melhorarMensagem(req.body);
+    res.json({ mensagem });
+  }));
+
 module.exports = router;

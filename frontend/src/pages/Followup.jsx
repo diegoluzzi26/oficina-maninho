@@ -147,13 +147,16 @@ function FormManual({ aberto, onFechar, onCriado }) {
   const [buscaCli, setBuscaCli] = useState('');
   const [contextoIA, setContextoIA] = useState('');
   const [gerandoIA, setGerandoIA] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
+  const [melhorando, setMelhorando] = useState(false);
+  const [justificativa, setJustificativa] = useState('');
   const [iaConfigurada, setIaConfigurada] = useState(true);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (aberto) {
-      setForm(vazio); setErro(''); setBuscaCli(''); setContextoIA('');
+      setForm(vazio); setErro(''); setBuscaCli(''); setContextoIA(''); setJustificativa('');
       api.iaStatus().then((s) => setIaConfigurada(s.configurada)).catch(() => {});
     }
   }, [aberto]);
@@ -186,6 +189,33 @@ function FormManual({ aberto, onFechar, onCriado }) {
       setForm((f) => ({ ...f, mensagem: r.mensagem }));
     } catch (e) { setErro(e.message); }
     finally { setGerandoIA(false); }
+  }
+
+  // Deixa a IA olhar o histórico e sugerir TUDO: tipo, data e mensagem.
+  async function sugerirCompleto() {
+    if (!form.cliente_id) { setErro('Selecione o cliente antes de sugerir'); return; }
+    setSugerindo(true); setErro(''); setJustificativa('');
+    try {
+      const r = await api.iaSugerirFollowup(form.cliente_id);
+      setForm((f) => ({
+        ...f, tipo: r.tipo, agendado_para: r.agendado_para, mensagem: r.mensagem,
+      }));
+      setJustificativa(r.justificativa);
+    } catch (e) { setErro(e.message); }
+    finally { setSugerindo(false); }
+  }
+
+  // Reescreve a mensagem atual preservando as variáveis {…}.
+  async function melhorar() {
+    if (!form.mensagem.trim()) { setErro('Escreva ou gere uma mensagem antes de melhorar'); return; }
+    setMelhorando(true); setErro('');
+    try {
+      const r = await api.iaMelhorarMensagem({
+        texto: form.mensagem, tipo: form.tipo, contexto: contextoIA || undefined,
+      });
+      setForm((f) => ({ ...f, mensagem: r.mensagem }));
+    } catch (e) { setErro(e.message); }
+    finally { setMelhorando(false); }
   }
 
   async function salvar(e) {
@@ -242,18 +272,31 @@ function FormManual({ aberto, onFechar, onCriado }) {
         {/* Bloco de IA — só se estiver configurada */}
         {iaConfigurada && (
           <div className="rounded-md border border-maninho-200 bg-maninho-50/40 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-maninho-700">
                 ✨ Assistente de IA
               </p>
-              <button type="button" onClick={gerarComIA} disabled={gerandoIA || !form.cliente_id}
-                className="btn-primary px-3 py-1 text-xs">
-                {gerandoIA ? <><Spinner className="h-3 w-3" /> Gerando…</> : '✨ Gerar mensagem'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={sugerirCompleto} disabled={sugerindo || !form.cliente_id}
+                  className="btn-primary px-3 py-1 text-xs"
+                  title="A IA olha o histórico do cliente e sugere tipo, data e mensagem">
+                  {sugerindo ? <><Spinner className="h-3 w-3" /> Analisando…</> : '🔮 Sugerir follow-up'}
+                </button>
+                <button type="button" onClick={gerarComIA} disabled={gerandoIA || !form.cliente_id}
+                  className="btn-ghost px-3 py-1 text-xs"
+                  title="Gera só a mensagem, com o tipo e o contexto escolhidos">
+                  {gerandoIA ? <><Spinner className="h-3 w-3" /> Gerando…</> : '✨ Só a mensagem'}
+                </button>
+              </div>
             </div>
             <textarea className="input min-h-[50px] resize-y text-xs" value={contextoIA}
               onChange={(e) => setContextoIA(e.target.value)}
               placeholder="Contexto opcional pra IA (ex: 'promoção de ar-condicionado 20% off até fim do mês')" />
+            {justificativa && (
+              <p className="mt-2 text-[11px] text-maninho-700">
+                💡 <span className="italic">{justificativa}</span>
+              </p>
+            )}
           </div>
         )}
         {!iaConfigurada && (
@@ -263,6 +306,15 @@ function FormManual({ aberto, onFechar, onCriado }) {
         )}
 
         <Campo label="Mensagem" obrigatorio>
+          {iaConfigurada && form.mensagem.trim() && (
+            <div className="mb-1 flex justify-end">
+              <button type="button" onClick={melhorar} disabled={melhorando}
+                className="btn-ghost px-2 py-0.5 text-[11px]"
+                title="Reescreve a mensagem atual com um tom melhor">
+                {melhorando ? <><Spinner className="h-3 w-3" /> Melhorando…</> : '✨ Melhorar texto'}
+              </button>
+            </div>
+          )}
           <textarea className="input min-h-[140px] resize-y" value={form.mensagem}
             onChange={set('mensagem')} required minLength={10} maxLength={2000}
             placeholder="Digite a mensagem que o cliente vai receber, ou use o botão ✨ acima…" />

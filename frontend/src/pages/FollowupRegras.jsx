@@ -18,20 +18,40 @@ function FormRegra({ aberto, regra, servicos, onFechar, onSalvo }) {
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [iaConfigurada, setIaConfigurada] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
+  const [sugestao, setSugestao] = useState(null);
 
   useEffect(() => {
-    setErro('');
+    setErro(''); setSugestao(null);
     setForm(regra ? {
       ...vazio, ...regra,
       servico_id: regra.servico_id || '',
       intervalo_dias: String(regra.intervalo_dias),
     } : vazio);
+    if (aberto) api.iaStatus().then((s) => setIaConfigurada(s.configurada)).catch(() => {});
   }, [regra, aberto]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   function inserirVar(v) {
     setForm((f) => ({ ...f, mensagem_template: f.mensagem_template + v }));
+  }
+
+  // IA analisa o padrão real de retorno do serviço e sugere intervalo + template.
+  async function sugerirRecorrencia() {
+    if (!form.servico_id) { setErro('Selecione o serviço antes de sugerir'); return; }
+    setSugerindo(true); setErro(''); setSugestao(null);
+    try {
+      const r = await api.iaSugerirRecorrencia(form.servico_id);
+      setForm((f) => ({
+        ...f,
+        intervalo_dias: String(r.intervalo_dias),
+        mensagem_template: f.mensagem_template.trim() ? f.mensagem_template : r.mensagem_template,
+      }));
+      setSugestao(r);
+    } catch (e) { setErro(e.message); }
+    finally { setSugerindo(false); }
   }
 
   async function salvar(e) {
@@ -102,6 +122,38 @@ function FormRegra({ aberto, regra, servicos, onFechar, onSalvo }) {
                 <option key={s.id} value={s.id}>{s.nome}</option>
               ))}
             </select>
+            {iaConfigurada && (
+              <div className="mt-2">
+                <button type="button" onClick={sugerirRecorrencia}
+                  disabled={sugerindo || !form.servico_id}
+                  className="btn-ghost px-3 py-1 text-xs"
+                  title="A IA analisa quando os clientes realmente voltam pra sugerir o intervalo">
+                  {sugerindo ? <><Spinner className="h-3 w-3" /> Analisando retornos…</> : '🔮 Sugerir recorrência com IA'}
+                </button>
+              </div>
+            )}
+            {sugestao && (
+              <div className="mt-2 rounded-md border border-maninho-200 bg-maninho-50/40 p-3 text-xs">
+                <p className="font-semibold text-maninho-800">
+                  Sugestão: {sugestao.intervalo_dias} dias
+                </p>
+                {sugestao.justificativa && (
+                  <p className="mt-1 italic text-maninho-700">💡 {sugestao.justificativa}</p>
+                )}
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {sugestao.amostra?.amostras > 0
+                    ? `Baseado em ${sugestao.amostra.amostras} retorno(s) reais · mediana ${sugestao.amostra.mediana_dias} dias (de ${sugestao.amostra.min_dias} a ${sugestao.amostra.max_dias}).`
+                    : 'Poucos dados reais — sugestão baseada em conhecimento de mercado.'}
+                </p>
+                {sugestao.mensagem_template && form.mensagem_template.trim() !== sugestao.mensagem_template && (
+                  <button type="button"
+                    onClick={() => setForm((f) => ({ ...f, mensagem_template: sugestao.mensagem_template }))}
+                    className="btn-ghost mt-2 px-2 py-0.5 text-[11px]">
+                    ↧ Usar o template sugerido
+                  </button>
+                )}
+              </div>
+            )}
           </Campo>
         )}
 
