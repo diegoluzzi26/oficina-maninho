@@ -685,10 +685,18 @@ function CardKanban({ o, onCard, onDragStart, onDragEnd }) {
  * modal de pagamento; 'finalizada' abre o de finalizar (opt-in WhatsApp);
  * as demais só movem o card.
  */
-function KanbanOS({ etapas, ordens, carregando, onCard,
+// Larguras das colunas do Kanban (classes Tailwind fixas p/ o JIT compilar).
+const LARGURA_COLUNA = {
+  compacto: 'w-48',   // 192px
+  normal:   'w-64',   // 256px
+  largo:    'w-80',   // 320px
+};
+
+function KanbanOS({ etapas, ordens, carregando, largura = 'normal', onCard,
   onPagarEtapa, onFinalizarEtapa, onRecarregar, onErro }) {
   const [arrastando, setArrastando] = useState(null);
   const [colunaAlvo, setColunaAlvo] = useState(null);
+  const larguraCol = LARGURA_COLUNA[largura] || LARGURA_COLUNA.normal;
 
   function onDragStart(e, o) {
     setArrastando(o);
@@ -723,8 +731,8 @@ function KanbanOS({ etapas, ordens, carregando, onCard,
 
   if (carregando || !ordens) {
     return (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-64" />)}
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {[0, 1, 2, 3].map((i) => <Skeleton key={i} className={`h-64 flex-shrink-0 ${larguraCol}`} />)}
       </div>
     );
   }
@@ -738,7 +746,7 @@ function KanbanOS({ etapas, ordens, carregando, onCard,
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="flex gap-3 overflow-x-auto pb-2">
       {etapas.map((etapa) => {
         const osDaEtapa = ordens.filter((o) => o.etapa_id === etapa.id);
         const alvo = colunaAlvo === etapa.id;
@@ -748,7 +756,7 @@ function KanbanOS({ etapas, ordens, carregando, onCard,
             onDragLeave={() => colunaAlvo === etapa.id && setColunaAlvo(null)}
             onDrop={(e) => onDropColuna(e, etapa)}
             style={{ borderTopColor: etapa.cor || '#cbd5e1' }}
-            className={`rounded-md border-t-4 bg-slate-50/60 p-2 transition
+            className={`flex-shrink-0 ${larguraCol} rounded-md border-t-4 bg-slate-50/60 p-2 transition
               ${alvo ? 'ring-2 ring-maninho-500 bg-maninho-50' : ''}`}>
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
@@ -1916,6 +1924,9 @@ export default function Ordens() {
   const [kanbanOrdens, setKanbanOrdens] = useState(null);
   const [pagandoEtapaId, setPagandoEtapaId] = useState(null);
   const [finalizando, setFinalizando] = useState(null); // { os, etapaId }
+  // Largura das colunas do Kanban (compacto/normal/largo), persistida.
+  const [larguraKanban, setLarguraKanban] = useState(() => localStorage.getItem('kanban_largura') || 'normal');
+  useEffect(() => { localStorage.setItem('kanban_largura', larguraKanban); }, [larguraKanban]);
 
   function abrirPagar(o, etapaId = null) { setPagandoEtapaId(etapaId); setPagando(o); }
 
@@ -2048,6 +2059,21 @@ export default function Ordens() {
         )}
         <input className="input max-w-xs" placeholder="Buscar por cliente, placa ou nº"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
+        {/* Largura das colunas — só no Kanban */}
+        {vista === 'kanban' && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500">Colunas:</span>
+            <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+              {[['compacto', 'Compacto'], ['normal', 'Normal'], ['largo', 'Largo']].map(([k, t]) => (
+                <button key={k} onClick={() => setLarguraKanban(k)}
+                  className={`rounded px-2.5 py-1.5 text-xs font-semibold transition
+                    ${larguraKanban === k ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filtros extras */}
@@ -2083,6 +2109,7 @@ export default function Ordens() {
 
       {vista === 'kanban' ? (
         <KanbanOS etapas={etapas} ordens={kanbanOrdens} carregando={!kanbanOrdens}
+          largura={larguraKanban}
           onCard={setDetalhe}
           onPagarEtapa={(o, etapaId) => abrirPagar(o, etapaId)}
           onFinalizarEtapa={(o, etapaId) => setFinalizando({ os: o, etapaId })}
