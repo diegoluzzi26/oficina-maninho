@@ -1,6 +1,6 @@
 'use strict';
 const db = require('../config/db');
-const { runComOficina } = require('../config/db');
+const { paraCadaOficinaAtiva } = require('../config/db');
 const wa = require('./whatsapp.service');
 const config = require('./config.service');
 
@@ -183,16 +183,19 @@ function isoDia(d) { return d.toISOString().slice(0, 10); }
 
 function agendar() {
   const HORA_ALVO = Number(process.env.ALERTA_HORA || 8);
-  let ultimaCheck = null;
+  // Dedup por oficina: cada uma envia no máximo uma vez por dia/hora.
+  const ultimaCheckPorOficina = new Map();
 
   setInterval(async () => {
     const agora = new Date();
+    if (agora.getHours() !== HORA_ALVO) return;
     const chaveCheck = `${isoDia(agora)}-${agora.getHours()}`;
-    if (agora.getHours() !== HORA_ALVO || chaveCheck === ultimaCheck) return;
-    ultimaCheck = chaveCheck;
 
-    // Fase 3 vai fazer loop pra rodar em cada oficina.
-    await runComOficina('maninho', async () => {
+    // Roda em cada oficina ativa. A listagem sai do schema public.
+    try {
+      await paraCadaOficinaAtiva(async (slug) => {
+      if (ultimaCheckPorOficina.get(slug) === chaveCheck) return;
+      ultimaCheckPorOficina.set(slug, chaveCheck);
 
     // Mensal: se hoje é dia 1, envia relatório do mês passado
     if (agora.getDate() === 1) {
@@ -219,10 +222,13 @@ function agendar() {
         console.error('[relatorio-semanal] falha:', err.message);
       }
     }
-    }); // fecha runComOficina
+      }); // fecha paraCadaOficinaAtiva
+    } catch (err) {
+      console.error('[relatorio-agendado] falha ao listar oficinas:', err.message);
+    }
   }, 10 * 60 * 1000).unref();
 
-  console.log(`[relatorio-agendado] mensal (dia 1) e semanal (segunda) às ${HORA_ALVO}h`);
+  console.log(`[relatorio-agendado] mensal (dia 1) e semanal (segunda) às ${HORA_ALVO}h — por oficina`);
 }
 
 /**

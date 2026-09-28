@@ -27,6 +27,22 @@ function runComOficina(slug, fn) {
   return alsOficina.run({ slug }, fn);
 }
 
+/**
+ * Roda `fn(slug)` dentro do contexto de cada oficina ativa, em sequência.
+ * A listagem sai do schema `public` (sem contexto de oficina). Usado pelos
+ * agendadores, que antes rodavam fixo na 'maninho'. Uma falha numa oficina
+ * não interrompe as demais — o chamador loga e segue.
+ */
+async function paraCadaOficinaAtiva(fn) {
+  const { rows } = await pool.query(
+    'SELECT slug FROM oficinas WHERE ativo ORDER BY slug',
+  );
+  for (const { slug } of rows) {
+    await runComOficina(slug, () => fn(slug));
+  }
+  return rows.map((r) => r.slug);
+}
+
 function schemaAtual() {
   const ctx = alsOficina.getStore();
   return ctx?.slug ? `oficina_${ctx.slug}` : null;
@@ -83,5 +99,5 @@ async function withTransaction(fn) {
 
 module.exports = {
   pool, query, withTransaction,
-  runComOficina, schemaSeguro,
+  runComOficina, paraCadaOficinaAtiva, schemaSeguro,
 };

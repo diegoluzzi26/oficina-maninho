@@ -9,12 +9,26 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Parisienne&family=Oswald:wght@400;500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="/assets/index-CmsPlmzr.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/react-BRj-7Dxc.js">
-    <link rel="modulepreload" crossorigin href="/assets/graficos-DOv6Hq_W.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-sO0hCh2E.css">
+    <script type="module" crossorigin src="/assets/index-DfROvuIo.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/react-BWo64IH5.js">
+    <link rel="modulepreload" crossorigin href="/assets/graficos-B0002mxe.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-cj314I8N.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Aplica o tema salvo antes do React montar, pra não piscar branco.
+      // Sem preferência salva, segue o sistema.
+      (function () {
+        try {
+          var t = localStorage.getItem('ui_tema');
+          if (t !== 'claro' && t !== 'escuro') {
+            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'escuro' : 'claro';
+          }
+          document.documentElement.dataset.tema = t;
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
   </body>
 </html>

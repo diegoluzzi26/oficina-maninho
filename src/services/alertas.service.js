@@ -1,6 +1,6 @@
 'use strict';
 const db = require('../config/db');
-const { runComOficina } = require('../config/db');
+const { paraCadaOficinaAtiva } = require('../config/db');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
 const agendamentos = require('./agendamentos.service');
@@ -170,19 +170,21 @@ async function enviarLembretesDeAmanha() {
  * e isso evita mais uma peça de infraestrutura para o dono manter.
  */
 function agendar() {
-  let ultimoDiaExecutado = null;
+  // Dedup "já rodou hoje" é por oficina: cada uma tem sua própria hora
+  // configurada e seu próprio dia executado.
+  const ultimoDiaPorOficina = new Map();
 
   setInterval(async () => {
-    // Executa dentro do contexto da oficina 'maninho'. Fase 3
-    // vai fazer loop pra rodar em cada oficina cadastrada.
-    await runComOficina('maninho', async () => {
+    // Roda em cada oficina ativa. A listagem sai do schema public.
+    try {
+      await paraCadaOficinaAtiva(async (slug) => {
       // Lê hora do banco a cada tick — permite mudar a hora via UI sem reboot.
       const horaAlvo = config.alerta().hora;
       const agora = new Date();
       const hoje = agora.toISOString().slice(0, 10);
 
-      if (agora.getHours() !== horaAlvo || ultimoDiaExecutado === hoje) return;
-      ultimoDiaExecutado = hoje;
+      if (agora.getHours() !== horaAlvo || ultimoDiaPorOficina.get(slug) === hoje) return;
+      ultimoDiaPorOficina.set(slug, hoje);
 
       try {
         const g = await recorrentes.gerarPendentes();
@@ -197,16 +199,18 @@ function agendar() {
       } catch (err) {
         console.error('[alertas] falha em verificarEEnviar:', err.message);
       }
-      try {
-        const r = await enviarLembretesDeAmanha();
-        console.log(`[alertas] lembretes: ${JSON.stringify(r)}`);
-      } catch (err) {
-        console.error('[alertas] falha em enviarLembretesDeAmanha:', err.message);
-      }
-    });
+
+      // NÃO enviamos lembrete de agendamento pro cliente automaticamente.
+      // Toda mensagem pro cliente sai só por ação manual (botão da OS ou
+      // fila de follow-up). enviarLembretesDeAmanha() segue disponível para
+      // disparo manual, mas o agendador nunca o chama sozinho.
+      });
+    } catch (err) {
+      console.error('[alertas] falha ao listar oficinas:', err.message);
+    }
   }, 10 * 60 * 1000).unref(); // a cada 10 min; unref não segura o processo
 
-  console.log(`[alertas] verificação diária agendada (hora vem da config)`);
+  console.log(`[alertas] verificação diária agendada por oficina (hora vem da config)`);
 }
 
 module.exports = { verificarEEnviar, enviarLembretesDeAmanha, agendar, montarMensagem };

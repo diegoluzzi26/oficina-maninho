@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getUser } from '../lib/api';
 import { data, telefone } from '../lib/format';
-import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
+import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Confirmar } from '../components/ui';
 
 /**
  * Follow-up em Kanban.
@@ -377,6 +377,133 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
   );
 }
 
+// ------------------------------------------------------------------ Modal Envio em lote
+
+/**
+ * Revisão antes do disparo em lote. Lista os pendentes agendados até hoje
+ * com checkbox por item — o admin desmarca quem não deve receber e só então
+ * envia os selecionados. Quem está sem telefone aparece marcado em vermelho
+ * e não pode ser selecionado.
+ */
+function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [itens, setItens] = useState(null);
+  const [sel, setSel] = useState(() => new Set());
+  const [erro, setErro] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    setItens(null); setErro(''); setResultado(null); setSel(new Set());
+    api.followupFila({ status: 'pendente', ate: hoje, por_pagina: 100 })
+      .then((r) => {
+        setItens(r.dados);
+        setSel(new Set(r.dados.filter((i) => i.cliente_telefone).map((i) => i.id)));
+      })
+      .catch((e) => setErro(e.message));
+  }, [aberto]);
+
+  const comTelefone = (itens || []).filter((i) => i.cliente_telefone);
+  const todosMarcados = comTelefone.length > 0 && comTelefone.every((i) => sel.has(i.id));
+
+  function toggle(id) {
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  function toggleTodos() {
+    setSel(todosMarcados ? new Set() : new Set(comTelefone.map((i) => i.id)));
+  }
+
+  async function enviar() {
+    const ids = [...sel];
+    if (!ids.length) { setErro('Selecione ao menos um follow-up'); return; }
+    setEnviando(true); setErro('');
+    try {
+      const r = await api.enviarFollowupsPendentes(ids);
+      setResultado(r);
+    } catch (e) { setErro(e.message); }
+    finally { setEnviando(false); }
+  }
+
+  return (
+    <Modal aberto={aberto} largura="max-w-xl" titulo="Enviar pendentes" onFechar={onFechar}>
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+      {resultado ? (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-700">
+            Enviados: <strong>{resultado.enviados}</strong> de {resultado.total}.
+          </p>
+          {resultado.falhas?.length > 0 && (
+            <div className="rounded-md bg-rose-50 p-3 text-xs text-rose-700">
+              <p className="mb-1 font-semibold">{resultado.falhas.length} falha(s):</p>
+              <ul className="list-disc space-y-0.5 pl-4">
+                {resultado.falhas.map((f) => <li key={f.id}>{f.motivo}</li>)}
+              </ul>
+            </div>
+          )}
+          <div className="flex justify-end border-t border-slate-200 pt-3">
+            <button className="btn-primary" onClick={onConcluido}>Fechar</button>
+          </div>
+        </div>
+      ) : itens === null ? (
+        <Skeleton className="h-48" />
+      ) : itens.length === 0 ? (
+        <Vazio titulo="Nada pendente"
+          descricao="Não há follow-ups agendados até hoje pra enviar." />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">
+            {itens.length} follow-up(s) agendado(s) até hoje. Revise e desmarque quem não deve receber.
+          </p>
+          <label className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={todosMarcados} onChange={toggleTodos} />
+            Selecionar todos com telefone ({comTelefone.length})
+          </label>
+          <ul className="max-h-[50vh] space-y-1.5 overflow-y-auto">
+            {itens.map((i) => {
+              const semTel = !i.cliente_telefone;
+              return (
+                <li key={i.id}
+                  className={`flex gap-2.5 rounded-md border p-2.5 text-sm
+                    ${semTel ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200'}`}>
+                  <input type="checkbox" className="mt-0.5"
+                    checked={sel.has(i.id)} disabled={semTel}
+                    onChange={() => toggle(i.id)} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-semibold text-slate-800">{i.cliente_nome}</span>
+                      <span className="tnum text-[11px] text-slate-400">{data(i.agendado_para)}</span>
+                    </div>
+                    {semTel ? (
+                      <p className="text-[11px] font-semibold text-rose-600">Sem telefone — não pode enviar</p>
+                    ) : (
+                      <p className="tnum font-mono text-[11px] text-maninho-700">{telefone(i.cliente_telefone)}</p>
+                    )}
+                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                      {(i.mensagem || '').replace(/\s+/g, ' ').trim()}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
+            <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+            <button type="button" className="btn-ouro" disabled={enviando || sel.size === 0} onClick={enviar}>
+              {enviando ? <><Spinner className="h-4 w-4" /> Enviando…</> : `🚀 Enviar ${sel.size} selecionado(s)`}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ------------------------------------------------------------------ Página
 
 // Mapa: coluna do kanban → status pra mandar no PATCH quando dropar.
@@ -395,9 +522,11 @@ export default function Followup() {
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
+  const [msgOk, setMsgOk] = useState('');
+  const [confirmacao, setConfirmacao] = useState(null);
   const [enviandoId, setEnviandoId] = useState('');
   const [gerando, setGerando] = useState(false);
-  const [enviandoTodos, setEnviandoTodos] = useState(false);
+  const [loteAberto, setLoteAberto] = useState(false);
   const [historicoId, setHistoricoId] = useState(null);
   const [manualAberto, setManualAberto] = useState(false);
   // Drag & drop
@@ -449,71 +578,87 @@ export default function Followup() {
     }[item.status];
     if (colunaAtual === colunaChave) return;
 
-    let novoStatus = COLUNA_PARA_STATUS[colunaChave];
-    // Fechado: pergunta se converteu ou dispensou
+    const novoStatus = COLUNA_PARA_STATUS[colunaChave];
+    // Fechado: pergunta se converteu ou dispensou (três botões).
     if (novoStatus === 'FECHADO_ESCOLHER') {
-      const resp = confirm(
-        `Cliente ${item.cliente_nome}:\n\nOK = ✅ Converteu (virou nova OS)\nCancelar = ✕ Dispensou`,
-      );
-      novoStatus = resp ? 'converteu' : 'dispensado';
+      setConfirmacao({
+        titulo: `Fechar follow-up — ${item.cliente_nome}`,
+        mensagem: 'Como este follow-up terminou?',
+        acoes: (fechar) => (
+          <>
+            <button className="btn-ghost" onClick={fechar}>Cancelar</button>
+            <button className="btn bg-slate-200 text-slate-700 hover:bg-slate-300"
+              onClick={() => { fechar(); mudarStatusItem(item.id, 'dispensado'); }}>
+              ✕ Dispensou
+            </button>
+            <button className="btn-primary"
+              onClick={() => { fechar(); mudarStatusItem(item.id, 'converteu'); }}>
+              ✅ Converteu
+            </button>
+          </>
+        ),
+      });
+      return;
     }
+    mudarStatusItem(item.id, novoStatus);
+  }
 
+  async function mudarStatusItem(id, status) {
     setErro('');
     try {
-      await api.followupMudarStatus(item.id, { status: novoStatus });
+      await api.followupMudarStatus(id, { status });
       carregar();
     } catch (err) { setErro(err.message); }
   }
 
-  async function acao(item, tipo) {
-    setErro('');
+  async function enviarItem(item) {
+    setEnviandoId(item.id); setErro('');
     try {
-      if (tipo === 'enviar') {
-        if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
-        if (!confirm(`Enviar automático pelo Evolution pro ${item.cliente_telefone}?`)) return;
-        setEnviandoId(item.id);
-        await api.enviarFollowup(item.id);
-      } else if (tipo === 'wa') {
-        if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
-        const num = String(item.cliente_telefone).replace(/\D/g, '');
-        window.open(`https://wa.me/${num}?text=${encodeURIComponent(item.mensagem)}`, '_blank');
-        setTimeout(() => {
-          if (confirm('Mensagem enviada? Marcar como enviado?')) {
-            api.followupMudarStatus(item.id, { status: 'enviado' }).then(carregar);
-          }
-        }, 400);
-        return;
-      } else if (tipo === 'respondeu') {
-        await api.followupMudarStatus(item.id, { status: 'respondeu' });
-      } else if (tipo === 'converteu') {
-        await api.followupMudarStatus(item.id, { status: 'converteu' });
-      } else if (tipo === 'dispensar') {
-        await api.followupMudarStatus(item.id, { status: 'dispensado' });
-      }
+      await api.enviarFollowup(item.id);
       carregar();
     } catch (e) { setErro(e.message); }
     finally { setEnviandoId(''); }
   }
 
+  function acao(item, tipo) {
+    setErro('');
+    if (tipo === 'enviar') {
+      if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
+      setConfirmacao({
+        titulo: 'Enviar follow-up',
+        mensagem: `Enviar a mensagem automaticamente pelo WhatsApp para `
+          + `${item.cliente_nome} (${telefone(item.cliente_telefone)})?`,
+        rotulo: '🚀 Enviar',
+        onConfirmar: () => enviarItem(item),
+      });
+      return;
+    }
+    if (tipo === 'wa') {
+      if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
+      const num = String(item.cliente_telefone).replace(/\D/g, '');
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(item.mensagem)}`, '_blank');
+      setConfirmacao({
+        titulo: 'Marcar como enviado?',
+        mensagem: 'Abrimos o WhatsApp numa nova aba. Depois de enviar a mensagem por lá, '
+          + 'marque este follow-up como enviado.',
+        rotulo: 'Marcar como enviado',
+        onConfirmar: () => mudarStatusItem(item.id, 'enviado'),
+      });
+      return;
+    }
+    if (tipo === 'respondeu')  mudarStatusItem(item.id, 'respondeu');
+    else if (tipo === 'converteu') mudarStatusItem(item.id, 'converteu');
+    else if (tipo === 'dispensar') mudarStatusItem(item.id, 'dispensado');
+  }
+
   async function gerar() {
-    setGerando(true); setErro('');
+    setGerando(true); setErro(''); setMsgOk('');
     try {
       const r = await api.gerarFollowup();
-      alert(`${r.gerados} follow-up(s) gerado(s)`);
+      setMsgOk(`${r.gerados} follow-up(s) gerado(s).`);
       carregar();
     } catch (e) { setErro(e.message); }
     finally { setGerando(false); }
-  }
-
-  async function enviarTodos() {
-    if (!confirm('Enviar TODOS os follow-ups pendentes (agendados até hoje)?')) return;
-    setEnviandoTodos(true); setErro('');
-    try {
-      const r = await api.enviarFollowupsPendentes();
-      alert(`Enviados: ${r.enviados}/${r.total}` + (r.falhas.length ? `\nFalhas: ${r.falhas.length}` : ''));
-      carregar();
-    } catch (e) { setErro(e.message); }
-    finally { setEnviandoTodos(false); }
   }
 
   const c = dados?.contagens || { todos: 0, manutencao: 0, reativacao: 0, promocao: 0, avaliacao: 0 };
@@ -542,8 +687,8 @@ export default function Followup() {
             </button>
           )}
           {ehAdmin && (
-            <button onClick={enviarTodos} disabled={enviandoTodos} className="btn-ouro">
-              {enviandoTodos ? <><Spinner className="h-4 w-4" /> Enviando…</> : '🚀 Enviar pendentes'}
+            <button onClick={() => setLoteAberto(true)} className="btn-ouro">
+              🚀 Enviar pendentes
             </button>
           )}
         </div>
@@ -579,6 +724,7 @@ export default function Followup() {
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {msgOk && <Alerta tipo="ok" onFechar={() => setMsgOk('')}>{msgOk}</Alerta>}
 
       {/* Kanban */}
       {!dados ? (
@@ -640,6 +786,11 @@ export default function Followup() {
 
       <FormManual aberto={manualAberto} onFechar={() => setManualAberto(false)}
         onCriado={() => { setManualAberto(false); carregar(); }} />
+
+      <ModalEnvioLote aberto={loteAberto} onFechar={() => setLoteAberto(false)}
+        onConcluido={() => { setLoteAberto(false); carregar(); }} />
+
+      <Confirmar dados={confirmacao} onFechar={() => setConfirmacao(null)} />
     </div>
   );
 }

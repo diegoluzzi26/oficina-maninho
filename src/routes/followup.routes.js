@@ -43,7 +43,8 @@ router.post('/fila/:id/enviar', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.enviarAgora(req.params.id, req.user.id))));
 
 router.post('/fila/enviar-pendentes', requireRole('admin'),
-  h(async (req, res) => res.json(await svc.enviarPendentesAgora(req.user.id))));
+  validate({ body: v.enviarPendentes }),
+  h(async (req, res) => res.json(await svc.enviarPendentesAgora(req.user.id, req.body))));
 
 router.delete('/fila/:id', requireRole('admin'), validate({ params: v.idParam }),
   h(async (req, res) => { await svc.removerItem(req.params.id); res.status(204).end(); }));

@@ -40,6 +40,13 @@ const gerar = z.object({
   regra_id: uuid.optional(),
 });
 
+// Envio em lote: lista opcional de ids. Sem ids = todos os pendentes até hoje
+// (comportamento antigo). Com ids = só os selecionados, ainda filtrados pela
+// trava de "pendente até hoje" no serviço.
+const enviarPendentes = z.object({
+  ids: z.array(uuid).max(100).optional(),
+});
+
 const filtroFila = z.object({
   status: status.optional(),
   tipo: tipo.optional(),
@@ -59,5 +66,5 @@ const periodoMetricas = z.object({ periodo: z.coerce.number().int().min(1).max(7
 
 module.exports = {
   regra, atualizarRegra, criarManual, mudarStatus, reagendar, gerar,
-  filtroFila, filtroRegras, idParam, periodoMetricas,
+  enviarPendentes, filtroFila, filtroRegras, idParam, periodoMetricas,
 };
