@@ -83,4 +83,14 @@ router.get('/exportar-mes',
     res.send(Buffer.from(buffer));
   }));
 
+// Exporta o DRE do período em Excel (mesma régua da tela /dre).
+router.get('/dre/exportar', validate({ query: v.periodo }),
+  h(async (req, res) => {
+    const { buffer, nomeArquivo } = await exportar.gerarDRE(req.query);
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+    res.send(Buffer.from(buffer));
+  }));
+
 module.exports = router;

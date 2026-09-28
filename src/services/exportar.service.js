@@ -244,4 +244,91 @@ async function gerarResumoMensal({ ano, mes }) {
   return { buffer, nomeArquivo };
 }
 
-module.exports = { gerarResumoMensal };
+/**
+ * Gera um Excel (.xlsx) com o DRE (regime de caixa) do período.
+ * Uma aba única com a estrutura vertical: receita, deduções, CMV,
+ * despesas operacionais por categoria e resultado líquido.
+ */
+async function gerarDRE(filtros) {
+  const dre = await relatorios.dre(filtros);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Auto Elétrica Maninho';
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet('DRE');
+  ws.columns = [{ width: 42 }, { width: 20 }];
+
+  const periodo = dre.filtros.inicio && dre.filtros.fim
+    ? `${dre.filtros.inicio} a ${dre.filtros.fim}`
+    : 'Últimos 12 meses';
+
+  ws.getCell('A1').value = 'DRE — Demonstração do Resultado';
+  estiloTitulo(ws.getCell('A1'));
+  ws.mergeCells('A1:B1');
+  ws.getCell('A2').value = `Auto Elétrica Maninho · ${periodo} · regime de caixa`;
+  ws.getCell('A2').font = { size: 10, color: { argb: 'FF94a3b8' } };
+  ws.mergeCells('A2:B2');
+
+  // Cada linha: [rótulo, valor, tipo]. tipo controla o estilo/negrito.
+  const linhas = [
+    ['Receita bruta', dre.receita_bruta, 'item'],
+    ['(–) Descontos concedidos', -dre.descontos, 'item'],
+    ['(–) Impostos e taxas', -dre.deducoes, 'item'],
+    ['Receita líquida', dre.receita_liquida, 'subtotal'],
+    ['(–) CMV — peças e materiais', -dre.cmv, 'item'],
+    ['Lucro bruto', dre.lucro_bruto, 'subtotal'],
+    ['(–) Despesas operacionais', -dre.total_operacional, 'item'],
+    ...dre.despesas_operacionais.map((d) => [`    ${d.categoria}`, -d.total, 'detalhe']),
+    [dre.resultado_liquido >= 0 ? 'Lucro líquido' : 'Prejuízo líquido', dre.resultado_liquido, 'resultado'],
+  ];
+
+  let ln = 4;
+  linhas.forEach(([rotulo, valor, tipo]) => {
+    const r = ws.getRow(ln);
+    r.getCell(1).value = rotulo;
+    r.getCell(2).value = valor;
+    r.getCell(2).numFmt = FMT_MOEDA;
+    if (tipo === 'subtotal') {
+      r.getCell(1).font = { bold: true, size: 11 };
+      r.getCell(2).font = { bold: true, size: 11 };
+      r.getCell(1).border = { top: { style: 'thin', color: { argb: 'FFcbd5e1' } } };
+      r.getCell(2).border = { top: { style: 'thin', color: { argb: 'FFcbd5e1' } } };
+    } else if (tipo === 'resultado') {
+      const cor = valor >= 0 ? 'FF059669' : 'FFDC2626';
+      r.getCell(1).font = { bold: true, size: 12, color: { argb: cor } };
+      r.getCell(2).font = { bold: true, size: 12, color: { argb: cor } };
+      r.getCell(1).border = { top: { style: 'double', color: { argb: 'FF94a3b8' } } };
+      r.getCell(2).border = { top: { style: 'double', color: { argb: 'FF94a3b8' } } };
+    } else if (tipo === 'detalhe') {
+      r.getCell(1).font = { size: 10, color: { argb: 'FF64748b' } };
+      r.getCell(2).font = { size: 10, color: { argb: 'FF64748b' } };
+    } else {
+      r.getCell(1).font = { size: 11 };
+    }
+    ln++;
+  });
+
+  ln++;
+  const rMargem = ws.getRow(ln);
+  rMargem.getCell(1).value = 'Margem sobre receita bruta';
+  rMargem.getCell(1).font = { size: 10, color: { argb: 'FF64748b' } };
+  rMargem.getCell(2).value = dre.margem / 100;
+  rMargem.getCell(2).numFmt = '0.0%';
+  rMargem.getCell(2).font = { size: 10, color: { argb: 'FF64748b' } };
+  ln++;
+  const rQtd = ws.getRow(ln);
+  rQtd.getCell(1).value = 'OS pagas no período';
+  rQtd.getCell(1).font = { size: 10, color: { argb: 'FF64748b' } };
+  rQtd.getCell(2).value = dre.qtd_os;
+  rQtd.getCell(2).font = { size: 10, color: { argb: 'FF64748b' } };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const sufixo = dre.filtros.inicio && dre.filtros.fim
+    ? `${dre.filtros.inicio}_a_${dre.filtros.fim}`
+    : 'periodo';
+  const nomeArquivo = `dre-${sufixo}.xlsx`;
+  return { buffer, nomeArquivo };
+}
+
+module.exports = { gerarResumoMensal, gerarDRE };
