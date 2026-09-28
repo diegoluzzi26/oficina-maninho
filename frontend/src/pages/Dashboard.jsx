@@ -120,12 +120,24 @@ function ParecerIA({ refMes, aberto, onFechar }) {
 
   useEffect(() => {
     if (!aberto) return;
+    let cancelado = false;
     setParecer(''); setErro(''); setCarregando(true);
-    api.iaStatus().then((s) => setIaConfigurada(s.configurada)).catch(() => {});
-    api.iaParecer({ ano: refMes.ano, mes: refMes.mes })
-      .then((r) => setParecer(r.parecer))
-      .catch((e) => setErro(e.message))
-      .finally(() => setCarregando(false));
+    (async () => {
+      try {
+        const s = await api.iaStatus();
+        if (cancelado) return;
+        setIaConfigurada(s.configurada);
+        // Sem chave configurada: mostra só o aviso, não força o 422 do parecer.
+        if (!s.configurada) return;
+        const r = await api.iaParecer({ ano: refMes.ano, mes: refMes.mes });
+        if (!cancelado) setParecer(r.parecer);
+      } catch (e) {
+        if (!cancelado) setErro(e.message);
+      } finally {
+        if (!cancelado) setCarregando(false);
+      }
+    })();
+    return () => { cancelado = true; };
   }, [aberto, refMes.ano, refMes.mes]);
 
   async function regerar() {
