@@ -316,7 +316,109 @@ async function descontosDoMes({ ano, mes } = {}) {
   };
 }
 
+/**
+ * DRE (Demonstração do Resultado do Exercício), regime de caixa.
+ *
+ * Receita vem de vw_faturamento (OS pagas, datadas por paga_em) e as despesas
+ * de vw_despesas efetivamente pagas (status 'paga', datadas por pago_em,
+ * escopo 'oficina'). As categorias são classificadas em grupos de DRE por
+ * convenção de nome — ver GRUPO_DRE abaixo.
+ *
+ * Estrutura:
+ *   Receita bruta            (valor cobrado das OS pagas)
+ * (-) Descontos/abatimentos  (cobrado - recebido, reconcilia com o caixa)
+ * (-) Impostos e taxas
+ * = Receita líquida
+ * (-) CMV (peças e materiais)
+ * = Lucro bruto
+ * (-) Despesas operacionais  (demais categorias, detalhadas)
+ * = Resultado líquido
+ */
+
+// Mapa categoria -> grupo do DRE, casado por nome em minúsculas.
+// Categorias fora do mapa (e as sem categoria) caem em 'operacional'.
+const GRUPO_DRE = {
+  'impostos e taxas': 'deducoes',
+  'peças e materiais': 'cmv',
+};
+
+function grupoDaCategoria(nome) {
+  return GRUPO_DRE[(nome || '').trim().toLowerCase()] || 'operacional';
+}
+
+async function dre(filtros) {
+  // Receita: mesma régua dos demais relatórios (paga_em).
+  const rec = intervalo(filtros);
+  const receitaP = db.query(
+    `SELECT COALESCE(sum(valor_cobrado), 0)::numeric AS receita_bruta,
+            COALESCE(sum(desconto_dado), 0)::numeric AS descontos,
+            COALESCE(sum(valor_pago), 0)::numeric    AS recebido,
+            count(*)::int                            AS qtd_os
+       FROM vw_faturamento
+      WHERE 1=1 ${rec.clause}`,
+    rec.params,
+  );
+
+  // Despesas em regime de caixa: pagas (status 'paga'), datadas por pago_em,
+  // só as da oficina (ignora escopo pessoal).
+  const params = [];
+  let clause = " AND status = 'paga' AND escopo = 'oficina'";
+  if (filtros.inicio) { params.push(filtros.inicio); clause += ` AND pago_em >= $${params.length}::date`; }
+  if (filtros.fim)    { params.push(filtros.fim);    clause += ` AND pago_em < ($${params.length}::date + interval '1 day')`; }
+  if (!filtros.inicio && !filtros.fim) clause += " AND pago_em >= now() - interval '12 months'";
+  const despesasP = db.query(
+    `SELECT COALESCE(categoria_nome, 'Sem categoria') AS categoria,
+            COALESCE(categoria_cor, '#94a3b8')        AS cor,
+            count(*)::int                             AS quantidade,
+            COALESCE(sum(valor), 0)::numeric          AS total
+       FROM vw_despesas
+      WHERE 1=1 ${clause}
+      GROUP BY categoria_nome, categoria_cor
+      ORDER BY total DESC`,
+    params,
+  );
+
+  const [{ rows: recRows }, { rows: despRows }] = await Promise.all([receitaP, despesasP]);
+  const r = recRows[0];
+  const receita_bruta = Number(r.receita_bruta);
+  const descontos = Number(r.descontos);
+
+  // Classifica as categorias de despesa nos grupos do DRE.
+  let deducoes = 0;
+  let cmv = 0;
+  const operacionais = [];
+  for (const d of despRows) {
+    const total = Number(d.total);
+    const grupo = grupoDaCategoria(d.categoria);
+    if (grupo === 'deducoes') deducoes += total;
+    else if (grupo === 'cmv') cmv += total;
+    else operacionais.push({ categoria: d.categoria, cor: d.cor, quantidade: d.quantidade, total });
+  }
+  const round = (n) => Number(n.toFixed(2));
+  const total_operacional = operacionais.reduce((s, o) => s + o.total, 0);
+
+  const receita_liquida = receita_bruta - descontos - deducoes;
+  const lucro_bruto = receita_liquida - cmv;
+  const resultado_liquido = lucro_bruto - total_operacional;
+  const margem = receita_bruta > 0 ? (resultado_liquido / receita_bruta) * 100 : 0;
+
+  return {
+    filtros: { inicio: filtros.inicio || null, fim: filtros.fim || null },
+    qtd_os: r.qtd_os,
+    receita_bruta: round(receita_bruta),
+    descontos: round(descontos),
+    deducoes: round(deducoes),
+    receita_liquida: round(receita_liquida),
+    cmv: round(cmv),
+    lucro_bruto: round(lucro_bruto),
+    despesas_operacionais: operacionais.map((o) => ({ ...o, total: round(o.total) })),
+    total_operacional: round(total_operacional),
+    resultado_liquido: round(resultado_liquido),
+    margem: Number(margem.toFixed(1)),
+  };
+}
+
 module.exports = {
   resumo, faturamentoPorPeriodo, servicosMaisVendidos,
-  clientesRecorrentes, comparativoMensal, painelMes, descontosDoMes,
+  clientesRecorrentes, comparativoMensal, painelMes, descontosDoMes, dre,
 };

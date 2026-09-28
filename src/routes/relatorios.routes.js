@@ -42,6 +42,10 @@ router.get('/clientes-recorrentes', validate({ query: v.periodo }),
 router.get('/comparativo-mensal',
   h(async (_req, res) => res.json(await svc.comparativoMensal())));
 
+// DRE (Demonstração do Resultado do Exercício), regime de caixa.
+router.get('/dre', validate({ query: v.periodo }),
+  h(async (req, res) => res.json(await svc.dre(req.query))));
+
 /** Payload único para o dashboard: evita 5 chamadas do frontend no load. */
 router.get('/dashboard', validate({ query: v.periodo }), h(async (req, res) => {
   const [resumo, faturamento, servicos, recorrentes, comparativo] = await Promise.all([
