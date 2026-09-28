@@ -710,6 +710,10 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   const [pecasCatalogo, setPecasCatalogo] = useState([]);
   const [editPag, setEditPag] = useState(false);
   const [pagEdit, setPagEdit] = useState(null);
+  // Finalizar OS: pergunta se avisa o cliente pelo WhatsApp. Padrão NÃO —
+  // nenhuma mensagem sai sem o dono marcar explicitamente.
+  const [finalizarAberto, setFinalizarAberto] = useState(false);
+  const [avisarFinal, setAvisarFinal] = useState(false);
   // Edição inline do cliente e do carro vinculados à OS.
   // Carrega sob demanda pra ter todos os campos (o SELECT_OS só expõe alguns).
   const [clienteEditando, setClienteEditando] = useState(null);
@@ -865,13 +869,28 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
 
   async function mudar(status) {
     if (status === 'paga') { onPagar(os); return; }
+    // Finalizar abre o modal com o checkbox de aviso ao cliente.
+    if (status === 'finalizada') { setAvisarFinal(false); setFinalizarAberto(true); return; }
     setCarregando(true); setErro(''); setAviso('');
     try {
-      const notificar = status === 'finalizada';
-      const atualizada = await api.mudarStatus(os.id, status, notificar);
-      if (atualizada.whatsapp && !atualizada.whatsapp.enviado) {
-        setAviso(`Status atualizado, mas o WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
+      // Nenhuma mudança de status envia WhatsApp automaticamente.
+      const atualizada = await api.mudarStatus(os.id, status, false);
+      onMudou(atualizada);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function confirmarFinalizar() {
+    setCarregando(true); setErro(''); setAviso('');
+    try {
+      const atualizada = await api.mudarStatus(os.id, 'finalizada', avisarFinal);
+      if (avisarFinal && atualizada.whatsapp && !atualizada.whatsapp.enviado) {
+        setAviso(`OS finalizada, mas o aviso por WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
       }
+      setFinalizarAberto(false);
       onMudou(atualizada);
     } catch (e) {
       setErro(e.message);
@@ -1480,6 +1499,39 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
               className="max-h-[70vh] w-auto object-contain" />
           </div>
         )}
+      </Modal>
+
+      {/* Finalizar OS: escolhe se avisa o cliente pelo WhatsApp */}
+      <Modal aberto={finalizarAberto} titulo="Finalizar OS"
+        largura="max-w-md" onFechar={() => setFinalizarAberto(false)}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Marcar a OS nº {os.numero_os} como <strong>finalizada</strong>
+            {os.cliente_nome ? ` (${os.cliente_nome})` : ''}.
+          </p>
+
+          <label className="flex cursor-pointer items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <input type="checkbox" checked={avisarFinal}
+              onChange={(e) => setAvisarFinal(e.target.checked)}
+              className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-600/30" />
+            Avisar o cliente pelo WhatsApp que o carro está pronto
+          </label>
+          {!avisarFinal && (
+            <p className="text-xs text-slate-500">
+              Deixe desmarcado pra finalizar sem enviar nenhuma mensagem ao cliente.
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+            <button type="button" className="btn-ghost"
+              onClick={() => setFinalizarAberto(false)}>Cancelar</button>
+            <button type="button" className="btn-primary"
+              onClick={confirmarFinalizar} disabled={carregando}>
+              {carregando ? <><Spinner className="h-4 w-4" /> Finalizando…</>
+                : (avisarFinal ? 'Finalizar e avisar' : 'Finalizar')}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Edição inline de cliente e carro vinculados à OS */}
