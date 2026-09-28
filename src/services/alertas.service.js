@@ -197,12 +197,11 @@ function agendar() {
       } catch (err) {
         console.error('[alertas] falha em verificarEEnviar:', err.message);
       }
-      try {
-        const r = await enviarLembretesDeAmanha();
-        console.log(`[alertas] lembretes: ${JSON.stringify(r)}`);
-      } catch (err) {
-        console.error('[alertas] falha em enviarLembretesDeAmanha:', err.message);
-      }
+
+      // NÃO enviamos lembrete de agendamento pro cliente automaticamente.
+      // Toda mensagem pro cliente sai só por ação manual (botão da OS ou
+      // fila de follow-up). enviarLembretesDeAmanha() segue disponível para
+      // disparo manual, mas o agendador nunca o chama sozinho.
     });
   }, 10 * 60 * 1000).unref(); // a cada 10 min; unref não segura o processo
 
