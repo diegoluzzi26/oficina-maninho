@@ -83,10 +83,11 @@ async function removerRegra(id) {
 
 // ---------------------------------------------------------------- FILA
 
-async function listarFila({ status, tipo, de, ate, busca, pagina = 1, por_pagina = 30 } = {}) {
+async function listarFila({ status, tipo, regra_id, de, ate, busca, pagina = 1, por_pagina = 30 } = {}) {
   const params = []; const where = [];
-  if (status) { params.push(status); where.push(`status = $${params.length}`); }
-  if (tipo)   { params.push(tipo);   where.push(`tipo = $${params.length}`); }
+  if (status)   { params.push(status);   where.push(`status = $${params.length}`); }
+  if (tipo)     { params.push(tipo);     where.push(`tipo = $${params.length}`); }
+  if (regra_id) { params.push(regra_id); where.push(`regra_id = $${params.length}`); }
   if (de)     { params.push(de);     where.push(`agendado_para >= $${params.length}::date`); }
   if (ate)    { params.push(ate);    where.push(`agendado_para <= $${params.length}::date`); }
   if (busca)  {
@@ -217,23 +218,28 @@ async function enviarAgora(id, userId) {
 
 /**
  * Enfileira envios para os pendentes com agendado_para <= hoje.
- * Se `ids` vier preenchido, restringe a esses itens — mas a trava de
- * "pendente até hoje" continua valendo, então nunca dispara algo futuro,
- * já enviado ou fora da seleção. Sem `ids`, mantém o comportamento antigo
- * (todos os pendentes até hoje). Retorna contagem de sucessos e falhas.
+ * Se `ids` vier preenchido, restringe a esses itens; se `regra_id` vier,
+ * restringe àquela regra. Os dois podem combinar. A trava de "pendente até
+ * hoje" continua valendo, então nunca dispara algo futuro, já enviado ou fora
+ * do filtro. Sem `ids` nem `regra_id`, mantém o comportamento antigo (todos os
+ * pendentes até hoje). Retorna contagem de sucessos e falhas.
  */
-async function enviarPendentesAgora(userId, { ids } = {}) {
+async function enviarPendentesAgora(userId, { ids, regra_id } = {}) {
   const temSelecao = Array.isArray(ids) && ids.length > 0;
   const params = [];
-  let filtroIds = '';
+  const filtros = [];
   if (temSelecao) {
     params.push(ids);
-    filtroIds = `AND id = ANY($${params.length}::uuid[])`;
+    filtros.push(`AND id = ANY($${params.length}::uuid[])`);
+  }
+  if (regra_id) {
+    params.push(regra_id);
+    filtros.push(`AND regra_id = $${params.length}`);
   }
   const { rows } = await db.query(
     `SELECT id FROM followup_fila
       WHERE status='pendente' AND agendado_para <= CURRENT_DATE
-        ${filtroIds}
+        ${filtros.join(' ')}
       ORDER BY agendado_para ASC, criado_em ASC
       LIMIT 100`, params,
   );

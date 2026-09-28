@@ -392,17 +392,30 @@ function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [regras, setRegras] = useState([]);
+  const [regraSel, setRegraSel] = useState(''); // '' = todas as regras
 
+  // Ao abrir: reseta e carrega a lista de regras pro filtro.
   useEffect(() => {
     if (!aberto) return;
-    setItens(null); setErro(''); setResultado(null); setSel(new Set());
-    api.followupFila({ status: 'pendente', ate: hoje, por_pagina: 100 })
+    setRegraSel(''); setResultado(null);
+    api.followupRegras().then(setRegras).catch(() => {});
+  }, [aberto]);
+
+  // Carrega os pendentes (recarrega quando a regra selecionada muda).
+  useEffect(() => {
+    if (!aberto) return;
+    setItens(null); setErro(''); setSel(new Set());
+    api.followupFila({
+      status: 'pendente', ate: hoje, por_pagina: 100,
+      ...(regraSel ? { regra_id: regraSel } : {}),
+    })
       .then((r) => {
         setItens(r.dados);
         setSel(new Set(r.dados.filter((i) => i.cliente_telefone).map((i) => i.id)));
       })
       .catch((e) => setErro(e.message));
-  }, [aberto]);
+  }, [aberto, regraSel]);
 
   const comTelefone = (itens || []).filter((i) => i.cliente_telefone);
   const todosMarcados = comTelefone.length > 0 && comTelefone.every((i) => sel.has(i.id));
@@ -423,7 +436,7 @@ function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
     if (!ids.length) { setErro('Selecione ao menos um follow-up'); return; }
     setEnviando(true); setErro('');
     try {
-      const r = await api.enviarFollowupsPendentes(ids);
+      const r = await api.enviarFollowupsPendentes(ids, regraSel || undefined);
       setResultado(r);
     } catch (e) { setErro(e.message); }
     finally { setEnviando(false); }
@@ -432,6 +445,21 @@ function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
   return (
     <Modal aberto={aberto} largura="max-w-xl" titulo="Enviar pendentes" onFechar={onFechar}>
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+
+      {!resultado && (
+        <label className="mb-3 flex flex-col gap-1 text-xs font-semibold text-slate-600">
+          Regra
+          <select className="input" value={regraSel}
+            onChange={(e) => setRegraSel(e.target.value)} disabled={enviando}>
+            <option value="">Todas as regras</option>
+            {regras.map((r) => (
+              <option key={r.id} value={r.id}>
+                {TIPO_META[r.tipo]?.emoji} {r.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {resultado ? (
         <div className="space-y-3">
@@ -454,7 +482,9 @@ function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
         <Skeleton className="h-48" />
       ) : itens.length === 0 ? (
         <Vazio titulo="Nada pendente"
-          descricao="Não há follow-ups agendados até hoje pra enviar." />
+          descricao={regraSel
+            ? 'Nenhum follow-up desta regra agendado até hoje pra enviar.'
+            : 'Não há follow-ups agendados até hoje pra enviar.'} />
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-slate-500">

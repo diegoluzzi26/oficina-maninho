@@ -40,16 +40,19 @@ const gerar = z.object({
   regra_id: uuid.optional(),
 });
 
-// Envio em lote: lista opcional de ids. Sem ids = todos os pendentes até hoje
-// (comportamento antigo). Com ids = só os selecionados, ainda filtrados pela
-// trava de "pendente até hoje" no serviço.
+// Envio em lote: lista opcional de ids e/ou regra_id. Sem nenhum = todos os
+// pendentes até hoje (comportamento antigo). Com ids = só os selecionados; com
+// regra_id = só os daquela regra. Ambos ainda passam pela trava de "pendente
+// até hoje" no serviço.
 const enviarPendentes = z.object({
   ids: z.array(uuid).max(100).optional(),
+  regra_id: uuid.optional(),
 });
 
 const filtroFila = z.object({
   status: status.optional(),
   tipo: tipo.optional(),
+  regra_id: uuid.optional(),
   de: z.string().date().optional(),
   ate: z.string().date().optional(),
   busca: z.string().optional(),

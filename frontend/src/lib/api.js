@@ -226,7 +226,10 @@ export const api = {
   removerFollowup: (id) => request(`/followup/fila/${id}`, { method: 'DELETE' }),
   gerarFollowup: (regra_id) => request('/followup/gerar', { method: 'POST', body: regra_id ? { regra_id } : {} }),
   enviarFollowup: (id) => request(`/followup/fila/${id}/enviar`, { method: 'POST', body: {} }),
-  enviarFollowupsPendentes: (ids) => request('/followup/fila/enviar-pendentes', { method: 'POST', body: ids?.length ? { ids } : {} }),
+  enviarFollowupsPendentes: (ids, regra_id) => request('/followup/fila/enviar-pendentes', {
+    method: 'POST',
+    body: { ...(ids?.length ? { ids } : {}), ...(regra_id ? { regra_id } : {}) },
+  }),
   metricasFollowup: (periodo = 30) => request('/followup/metricas', { params: { periodo } }),
   followupKanban: (params) => request('/followup/kanban', { params }),
   followupHistorico: (clienteId) => request(`/followup/historico/${clienteId}`),
