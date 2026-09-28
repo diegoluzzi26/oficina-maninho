@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
-  Wrench, Settings, Menu, X,
+  Wrench, Settings, Menu, X, FileText,
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
@@ -20,6 +20,7 @@ const MENU = [
   { para: '/despesas', texto: 'Despesas', badge: true, Icone: Receipt },
   { para: '/fornecedores', texto: 'Fornecedores', Icone: Truck },
   { para: '/financeiro', texto: 'Financeiro', Icone: TrendingUp },
+  { para: '/dre', texto: 'DRE', somenteAdmin: true, Icone: FileText },
   { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true, Icone: Wallet },
   { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, Icone: HardHat },
   { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, Icone: RefreshCw },

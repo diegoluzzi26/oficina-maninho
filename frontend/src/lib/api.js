@@ -70,6 +70,7 @@ export const api = {
 
   dashboard: (params) => request('/relatorios/dashboard', { params }),
   faturamentoSemanal: (params) => request('/relatorios/faturamento/semanal', { params }),
+  dre: (params) => request('/relatorios/dre', { params }),
 
   clientes: (params) => request('/clientes', { params }),
   cliente: (id) => request(`/clientes/${id}`),

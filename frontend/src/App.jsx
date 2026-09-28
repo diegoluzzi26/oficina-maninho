@@ -9,6 +9,7 @@ import Servicos from './pages/Servicos';
 import Despesas from './pages/Despesas';
 import Fornecedores from './pages/Fornecedores';
 import Financeiro from './pages/Financeiro';
+import DRE from './pages/DRE';
 import Retornos from './pages/Retornos';
 import Agenda from './pages/Agenda';
 import Configuracoes from './pages/Configuracoes';
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="recorrentes" element={<Recorrentes />} />
           <Route path="fornecedores" element={<Fornecedores />} />
           <Route path="financeiro" element={<Financeiro />} />
+          <Route path="dre" element={<DRE />} />
           <Route path="retornos" element={<Retornos />} />
           <Route path="agenda" element={<Agenda />} />
           <Route path="servicos" element={<Servicos />} />
