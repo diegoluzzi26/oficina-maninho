@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const regrasEtapa = require('./etapa-regras.service');
 
 /**
  * Se o item veio como `servico_id`, apenas retorna esse id.
@@ -60,6 +61,13 @@ const SELECT_OS = `
          c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.numero_cliente,
          ca.placa, ca.marca, ca.modelo, ca.ano, ca.cor, ca.cambio,
          u.nome AS criado_por_nome,
+         e.nome AS etapa_nome, e.cor AS etapa_cor, e.ordem AS etapa_ordem,
+         e.status_ao_entrar AS etapa_status,
+         -- Checklist incompleto: nenhuma inspeção finalizada nesta OS.
+         NOT EXISTS (
+           SELECT 1 FROM os_checklists cl
+            WHERE cl.os_id = o.id AND cl.finalizado_em IS NOT NULL
+         ) AS checklist_incompleto,
          (SELECT a.id FROM os_anexos a
            WHERE a.os_id = o.id AND a.mime LIKE 'image/%'
            ORDER BY a.criado_em ASC LIMIT 1) AS foto_id
@@ -67,6 +75,7 @@ const SELECT_OS = `
     JOIN clientes c ON c.id = o.cliente_id
     JOIN carros  ca ON ca.id = o.carro_id
     LEFT JOIN users u ON u.id = o.criado_por
+    LEFT JOIN etapas_kanban e ON e.id = o.etapa_id
 `;
 
 async function comItens(client, os) {
@@ -201,6 +210,9 @@ async function criar(dados, userId) {
       [cliente_id, carro_id, km_entrada ?? null, observacoes ?? null, desconto ?? 0, userId ?? null],
     );
     const os = rows[0];
+    // Nasce na etapa que mapeia o status inicial ('aberta'), pra já
+    // aparecer na coluna certa do Kanban.
+    await sincronizarEtapaComStatus(client, os.id, os.status);
 
     for (const item of servicos) {
       let nome = item.nome_servico;
@@ -303,6 +315,25 @@ const TRANSICOES = {
   paga:         ['aberta', 'em_andamento', 'finalizada'],
 };
 
+/**
+ * Mantém a etapa do Kanban coerente com o status financeiro. Se existir
+ * uma etapa ativa que mapeia o status novo, a OS é movida pra ela (a de
+ * menor ordem, se houver mais de uma). Se nenhuma etapa mapear, a etapa
+ * atual é preservada. Recebe o `client` da transação em andamento.
+ */
+async function sincronizarEtapaComStatus(client, id, status) {
+  await client.query(
+    `UPDATE ordens_servico
+        SET etapa_id = sub.id, etapa_entrou_em = now()
+       FROM (SELECT id FROM etapas_kanban
+              WHERE ativo AND status_ao_entrar = $2
+              ORDER BY ordem, criado_em LIMIT 1) sub
+      WHERE ordens_servico.id = $1
+        AND ordens_servico.etapa_id IS DISTINCT FROM sub.id`,
+    [id, status],
+  );
+}
+
 async function mudarStatus(id, novo, dadosPagamento = {}) {
   const atual = await db.query('SELECT status, valor_total FROM ordens_servico WHERE id = $1', [id]);
   if (!atual.rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
@@ -369,6 +400,7 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
           [id, p.forma, p.valor],
         );
       }
+      await sincronizarEtapaComStatus(client, id, novo);
     });
   } else {
     await db.withTransaction(async (client) => {
@@ -378,9 +410,77 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
       if (de === 'paga') {
         await client.query('DELETE FROM os_pagamentos WHERE os_id = $1', [id]);
       }
+      await sincronizarEtapaComStatus(client, id, novo);
     });
   }
   return buscarPorId(id);
+}
+
+/**
+ * Move a OS para outra etapa do Kanban.
+ *
+ * Se a etapa destino mapeia um status financeiro (status_ao_entrar) e ele
+ * difere do status atual, dispara `mudarStatus` — reaproveitando TODA a
+ * regra existente (ex.: virar 'paga' exige forma/valor de pagamento). Em
+ * seguida grava a etapa exatamente na coluna solta pelo usuário (o
+ * status-sync escolheria a etapa de menor ordem; aqui respeitamos o alvo).
+ *
+ * Etapas sem mapeamento apenas movem o card, sem tocar no status.
+ */
+async function mudarEtapa(id, etapaId, dadosPagamento = {}) {
+  const atual = await db.query(
+    'SELECT status, etapa_id FROM ordens_servico WHERE id = $1', [id],
+  );
+  if (!atual.rows[0]) throw AppError.notFound('Ordem de serviço não encontrada');
+
+  const etapa = await db.query(
+    'SELECT id, status_ao_entrar, ativo FROM etapas_kanban WHERE id = $1', [etapaId],
+  );
+  if (!etapa.rows[0] || !etapa.rows[0].ativo) throw AppError.notFound('Etapa não encontrada');
+
+  const { status: statusAtual, etapa_id: etapaAtual } = atual.rows[0];
+  if (etapaAtual === etapaId) return buscarPorId(id);
+
+  const statusAlvo = etapa.rows[0].status_ao_entrar;
+  // Precisa mudar o status financeiro? (só quando a etapa mapeia um status
+  // diferente do atual). Reusa mudarStatus com toda a validação.
+  if (statusAlvo && statusAlvo !== statusAtual) {
+    await mudarStatus(id, statusAlvo, dadosPagamento);
+  }
+
+  // Grava a etapa exatamente onde o usuário soltou o card.
+  await db.query(
+    'UPDATE ordens_servico SET etapa_id = $1, etapa_entrou_em = now() WHERE id = $2',
+    [etapaId, id],
+  );
+  const atualizada = await buscarPorId(id);
+  // Automações "ao entrar" — isoladas, nunca derrubam o move.
+  await regrasEtapa.executarAoEntrar(etapaId, atualizada);
+  return atualizada;
+}
+
+/**
+ * Ordens para o quadro Kanban: todas as OS "ativas" — ainda não pagas —
+ * mais as pagas recentes (últimos 30 dias), ignorando o filtro de mês e
+ * sem paginação (é um board limitado por natureza, não a lista paginável).
+ */
+async function listarKanban({ busca, cliente_id, marca } = {}) {
+  const where = [`(o.status <> 'paga' OR o.paga_em >= now() - interval '30 days')`];
+  const params = [];
+
+  if (cliente_id) { params.push(cliente_id); where.push(`o.cliente_id = $${params.length}`); }
+  if (marca)      { params.push(marca);      where.push(`lower(ca.marca) = lower($${params.length})`); }
+  if (busca) {
+    params.push(`%${busca}%`);
+    where.push(`(c.nome ILIKE $${params.length} OR ca.placa ILIKE $${params.length}
+                 OR o.numero_os::text = $${params.length + 1})`);
+    params.push(busca.replace(/\D/g, '') || '-1');
+  }
+
+  const { rows } = await db.query(
+    `${SELECT_OS} WHERE ${where.join(' AND ')} ORDER BY o.aberta_em DESC`, params,
+  );
+  return rows;
 }
 
 async function adicionarServico(osId, item) {
@@ -531,7 +631,7 @@ async function removerAdiantamento(osId, adiantamentoId) {
 }
 
 module.exports = {
-  listar, buscarPorId, criar, atualizar, mudarStatus,
+  listar, listarKanban, buscarPorId, criar, atualizar, mudarStatus, mudarEtapa,
   adicionarServico, atualizarServico, adicionarPeca, atualizarPeca,
   removerServico, removerPeca,
   listarAdiantamentos, adicionarAdiantamento, removerAdiantamento,

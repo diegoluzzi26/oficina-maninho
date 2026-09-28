@@ -467,7 +467,7 @@ function NovaOS({ aberto, onFechar, onCriada }) {
 // ---------------------------------------------------------------------
 // Modal marcar como paga
 // ---------------------------------------------------------------------
-function PagarOS({ os, onFechar, onPago }) {
+function PagarOS({ os, onFechar, onPago, etapaId = null }) {
   // Cada linha é uma forma de pagamento. 1 linha = fluxo simples;
   // 2+ linhas = split (parte no PIX, parte no cartão, etc.).
   const [linhas, setLinhas] = useState([{ forma: 'dinheiro', valor: '' }]);
@@ -516,7 +516,11 @@ function PagarOS({ os, onFechar, onPago }) {
       ? { pagamentos: linhas.map((l) => ({ forma: l.forma, valor: Number(l.valor) })), pago_em: pagoEm }
       : { forma_pagamento: linhas[0].forma, valor_pago: Number(linhas[0].valor), pago_em: pagoEm };
     try {
-      const atualizada = await api.mudarStatus(os.id, 'paga', notificarRecibo, payload);
+      // Vindo do Kanban (etapaId), move pra etapa E dá baixa; senão só muda
+      // o status. Nos dois casos o backend registra o pagamento igual.
+      const atualizada = etapaId
+        ? await api.mudarEtapaOS(os.id, etapaId, { ...payload, notificar_whatsapp: notificarRecibo })
+        : await api.mudarStatus(os.id, 'paga', notificarRecibo, payload);
       if (notificarRecibo && atualizada.whatsapp && !atualizada.whatsapp.enviado) {
         setAviso(`Pagamento registrado. Recibo por WhatsApp não foi enviado: ${atualizada.whatsapp.motivo}`);
         // não fecha — dá tempo do usuário ler o aviso
@@ -617,19 +621,32 @@ function PagarOS({ os, onFechar, onPago }) {
 }
 
 // ---------------------------------------------------------------------
-// Kanban: colunas por status, cards com foto do carro
+// Kanban: colunas = etapas (por oficina), cards arrastáveis
 // ---------------------------------------------------------------------
-const COLUNAS_KANBAN = [
-  { chave: 'aberta',       titulo: 'Aberta',       cor: 'border-slate-300' },
-  { chave: 'em_andamento', titulo: 'Em andamento', cor: 'border-ouro-400' },
-  { chave: 'finalizada',   titulo: 'Finalizada',   cor: 'border-marca-400' },
-  { chave: 'paga',         titulo: 'Paga',         cor: 'border-emerald-400' },
-];
 
-function CardKanban({ o, onClick }) {
+/** Dias que a OS está parada na etapa atual (pro SLA visual). */
+function diasNaEtapa(o) {
+  if (!o.etapa_entrou_em) return 0;
+  const ms = Date.now() - new Date(o.etapa_entrou_em).getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
+// Faixas de SLA: 3+ dias amarelo, 7+ dias vermelho. Só sinal visual.
+function slaCard(dias) {
+  if (dias >= 7) return { borda: 'border-l-rose-500',   badge: 'bg-rose-100 text-rose-700' };
+  if (dias >= 3) return { borda: 'border-l-amber-500',  badge: 'bg-amber-100 text-amber-700' };
+  return { borda: 'border-l-transparent', badge: '' };
+}
+
+function CardKanban({ o, onCard, onDragStart, onDragEnd }) {
+  const dias = diasNaEtapa(o);
+  const sla = slaCard(dias);
   return (
-    <button onClick={onClick}
-      className="w-full overflow-hidden rounded-md border border-slate-200 bg-white text-left shadow-sm transition hover:border-maninho-400 hover:shadow-md">
+    <div draggable
+      onDragStart={(e) => onDragStart(e, o)}
+      onDragEnd={onDragEnd}
+      onClick={() => onCard(o)}
+      className={`group cursor-grab overflow-hidden rounded-md border border-slate-200 border-l-[3px] bg-white text-left shadow-sm transition hover:-translate-y-px hover:border-maninho-400 hover:shadow-md active:cursor-grabbing ${sla.borda}`}>
       {o.foto_id && (
         <AnexoImg id={o.foto_id} alt={`Foto OS ${o.numero_os}`}
           className="h-28 w-full object-cover" />
@@ -642,42 +659,161 @@ function CardKanban({ o, onClick }) {
         <p className="mt-1 truncate text-xs font-semibold text-slate-800">{o.cliente_nome}</p>
         <p className="truncate font-mono text-[11px] text-slate-500">{o.placa}</p>
         <p className="truncate text-[10px] text-slate-400">{o.marca} {o.modelo}</p>
+        {(o.checklist_incompleto || dias >= 3) && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {dias >= 3 && (
+              <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${sla.badge}`}>
+                {dias}d parado
+              </span>
+            )}
+            {o.checklist_incompleto && (
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500"
+                title="Checklist de inspeção não finalizado">
+                ✓ checklist
+              </span>
+            )}
+          </div>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
-function KanbanOS({ ordens, onCard }) {
-  const porStatus = COLUNAS_KANBAN.map((col) => ({
-    ...col,
-    ordens: ordens.filter((o) => o.status === col.chave),
-  }));
+/**
+ * Kanban com drag-and-drop nativo (mesmo padrão do Followup). Colunas
+ * vêm das etapas da oficina. Soltar numa etapa que mapeia 'paga' abre o
+ * modal de pagamento; 'finalizada' abre o de finalizar (opt-in WhatsApp);
+ * as demais só movem o card.
+ */
+function KanbanOS({ etapas, ordens, carregando, onCard,
+  onPagarEtapa, onFinalizarEtapa, onRecarregar, onErro }) {
+  const [arrastando, setArrastando] = useState(null);
+  const [colunaAlvo, setColunaAlvo] = useState(null);
+
+  function onDragStart(e, o) {
+    setArrastando(o);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', o.id); // Firefox exige setData
+  }
+  function onDragEnd() { setArrastando(null); setColunaAlvo(null); }
+  function onDragOverColuna(e, etapaId) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (colunaAlvo !== etapaId) setColunaAlvo(etapaId);
+  }
+  async function onDropColuna(e, etapa) {
+    e.preventDefault();
+    setColunaAlvo(null);
+    const o = arrastando;
+    setArrastando(null);
+    if (!o || o.etapa_id === etapa.id) return;
+
+    // Etapa que muda o status financeiro pede confirmação/dados no front.
+    if (etapa.status_ao_entrar === 'paga' && o.status !== 'paga') {
+      onPagarEtapa(o, etapa.id); return;
+    }
+    if (etapa.status_ao_entrar === 'finalizada' && o.status !== 'finalizada') {
+      onFinalizarEtapa(o, etapa.id); return;
+    }
+    try {
+      await api.mudarEtapaOS(o.id, etapa.id);
+      onRecarregar();
+    } catch (err) { onErro(err.message); }
+  }
+
+  if (carregando || !ordens) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-64" />)}
+      </div>
+    );
+  }
+  if (!etapas.length) {
+    return (
+      <div className="card p-6">
+        <Vazio titulo="Nenhuma etapa configurada"
+          descricao="Crie as colunas do Kanban em Configurações → Etapas do Kanban." />
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {porStatus.map((col) => (
-        <div key={col.chave} className={`rounded-md border-t-4 bg-slate-50/60 p-2 ${col.cor}`}>
-          <div className="mb-2 flex items-center justify-between px-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-              {col.titulo}
-            </p>
-            <span className="tnum rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm">
-              {col.ordens.length}
-            </span>
-          </div>
-          {col.ordens.length === 0 ? (
-            <p className="rounded border border-dashed border-slate-300 py-6 text-center text-[10px] text-slate-400">
-              vazio
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {col.ordens.map((o) => (
-                <CardKanban key={o.id} o={o} onClick={() => onCard(o)} />
-              ))}
+      {etapas.map((etapa) => {
+        const osDaEtapa = ordens.filter((o) => o.etapa_id === etapa.id);
+        const alvo = colunaAlvo === etapa.id;
+        return (
+          <div key={etapa.id}
+            onDragOver={(e) => onDragOverColuna(e, etapa.id)}
+            onDragLeave={() => colunaAlvo === etapa.id && setColunaAlvo(null)}
+            onDrop={(e) => onDropColuna(e, etapa)}
+            style={{ borderTopColor: etapa.cor || '#cbd5e1' }}
+            className={`rounded-md border-t-4 bg-slate-50/60 p-2 transition
+              ${alvo ? 'ring-2 ring-maninho-500 bg-maninho-50' : ''}`}>
+            <div className="mb-2 flex items-center justify-between px-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                {etapa.nome}
+              </p>
+              <span className="tnum rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+                {osDaEtapa.length}
+              </span>
             </div>
-          )}
-        </div>
-      ))}
+            {osDaEtapa.length === 0 ? (
+              <p className="rounded border border-dashed border-slate-300 py-6 text-center text-[10px] text-slate-400">
+                {alvo ? 'soltar aqui' : 'vazio'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {osDaEtapa.map((o) => (
+                  <CardKanban key={o.id} o={o} onCard={onCard}
+                    onDragStart={onDragStart} onDragEnd={onDragEnd} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+// Modal de finalizar via Kanban: pergunta se avisa o cliente (opt-in).
+function FinalizarEtapaModal({ dados, onFechar, onFeito, onErro }) {
+  const [avisar, setAvisar] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setAvisar(false); }, [dados?.os?.id]);
+  if (!dados) return null;
+  const { os, etapaId } = dados;
+
+  async function confirmar() {
+    setSalvando(true);
+    try {
+      const atualizada = await api.mudarEtapaOS(os.id, etapaId, { notificar_whatsapp: avisar });
+      onFeito(atualizada);
+    } catch (e) { onErro(e.message); onFechar(); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <Modal aberto={!!dados} titulo={`Finalizar OS nº ${os.numero_os}`}
+      largura="max-w-md" onFechar={onFechar}>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          O veículo {os.marca} {os.modelo} ({os.placa}) será marcado como pronto.
+        </p>
+        <label className="flex cursor-pointer items-center gap-2 rounded-md bg-marca-100/40 px-3 py-2 text-sm text-slate-700">
+          <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-maninho-600 focus:ring-maninho-600/30" />
+          Avisar o cliente pelo WhatsApp que está pronto
+        </label>
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+          <button type="button" className="btn-primary" onClick={confirmar} disabled={salvando}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Finalizando…</> : 'Finalizar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1774,6 +1910,14 @@ export default function Ordens() {
   // Preferência de visualização persistida localmente
   const [vista, setVista] = useState(() => localStorage.getItem('ordens_vista') || 'lista');
   useEffect(() => { localStorage.setItem('ordens_vista', vista); }, [vista]);
+  // Kanban: etapas (colunas) + ordens do board (fonte de dados própria,
+  // ignora o filtro de mês).
+  const [etapas, setEtapas] = useState([]);
+  const [kanbanOrdens, setKanbanOrdens] = useState(null);
+  const [pagandoEtapaId, setPagandoEtapaId] = useState(null);
+  const [finalizando, setFinalizando] = useState(null); // { os, etapaId }
+
+  function abrirPagar(o, etapaId = null) { setPagandoEtapaId(etapaId); setPagando(o); }
 
   // Carrega clientes uma vez pra alimentar o filtro
   useEffect(() => {
@@ -1799,6 +1943,25 @@ export default function Ordens() {
     const t = setTimeout(carregar, busca ? 350 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  // Etapas do Kanban: carrega uma vez.
+  useEffect(() => { api.etapas().then(setEtapas).catch(() => {}); }, []);
+
+  // Ordens do Kanban: só quando a vista é kanban. Reage aos filtros que
+  // fazem sentido no board (busca/cliente/marca) — sem mês, sem status.
+  const carregarKanban = useCallback(() => {
+    const params = {};
+    if (busca) params.busca = busca;
+    if (marca) params.marca = marca;
+    if (clienteId) params.cliente_id = clienteId;
+    api.ordensKanban(params).then(setKanbanOrdens).catch((e) => setErro(e.message));
+  }, [busca, marca, clienteId]);
+
+  useEffect(() => {
+    if (vista !== 'kanban') return undefined;
+    const t = setTimeout(carregarKanban, busca ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [vista, carregarKanban, busca]);
 
   useEffect(() => {
     if (!expandidaId) { setExpandida(null); return; }
@@ -1829,7 +1992,9 @@ export default function Ordens() {
             Ordens de serviço {eMesAtual && '— mês atual'}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            {lista ? `${lista.paginacao.total} no período` : 'Carregando…'}
+            {vista === 'kanban'
+              ? (kanbanOrdens ? `${kanbanOrdens.length} no quadro` : 'Carregando…')
+              : (lista ? `${lista.paginacao.total} no período` : 'Carregando…')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1846,36 +2011,41 @@ export default function Ordens() {
         </div>
       </div>
 
-      {/* Seletor de mês */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
-          <button onClick={() => mudarMes(-1)} disabled={ref.todos}
-            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:text-slate-300">◀</button>
-          <span className="tnum px-3 text-sm font-semibold text-slate-800">
-            {ref.todos ? 'Todos os meses' : `${nomeMes(ref.mes)}/${ref.ano}`}
-          </span>
-          <button onClick={() => mudarMes(1)} disabled={ref.todos || eMesAtual}
-            className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300">▶</button>
+      {/* Seletor de mês — não se aplica ao Kanban (board mostra tudo o que está ativo) */}
+      {vista !== 'kanban' && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white p-1 shadow-sm">
+            <button onClick={() => mudarMes(-1)} disabled={ref.todos}
+              className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:text-slate-300">◀</button>
+            <span className="tnum px-3 text-sm font-semibold text-slate-800">
+              {ref.todos ? 'Todos os meses' : `${nomeMes(ref.mes)}/${ref.ano}`}
+            </span>
+            <button onClick={() => mudarMes(1)} disabled={ref.todos || eMesAtual}
+              className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300">▶</button>
+          </div>
+          <button onClick={() => setRef({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false })}
+            className="btn-ghost px-3 py-1.5 text-xs" disabled={eMesAtual}>Mês atual</button>
+          <button onClick={() => setRef((r) => ({ ...r, todos: !r.todos }))}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md
+              ${ref.todos ? 'bg-maninho-600 text-white' : 'btn-ghost'}`}>
+            {ref.todos ? '✓ Todos' : 'Ver todos os meses'}
+          </button>
         </div>
-        <button onClick={() => setRef({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false })}
-          className="btn-ghost px-3 py-1.5 text-xs" disabled={eMesAtual}>Mês atual</button>
-        <button onClick={() => setRef((r) => ({ ...r, todos: !r.todos }))}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-md
-            ${ref.todos ? 'bg-maninho-600 text-white' : 'btn-ghost'}`}>
-          {ref.todos ? '✓ Todos' : 'Ver todos os meses'}
-        </button>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
-          {FILTROS.map((f) => (
-            <button key={f.chave} onClick={() => setStatus(f.chave)}
-              className={`rounded px-3 py-1.5 text-xs font-semibold transition
-                ${status === f.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-              {f.texto}
-            </button>
-          ))}
-        </div>
+        {/* Filtro por status: só na lista (no Kanban a coluna já é a etapa) */}
+        {vista !== 'kanban' && (
+          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm">
+            {FILTROS.map((f) => (
+              <button key={f.chave} onClick={() => setStatus(f.chave)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition
+                  ${status === f.chave ? 'bg-maninho-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {f.texto}
+              </button>
+            ))}
+          </div>
+        )}
         <input className="input max-w-xs" placeholder="Buscar por cliente, placa ou nº"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
@@ -1911,7 +2081,14 @@ export default function Ordens() {
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
-      {!lista ? (
+      {vista === 'kanban' ? (
+        <KanbanOS etapas={etapas} ordens={kanbanOrdens} carregando={!kanbanOrdens}
+          onCard={setDetalhe}
+          onPagarEtapa={(o, etapaId) => abrirPagar(o, etapaId)}
+          onFinalizarEtapa={(o, etapaId) => setFinalizando({ os: o, etapaId })}
+          onRecarregar={carregarKanban}
+          onErro={setErro} />
+      ) : !lista ? (
         <div className="card space-y-2 p-4">
           {[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-12" />)}
         </div>
@@ -1921,8 +2098,6 @@ export default function Ordens() {
             descricao={busca || status ? 'Tente mudar o filtro ou a busca.' : 'Nenhuma ordem neste mês.'}
             acao={<button className="btn-primary mt-3" onClick={() => setNovaAberta(true)}>+ Nova ordem</button>} />
         </div>
-      ) : vista === 'kanban' ? (
-        <KanbanOS ordens={lista.dados} onCard={setDetalhe} />
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -1970,7 +2145,7 @@ export default function Ordens() {
                                 carregar();
                               } catch (e) { setErro(e.message); }
                             }}
-                            onPagar={(osAlvo) => setPagando(osAlvo)} />
+                            onPagar={(osAlvo) => abrirPagar(osAlvo)} />
                         </td>
                         <td className="td tnum text-right font-semibold text-slate-800">{brl(o.valor_total)}</td>
                       </tr>
@@ -1995,19 +2170,25 @@ export default function Ordens() {
       <NovaOS aberto={novaAberta} onFechar={() => setNovaAberta(false)}
         onCriada={(os) => {
           setNovaAberta(false);
-          carregar();
+          carregar(); carregarKanban();
           if (os.whatsapp && !os.whatsapp.enviado) {
             setErro(`Ordem nº ${os.numero_os} criada. WhatsApp não enviado: ${os.whatsapp.motivo}`);
           }
         }} />
 
       <DetalheOS os={detalhe} onFechar={() => setDetalhe(null)}
-        onMudou={(nova) => { setDetalhe(nova); carregar(); }}
-        onPagar={(o) => { setDetalhe(null); setPagando(o); }}
-        onExcluida={() => { setDetalhe(null); carregar(); }} />
+        onMudou={(nova) => { setDetalhe(nova); carregar(); carregarKanban(); }}
+        onPagar={(o) => { setDetalhe(null); abrirPagar(o); }}
+        onExcluida={() => { setDetalhe(null); carregar(); carregarKanban(); }} />
 
-      <PagarOS os={pagando} onFechar={() => setPagando(null)}
-        onPago={() => { setPagando(null); carregar(); }} />
+      <PagarOS os={pagando} etapaId={pagandoEtapaId}
+        onFechar={() => { setPagando(null); setPagandoEtapaId(null); }}
+        onPago={() => { setPagando(null); setPagandoEtapaId(null); carregar(); carregarKanban(); }} />
+
+      <FinalizarEtapaModal dados={finalizando}
+        onFechar={() => setFinalizando(null)}
+        onFeito={() => { setFinalizando(null); carregarKanban(); carregar(); }}
+        onErro={setErro} />
 
       <NovoRetornoDaOS os={novoRetorno} onFechar={() => setNovoRetorno(null)}
         onCriado={() => { setNovoRetorno(null); }} />

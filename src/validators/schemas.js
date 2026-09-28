@@ -166,6 +166,48 @@ const mudarStatus = z.object({
   pagamentos: z.array(parcelaPagamento).min(1).max(5).optional(),
 });
 
+// ----- etapas do kanban -----
+// status_ao_entrar liga (opcional) a etapa ao status financeiro da OS.
+// String vazia vira null pra facilitar o "— nenhum —" do <select>.
+const statusEtapa = z.enum(['aberta', 'em_andamento', 'finalizada', 'paga'])
+  .optional().nullable().or(z.literal('').transform(() => null));
+
+const criarEtapa = z.object({
+  nome: z.string().trim().min(1, 'Nome da etapa é obrigatório').max(40),
+  cor: z.string().trim().max(40).optional().nullable().or(z.literal('').transform(() => null)),
+  status_ao_entrar: statusEtapa,
+});
+const atualizarEtapa = criarEtapa.partial().extend({
+  ativo: z.boolean().optional(),
+});
+const reordenarEtapas = z.object({ ids: z.array(uuid).min(1) });
+
+// Automações por etapa (gatilho 'ao_entrar' → ação). params é livre por
+// ação (ex.: { dias, motivo } | { tipo, dias, mensagem }).
+const ACOES_REGRA = ['criar_retorno', 'enfileirar_followup'];
+const criarRegraEtapa = z.object({
+  acao: z.enum(ACOES_REGRA),
+  params: z.record(z.any()).default({}),
+});
+const atualizarRegraEtapa = z.object({
+  acao: z.enum(ACOES_REGRA).optional(),
+  params: z.record(z.any()).optional(),
+  ativo: z.boolean().optional(),
+});
+const regraParams = z.object({ id: uuid, regraId: uuid });
+
+// Move a OS de etapa. Se a etapa destino mapeia um status, o service
+// dispara a transição (reaproveitando as regras de mudarStatus), por
+// isso aceita os mesmos campos opcionais de pagamento/notificação.
+const mudarEtapa = z.object({
+  etapa_id: uuid,
+  notificar_whatsapp: z.boolean().default(false),
+  forma_pagamento: z.enum(FORMAS_PAG).optional(),
+  pago_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  valor_pago: z.coerce.number().min(0).optional(),
+  pagamentos: z.array(parcelaPagamento).min(1).max(5).optional(),
+});
+
 // ----- relatórios -----
 const periodo = z.object({
   inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use o formato AAAA-MM-DD').optional(),
@@ -205,6 +247,8 @@ module.exports = {
   criarCarro, atualizarCarro,
   criarServico, atualizarServico,
   criarOS, atualizarOS, mudarStatus,
+  criarEtapa, atualizarEtapa, reordenarEtapas, mudarEtapa,
+  criarRegraEtapa, atualizarRegraEtapa, regraParams,
   periodo, paginacao,
   enviarTexto, enviarTemplate,
   idParam: z.object({ id: uuid }),
