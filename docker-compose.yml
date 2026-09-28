@@ -44,6 +44,11 @@ services:
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-oficina}
       ALERTA_WHATSAPP: ${ALERTA_WHATSAPP:-}
       ALERTA_HORA: ${ALERTA_HORA:-8}
+      # IA generativa (Claude). Sem a chave, os recursos de IA ficam
+      # desligados e a UI mostra "IA não configurada".
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      IA_MODELO: ${IA_MODELO:-}
+      IA_MODELO_ANALISE: ${IA_MODELO_ANALISE:-}
       # Origens permitidas pelo CORS. Vazio em dev = aceita qualquer.
       # Em prod, listar frontend Vercel + custom domain, ex:
       # "https://oficina-maninho.vercel.app,*.vercel.app,https://sistema.dominio.com.br"
