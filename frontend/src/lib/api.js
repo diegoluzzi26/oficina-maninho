@@ -91,7 +91,10 @@ export const api = {
   desativarPeca: (id) => request(`/pecas/${id}`, { method: 'DELETE' }),
 
   ordens: (params) => request('/os', { params }),
+  ordensKanban: (params) => request('/os/kanban', { params }),
   ordem: (id) => request(`/os/${id}`),
+  mudarEtapaOS: (id, etapa_id, extra = null) =>
+    request(`/os/${id}/etapa`, { method: 'PATCH', body: { etapa_id, ...(extra || {}) } }),
   criarOS: (body) => request('/os', { method: 'POST', body }),
   mudarStatus: (id, status, notificar = false, pagamento = null) =>
     request(`/os/${id}/status`, { method: 'PATCH',
@@ -109,6 +112,20 @@ export const api = {
   adiantamentosOS: (id) => request(`/os/${id}/adiantamentos`),
   darAdiantamento: (id, body) => request(`/os/${id}/adiantamentos`, { method: 'POST', body }),
   removerAdiantamento: (id, aid) => request(`/os/${id}/adiantamentos/${aid}`, { method: 'DELETE' }),
+
+  // --- etapas do kanban ---
+  etapas: () => request('/etapas'),
+  criarEtapa: (body) => request('/etapas', { method: 'POST', body }),
+  atualizarEtapa: (id, body) => request(`/etapas/${id}`, { method: 'PATCH', body }),
+  reordenarEtapas: (ids) => request('/etapas/reordenar', { method: 'PATCH', body: { ids } }),
+  removerEtapa: (id) => request(`/etapas/${id}`, { method: 'DELETE' }),
+  // automações por etapa
+  regrasEtapa: (etapaId) => request(`/etapas/${etapaId}/regras`),
+  criarRegraEtapa: (etapaId, body) => request(`/etapas/${etapaId}/regras`, { method: 'POST', body }),
+  atualizarRegraEtapa: (etapaId, regraId, body) =>
+    request(`/etapas/${etapaId}/regras/${regraId}`, { method: 'PATCH', body }),
+  removerRegraEtapa: (etapaId, regraId) =>
+    request(`/etapas/${etapaId}/regras/${regraId}`, { method: 'DELETE' }),
 
   mensagensWA: (params) => request('/whatsapp/mensagens', { params }),
 
