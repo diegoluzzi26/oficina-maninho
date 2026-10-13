@@ -724,7 +724,7 @@ function BlocoConexao({ enabled }) {
 
 export default function Configuracoes() {
   const [dados, setDados] = useState(null);
-  const [form, setForm] = useState({ setup: {}, alerta: {}, meta: {} });
+  const [form, setForm] = useState({ setup: {}, alerta: {}, meta: {}, followup: {} });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -736,7 +736,7 @@ export default function Configuracoes() {
     api.configWhatsApp()
       .then((d) => {
         setDados(d);
-        setForm({ setup: {}, alerta: {}, meta: {} });
+        setForm({ setup: {}, alerta: {}, meta: {}, followup: {} });
       })
       .catch((e) => setErro(e.message));
   }
@@ -751,13 +751,14 @@ export default function Configuracoes() {
       setup: { ...form.setup },
       alerta: { ...form.alerta },
       meta: { ...form.meta },
+      followup: { ...form.followup },
     };
     // api_key vazia = "não mexer" (não zera segredo por acidente)
     if (body.setup.api_key === '') delete body.setup.api_key;
     try {
       const atualizado = await api.salvarConfigWhatsApp(body);
       setDados(atualizado);
-      setForm({ setup: {}, alerta: {}, meta: {} });
+      setForm({ setup: {}, alerta: {}, meta: {}, followup: {} });
       setOk('Configurações salvas.');
     } catch (err) {
       setErro(err.message);
@@ -885,6 +886,25 @@ export default function Configuracoes() {
                 placeholder="20000" />
             </Campo>
           </div>
+        </div>
+
+        {/* Follow-up automático */}
+        <div className="card p-5">
+          <h2 className="titulo-secao">Follow-up automático</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Todo dia de manhã o sistema gera sozinho a fila de follow-up a partir
+            das regras ativas. <strong>Não envia WhatsApp</strong> — você revisa no
+            Kanban e dispara. Desligue aqui se preferir gerar a fila manualmente.
+          </p>
+          <label className="flex items-center gap-3 text-sm">
+            <input type="checkbox"
+              checked={form.followup.auto_gerar !== undefined
+                ? form.followup.auto_gerar
+                : (dados.followup?.auto_gerar ?? true)}
+              onChange={(e) => set('followup', 'auto_gerar')(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300" />
+            <span>Gerar a fila automaticamente todo dia</span>
+          </label>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">

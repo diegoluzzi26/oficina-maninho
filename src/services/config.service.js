@@ -80,6 +80,17 @@ function meta() {
 }
 
 /**
+ * Follow-up automático. `auto_gerar` liga/desliga a geração diária da fila
+ * pelo agendador (followup-agendado.service). Default ligado — só gera os
+ * pendentes, não envia WhatsApp.
+ */
+function followup() {
+  return {
+    auto_gerar: get('followup.auto_gerar', 'true') !== 'false',
+  };
+}
+
+/**
  * Mascara chave secreta (mostra só últimos 4 chars) — usado no GET da API
  * pra não retornar o token cru pra frontend.
  */
@@ -89,4 +100,4 @@ function mascarar(valor) {
   return `••••${valor.slice(-4)}`;
 }
 
-module.exports = { inicializar, get, set, whatsapp, alerta, meta, mascarar };
+module.exports = { inicializar, get, set, whatsapp, alerta, meta, followup, mascarar };

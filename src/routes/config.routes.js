@@ -18,6 +18,7 @@ function estadoAtual() {
   const w = config.whatsapp();
   const a = config.alerta();
   const m = config.meta();
+  const f = config.followup();
   return {
     provider: 'evolution',
     setup: {
@@ -27,6 +28,7 @@ function estadoAtual() {
     },
     alerta: { whatsapp: a.whatsapp, hora: a.hora },
     meta: { mensal: m.mensal },
+    followup: { auto_gerar: f.auto_gerar },
     enabled: w.enabled,
   };
 }
@@ -46,6 +48,9 @@ const putBody = z.object({
   meta: z.object({
     mensal: z.union([z.coerce.number().min(0), z.literal('')]).optional(),
   }).optional(),
+  followup: z.object({
+    auto_gerar: z.boolean().optional(),
+  }).optional(),
 });
 
 const MAPA = {
@@ -55,6 +60,7 @@ const MAPA = {
   'alerta.whatsapp': 'alerta.whatsapp',
   'alerta.hora':     'alerta.hora',
   'meta.mensal':     'meta.mensal',
+  'followup.auto_gerar': 'followup.auto_gerar',
 };
 
 router.put('/whatsapp', validate({ body: putBody }), h(async (req, res) => {
