@@ -8,10 +8,12 @@ const server = app.listen(env.port, async () => {
   // Carrega overrides do banco antes de qualquer envio de WhatsApp/alerta.
   // A tabela `configuracoes` vive em oficina_<slug>; hoje só temos maninho.
   // Fase 3 vai carregar config de todas as oficinas em cache separado.
-  await runComOficina('maninho', () => config.inicializar());
-  const w = config.whatsapp();
   console.log(`[api] rodando na porta ${env.port} (${env.nodeEnv})`);
-  console.log(`[api] whatsapp: ${w.enabled ? 'configurado' : 'NÃO configurado'}`);
+  await runComOficina('maninho', async () => {
+    await config.inicializar();
+    const w = config.whatsapp();
+    console.log(`[api] whatsapp (maninho): ${w.enabled ? 'configurado' : 'NÃO configurado'} · instância ${w.instance}`);
+  });
   require('./services/alertas.service').agendar();
   require('./services/relatorio-agendado.service').agendar();
   require('./services/followup-agendado.service').agendar();

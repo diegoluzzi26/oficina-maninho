@@ -196,6 +196,7 @@ function agendar() {
       await paraCadaOficinaAtiva(async (slug) => {
       if (ultimaCheckPorOficina.get(slug) === chaveCheck) return;
       ultimaCheckPorOficina.set(slug, chaveCheck);
+      await config.carregar(); // config desta oficina (destino do relatório etc)
 
     // Mensal: se hoje é dia 1, envia relatório do mês passado
     if (agora.getDate() === 1) {

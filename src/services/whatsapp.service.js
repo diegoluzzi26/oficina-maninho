@@ -170,6 +170,38 @@ const MAPA_STATUS = {
   ERROR: 'failed',
 };
 
+/**
+ * Descobre a qual oficina pertence um evento de webhook, pela instância
+ * Evolution que veio no payload. Convenção: instância = slug da oficina.
+ * Se alguma oficina sobrescreveu o nome da instância na config, faz o
+ * match reverso varrendo as ativas. Retorna o slug ou null.
+ */
+async function resolverOficinaDoWebhook(body) {
+  const instancia = typeof body?.instance === 'string'
+    ? body.instance
+    : (body?.instance?.instanceName || body?.data?.instance || null);
+  if (!instancia) return null;
+
+  // 1) Caminho rápido: instância == slug de uma oficina ativa.
+  const direto = await db.pool.query(
+    'SELECT slug FROM oficinas WHERE ativo AND slug = $1', [instancia],
+  );
+  if (direto.rows[0]) return direto.rows[0].slug;
+
+  // 2) Override: alguma oficina configurou essa instância com outro nome.
+  const ativas = await db.pool.query('SELECT slug FROM oficinas WHERE ativo');
+  for (const { slug } of ativas.rows) {
+    const inst = await db.runComOficina(slug, async () => {
+      const r = await db.query(
+        `SELECT valor FROM configuracoes WHERE chave = 'whatsapp.evolution_instance'`,
+      );
+      return r.rows[0]?.valor || slug; // default = slug
+    });
+    if (inst === instancia) return slug;
+  }
+  return null;
+}
+
 async function processarWebhook(body) {
   const evento = body?.event;
   const dados  = body?.data;
@@ -302,6 +334,7 @@ module.exports = {
   enviarTemplate,
   notificar,
   processarWebhook,
+  resolverOficinaDoWebhook,
   garantirInstancia,
   estadoConexao,
   qrCode,

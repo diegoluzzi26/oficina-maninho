@@ -48,6 +48,12 @@ function schemaAtual() {
   return ctx?.slug ? `oficina_${ctx.slug}` : null;
 }
 
+/** Slug da oficina no contexto atual (ou null fora de runComOficina). */
+function slugAtual() {
+  const ctx = alsOficina.getStore();
+  return ctx?.slug || null;
+}
+
 /**
  * Sanitiza o slug pra virar identificador SQL (nunca vem de user input
  * direto, mas defense in depth). Só letras minúsculas, dígitos, _.
@@ -100,4 +106,5 @@ async function withTransaction(fn) {
 module.exports = {
   pool, query, withTransaction,
   runComOficina, paraCadaOficinaAtiva, schemaSeguro,
+  schemaAtual, slugAtual,
 };

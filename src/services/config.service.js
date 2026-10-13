@@ -5,33 +5,61 @@ const env = require('../config/env');
 /**
  * Configurações editáveis em runtime.
  *
- * Fonte: tabela `configuracoes` (chave/valor). Se a chave NÃO existe
- * no banco, cai no valor do .env (definido em src/config/env.js).
- * O .env deixa de ser a fonte única de verdade e vira "default".
+ * Fonte: tabela `configuracoes` (chave/valor), que vive em cada schema
+ * `oficina_<slug>`. Se a chave NÃO existe no banco, cai no valor do .env
+ * (default global). O .env deixa de ser fonte única de verdade.
  *
- * Cache in-memory: evita ir ao banco a cada envio de WhatsApp. É invalidado
- * quando `set()` é chamado — como só admin edita e é raro, um cache
- * simples num processo só é suficiente.
+ * Cache in-memory POR OFICINA: `caches` mapeia slug → Map(chave→valor).
+ * `get`/`set`/`whatsapp`/etc resolvem o slug do contexto atual
+ * (AsyncLocalStorage via db.slugAtual()). Isso permite que cada oficina
+ * tenha sua própria config (ex: número de WhatsApp) sem uma vazar na outra.
+ *
+ * Carga: `carregar()` popula o cache da oficina atual (precisa rodar dentro
+ * de runComOficina). O middleware oficinaContext chama antes de cada request;
+ * os agendadores chamam dentro de paraCadaOficinaAtiva. `set()` mantém o
+ * cache da oficina em sincronia sem reler o banco.
  */
 
-const cache = new Map();
+const caches = new Map();     // slug -> Map(chave->valor)
+const carregados = new Set(); // slugs já carregados pelo menos uma vez
 
-async function inicializar() {
-  cache.clear();
+function subcache(slug) {
+  let m = caches.get(slug);
+  if (!m) { m = new Map(); caches.set(slug, m); }
+  return m;
+}
+
+/**
+ * Carrega (ou recarrega) a config da oficina ATUAL no cache.
+ * Precisa de contexto (runComOficina); fora dele, no-op.
+ */
+async function carregar({ forcar = false } = {}) {
+  const slug = db.slugAtual();
+  if (!slug) return;
+  if (!forcar && carregados.has(slug)) return;
   const { rows } = await db.query(
     'SELECT chave, valor FROM configuracoes WHERE valor IS NOT NULL',
   );
-  for (const r of rows) cache.set(r.chave, r.valor);
+  const m = new Map();
+  for (const r of rows) m.set(r.chave, r.valor);
+  caches.set(slug, m);
+  carregados.add(slug);
 }
 
+// Retrocompat: `inicializar` força a carga da oficina atual.
+async function inicializar() { return carregar({ forcar: true }); }
+
 function get(chave, defaultVal = null) {
-  return cache.has(chave) ? cache.get(chave) : defaultVal;
+  const slug = db.slugAtual();
+  const m = slug ? caches.get(slug) : null;
+  return m && m.has(chave) ? m.get(chave) : defaultVal;
 }
 
 async function set(chave, valor, userId = null) {
+  const slug = db.slugAtual();
   if (valor === undefined || valor === null || valor === '') {
     await db.query('DELETE FROM configuracoes WHERE chave = $1', [chave]);
-    cache.delete(chave);
+    if (slug) subcache(slug).delete(chave);
     return;
   }
   await db.query(
@@ -43,7 +71,7 @@ async function set(chave, valor, userId = null) {
            atualizado_em = now()`,
     [chave, String(valor), userId],
   );
-  cache.set(chave, String(valor));
+  if (slug) subcache(slug).set(chave, String(valor));
 }
 
 /**
@@ -52,9 +80,13 @@ async function set(chave, valor, userId = null) {
  * funcionando sem alteração — só o interior muda.
  */
 function whatsapp() {
+  // Cada oficina tem sua própria instância (= próprio número) na Evolution.
+  // Default = slug da oficina, pra nascer distinta sem config manual.
+  // url/apiKey têm default compartilhado do .env, mas são sobrescrevíveis.
+  const slug     = db.slugAtual();
   const url      = get('whatsapp.evolution_url',      env.whatsapp.url);
   const apiKey   = get('whatsapp.evolution_api_key',  env.whatsapp.apiKey);
-  const instance = get('whatsapp.evolution_instance', env.whatsapp.instance);
+  const instance = get('whatsapp.evolution_instance', slug || env.whatsapp.instance);
 
   return {
     url, apiKey, instance,
@@ -100,4 +132,7 @@ function mascarar(valor) {
   return `••••${valor.slice(-4)}`;
 }
 
-module.exports = { inicializar, get, set, whatsapp, alerta, meta, followup, mascarar };
+module.exports = {
+  inicializar, carregar, get, set,
+  whatsapp, alerta, meta, followup, mascarar,
+};

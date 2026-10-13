@@ -1,5 +1,6 @@
 'use strict';
 const { runComOficina } = require('../config/db');
+const config = require('../services/config.service');
 const AppError = require('../utils/AppError');
 
 /**
@@ -15,5 +16,9 @@ module.exports = function oficinaContext(req, res, next) {
   if (!slug) {
     return next(AppError.unauthorized('Sessão sem oficina — entre novamente'));
   }
-  runComOficina(slug, () => next());
+  // Carrega a config desta oficina no cache antes de seguir, pra que
+  // config.get/whatsapp() resolvam os valores certos (ex: número próprio).
+  runComOficina(slug, () => {
+    config.carregar().then(() => next()).catch(next);
+  });
 };

@@ -178,6 +178,7 @@ function agendar() {
     // Roda em cada oficina ativa. A listagem sai do schema public.
     try {
       await paraCadaOficinaAtiva(async (slug) => {
+      await config.carregar(); // garante a config desta oficina no cache
       // Lê hora do banco a cada tick — permite mudar a hora via UI sem reboot.
       const horaAlvo = config.alerta().hora;
       const agora = new Date();
