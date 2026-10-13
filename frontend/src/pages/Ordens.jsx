@@ -9,6 +9,7 @@ import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
 import { FormCliente, FormCarro } from './Clientes';
 import { podeExcluir } from '../lib/permissoes';
+import Paginacao from '../components/Paginacao';
 
 /**
  * Anexo protegido por JWT: baixa via fetch (com Authorization) e
@@ -1901,6 +1902,8 @@ export default function Ordens() {
   const hoje = new Date();
   const [ref, setRef] = useState({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, todos: false });
   const [lista, setLista] = useState(null);
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(20);
   const [status, setStatus] = useState('');
   const [busca, setBusca] = useState('');
   const [marca, setMarca] = useState('');
@@ -1937,13 +1940,17 @@ export default function Ordens() {
 
   const carregar = useCallback(() => {
     setErro('');
-    const params = { status, busca, por_pagina: 100 };
+    const params = { status, busca, pagina, por_pagina: porPagina };
     if (marca)     params.marca = marca;
     if (clienteId) params.cliente_id = clienteId;
     if (formaPag)  params.forma_pagamento = formaPag;
     if (!ref.todos) { params.ano = ref.ano; params.mes = ref.mes; }
     api.ordens(params).then(setLista).catch((e) => setErro(e.message));
-  }, [status, busca, marca, clienteId, formaPag, ref.ano, ref.mes, ref.todos]);
+  }, [status, busca, marca, clienteId, formaPag, ref.ano, ref.mes, ref.todos, pagina, porPagina]);
+
+  // Qualquer mudança de filtro volta pra página 1.
+  useEffect(() => { setPagina(1); },
+    [status, busca, marca, clienteId, formaPag, ref.ano, ref.mes, ref.todos]);
 
   function limparFiltros() {
     setStatus(''); setBusca(''); setMarca(''); setClienteId(''); setFormaPag('');
@@ -2191,6 +2198,9 @@ export default function Ordens() {
               </tbody>
             </table>
           </div>
+          <Paginacao paginacao={lista.paginacao}
+            onPagina={setPagina}
+            onPorPagina={(n) => { setPorPagina(n); setPagina(1); }} />
         </div>
       )}
 

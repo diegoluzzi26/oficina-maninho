@@ -4,6 +4,7 @@ import { brl, data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Badge } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
+import Paginacao from '../components/Paginacao';
 
 export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   const vazio = { nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '' };
@@ -311,6 +312,8 @@ function DetalheCliente({ id, onFechar, onAtualizado }) {
 export default function Clientes() {
   const [lista, setLista] = useState(null);
   const [busca, setBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(20);
   const [erro, setErro] = useState('');
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -319,15 +322,18 @@ export default function Clientes() {
 
   const carregar = useCallback(() => {
     setErro('');
-    api.clientes({ busca, por_pagina: 50 })
+    api.clientes({ busca, pagina, por_pagina: porPagina })
       .then(setLista)
       .catch((e) => setErro(e.message));
-  }, [busca]);
+  }, [busca, pagina, porPagina]);
 
   useEffect(() => {
     const t = setTimeout(carregar, busca ? 350 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  // Nova busca sempre volta pra página 1.
+  function mudarBusca(v) { setBusca(v); setPagina(1); }
 
   return (
     <div className="space-y-5">
@@ -344,7 +350,7 @@ export default function Clientes() {
       </div>
 
       <input className="input max-w-sm" placeholder="Buscar por nome, telefone, CPF, nº ou placa"
-        value={busca} onChange={(e) => setBusca(e.target.value)} />
+        value={busca} onChange={(e) => mudarBusca(e.target.value)} />
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
@@ -395,6 +401,11 @@ export default function Clientes() {
               </tbody>
             </table>
           </div>
+        )}
+        {lista && (
+          <Paginacao paginacao={lista.paginacao}
+            onPagina={setPagina}
+            onPorPagina={(n) => { setPorPagina(n); setPagina(1); }} />
         )}
       </div>
 
