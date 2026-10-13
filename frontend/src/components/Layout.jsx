@@ -9,6 +9,7 @@ import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
 import ResumoDiario from './ResumoDiario';
 import { useTema, ToggleTema } from '../lib/tema';
+import { VERSAO_ROTULO, VERSAO_DETALHE } from '../lib/versao';
 
 // paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
 // só admin/atendente enxergam. somenteAdmin restringe ainda mais.
@@ -121,6 +122,10 @@ export default function Layout() {
               Sair
             </button>
           </div>
+          <p title={VERSAO_DETALHE}
+            className="mt-3 text-center font-display text-[10px] uppercase tracking-[.14em] text-white/45">
+            {VERSAO_ROTULO}
+          </p>
         </div>
       </aside>
 
@@ -175,6 +180,10 @@ export default function Layout() {
                     Sair
                   </button>
                 </div>
+                <p title={VERSAO_DETALHE}
+                  className="mt-3 text-center font-display text-[10px] uppercase tracking-[.14em] text-white/45">
+                  {VERSAO_ROTULO}
+                </p>
               </div>
             </aside>
           </div>
