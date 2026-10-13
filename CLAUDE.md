@@ -17,6 +17,6 @@ Docker Compose) virando SaaS multi-empresa para vender a outras oficinas.
 Marque o status ao concluir cada fase.
 
 1. [ ] Multi-empresa e paginação das listas.
-2. [ ] Lembrete automático de revisão via WhatsApp.
+2. [x] Lembrete automático de revisão via WhatsApp. (geração diária da fila é automática; o envio do WhatsApp segue manual, com revisão no Kanban)
 3. [ ] Cada oficina com o próprio número de WhatsApp.
 4. [ ] Assinatura, onboarding e contrato.
