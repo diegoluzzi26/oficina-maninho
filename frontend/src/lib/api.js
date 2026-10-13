@@ -267,6 +267,10 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   },
 
+  // --- plataforma (só super-admin) ---
+  adminOficinas: () => request('/admin/oficinas'),
+  adminCriarOficina: (body) => request('/admin/oficinas', { method: 'POST', body }),
+
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),

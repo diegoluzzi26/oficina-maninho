@@ -48,6 +48,7 @@ async function login(email, senha, oficinaSlug) {
       role: user.role,
       oficina_id: user.oficina_id,
       oficina_slug: user.oficina_slug,
+      super_admin: user.super_admin === true,
     },
     env.jwtSecret,
     { expiresIn: env.jwtExpiresIn },
@@ -62,6 +63,7 @@ async function login(email, senha, oficinaSlug) {
       oficina_id: user.oficina_id,
       oficina_slug: user.oficina_slug,
       oficina_nome: user.oficina_nome,
+      super_admin: user.super_admin === true,
     },
   };
 }

@@ -20,6 +20,7 @@ import ImprimirOS from './pages/ImprimirOS';
 import ImprimirChecklist from './pages/ImprimirChecklist';
 import Followup from './pages/Followup';
 import FollowupRegras from './pages/FollowupRegras';
+import PlataformaOficinas from './pages/PlataformaOficinas';
 
 function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="followup" element={<Followup />} />
           <Route path="followup/regras" element={<FollowupRegras />} />
           <Route path="configuracoes" element={<Configuracoes />} />
+          <Route path="plataforma" element={<PlataformaOficinas />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

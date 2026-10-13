@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
-  Wrench, Settings, Menu, X, FileText,
+  Wrench, Settings, Menu, X, FileText, Building2,
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
@@ -29,6 +29,7 @@ const MENU = [
   { para: '/followup', texto: 'Follow-up', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true, Icone: Settings },
+  { para: '/plataforma', texto: 'Plataforma', somenteSuperAdmin: true, Icone: Building2 },
 ];
 
 export default function Layout() {
@@ -52,6 +53,7 @@ export default function Layout() {
   const ehBasico = usuario?.role === 'basico';
   const itens = MENU.filter((m) => {
     if (ehBasico) return m.paraBasico === true;
+    if (m.somenteSuperAdmin) return usuario?.super_admin === true;
     if (m.somenteAdmin) return usuario?.role === 'admin';
     return true;
   });
