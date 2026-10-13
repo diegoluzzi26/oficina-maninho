@@ -38,7 +38,15 @@ export default function Layout() {
   const local = useLocation();
   const [alertas, setAlertas] = useState(null);
   const [abertoMobile, setAbertoMobile] = useState(false);
+  const [assin, setAssin] = useState(null);
   const { tema, alternar } = useTema();
+
+  // Status da assinatura da oficina (pra bloquear/avisar). Busca uma vez.
+  useEffect(() => {
+    let cancelado = false;
+    api.assinaturaMinha().then((a) => !cancelado && setAssin(a)).catch(() => {});
+    return () => { cancelado = true; };
+  }, []);
 
   // Recarrega ao trocar de tela: o contador não pode ficar velho
   // depois que o usuário dá baixa num boleto.
@@ -192,7 +200,22 @@ export default function Layout() {
         )}
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <Outlet />
+          {assin?.avaliacao?.bloqueada ? (
+            <BloqueioAssinatura info={assin} onSair={sair} />
+          ) : (
+            <>
+              {assin?.avaliacao?.em_graca && (
+                <div className="mb-5 rounded-lg border border-ouro-300 bg-ouro-100 px-4 py-3 text-sm text-ouro-800">
+                  <strong>⚠️ {assin.avaliacao.motivo || 'Assinatura pendente'}.</strong>{' '}
+                  {assin.avaliacao.dias_restantes != null && (
+                    <>Acesso liberado por mais <strong>{assin.avaliacao.dias_restantes} dia(s)</strong>. </>
+                  )}
+                  Regularize com o responsável pra não perder o acesso.
+                </div>
+              )}
+              <Outlet />
+            </>
+          )}
         </main>
 
         {/* "Bom dia!" — só na primeira entrada do dia (por usuário) */}
@@ -204,6 +227,33 @@ export default function Layout() {
             Auto Elétrica Maninho · RS-020, 1055 · Gravataí/RS
           </p>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+/** Tela de acesso bloqueado por assinatura vencida. */
+function BloqueioAssinatura({ info, onSair }) {
+  const motivo = info?.avaliacao?.motivo || 'Assinatura pendente';
+  return (
+    <div className="mx-auto max-w-lg py-10 text-center">
+      <div className="card p-8">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-3xl">
+          🔒
+        </div>
+        <h1 className="font-display text-xl font-semibold uppercase tracking-wide text-maninho-800">
+          Acesso suspenso
+        </h1>
+        <p className="mt-2 text-sm text-slate-600">{motivo}.</p>
+        <p className="mt-4 text-sm text-slate-600">
+          Pra reativar, entre em contato com o responsável pela plataforma e
+          regularize a assinatura. Assim que o pagamento for confirmado, o
+          acesso volta na hora.
+        </p>
+        <button onClick={onSair}
+          className="btn-ghost mt-6">
+          Sair
+        </button>
       </div>
     </div>
   );

@@ -270,6 +270,10 @@ export const api = {
   // --- plataforma (só super-admin) ---
   adminOficinas: () => request('/admin/oficinas'),
   adminCriarOficina: (body) => request('/admin/oficinas', { method: 'POST', body }),
+  adminAtualizarAssinatura: (id, body) => request(`/admin/oficinas/${id}/assinatura`, { method: 'PATCH', body }),
+
+  // --- assinatura da própria oficina ---
+  assinaturaMinha: () => request('/assinatura/minha'),
 
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
