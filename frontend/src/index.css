@@ -6,17 +6,20 @@
   html { -webkit-font-smoothing: antialiased; }
 
   body {
-    @apply bg-[#f4f5f9] text-slate-800 font-sans;
+    @apply bg-[#f3f4f8] text-slate-800 font-sans antialiased;
     /* Textura de chapa escovada: diagonal que ecoa o arco do logo,
-       discreta o bastante para não competir com o conteúdo. */
+       discreta o bastante para não competir com o conteúdo. Fica mais
+       densa no topo e dissolve conforme desce. */
     background-image:
+      radial-gradient(120% 70% at 78% -10%, rgba(40, 48, 144, .07) 0%, transparent 55%),
       repeating-linear-gradient(
         100deg,
-        rgba(40, 48, 144, .022) 0px,
-        rgba(40, 48, 144, .022) 1px,
+        rgba(40, 48, 144, .018) 0px,
+        rgba(40, 48, 144, .018) 1px,
         transparent 1px,
-        transparent 5px
+        transparent 6px
       );
+    background-attachment: fixed;
   }
 
   .tnum { font-variant-numeric: tabular-nums; }
@@ -26,58 +29,68 @@
   :focus-visible {
     outline: 2px solid #283090;
     outline-offset: 2px;
+    border-radius: 3px;
   }
 }
 
 @layer components {
   .card {
-    @apply bg-white rounded-md border border-slate-200/90 shadow-card;
+    @apply bg-white rounded-xl border border-slate-200/80 shadow-card;
   }
 
-  /* Cartão com faixa da marca no topo */
+  /* Cartão com faixa da marca no topo — assinatura discreta da casa. */
   .card-marca {
     @apply card relative overflow-hidden;
   }
   .card-marca::before {
     content: '';
-    @apply absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-maninho-600 via-maninho-500 to-ouro-500;
+    @apply absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-maninho-600 via-maninho-500 to-ouro-500;
   }
 
+  /* Micro-rótulo: ainda em caixa-alta industrial, mas calibrado pra
+     informar em vez de gritar. */
   .label {
-    @apply text-[10.5px] font-semibold uppercase tracking-[.12em] text-slate-500;
+    @apply text-[10.5px] font-semibold uppercase tracking-[.08em] text-slate-500;
   }
 
   .input {
-    @apply w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm
-           placeholder:text-slate-400 outline-none transition
-           focus:border-maninho-600 focus:ring-2 focus:ring-maninho-600/15;
+    @apply w-full rounded-lg border border-slate-200 bg-slate-100/70 px-3.5 py-2.5 text-sm
+           text-slate-800 placeholder:text-slate-400 outline-none
+           transition duration-150
+           hover:bg-slate-100 hover:border-slate-300
+           focus:border-maninho-600 focus:bg-white focus:ring-2 focus:ring-maninho-600/20
+           focus:shadow-foco-marca;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2
-           text-sm font-semibold tracking-wide transition active:translate-y-px
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-semibold tracking-wide transition duration-150
+           active:translate-y-px
            disabled:opacity-50 disabled:pointer-events-none;
   }
-  .btn-primary { @apply btn bg-maninho-600 text-white hover:bg-maninho-700 shadow-sm; }
+  .btn-primary {
+    @apply btn bg-gradient-to-b from-maninho-500 to-maninho-700 text-white
+           shadow-sm shadow-maninho-900/20 hover:from-maninho-600 hover:to-maninho-800 hover:shadow-md;
+  }
   .btn-ghost   { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-400; }
-  .btn-ouro    { @apply btn bg-ouro-500 text-painel-900 hover:bg-ouro-600 shadow-sm; }
+  .btn-ouro    { @apply btn bg-ouro-500 text-painel-900 shadow-sm hover:bg-ouro-600 hover:shadow-md; }
   .btn-escuro  { @apply btn bg-painel-900 text-white hover:bg-painel-800; }
 
   .th {
-    @apply px-4 py-2.5 text-left text-[10.5px] font-bold uppercase
-           tracking-[.1em] text-slate-500;
+    @apply px-4 py-3 text-left text-[10.5px] font-bold uppercase
+           tracking-[.08em] text-slate-500;
   }
-  .td { @apply px-4 py-3 text-sm text-slate-700; }
+  .td { @apply px-4 py-3.5 text-sm text-slate-700; }
 
   /* Marcador diagonal ecoando o arco do letreiro */
   .titulo-secao {
-    @apply relative pl-3 font-display text-base font-semibold uppercase
+    @apply relative pl-4 font-display text-lg font-semibold uppercase
            tracking-wide text-maninho-800;
   }
   .titulo-secao::before {
     content: '';
-    @apply absolute left-0 top-1/2 h-[70%] w-[3px] -translate-y-1/2
-           skew-y-[-12deg] rounded-full bg-ouro-500;
+    @apply absolute left-0 top-1/2 h-[82%] w-[4px] -translate-y-1/2
+           skew-y-[-12deg] rounded-full bg-gradient-to-b from-ouro-300 via-ouro-500 to-ouro-600;
   }
 
   .numero {

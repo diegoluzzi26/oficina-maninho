@@ -12,7 +12,7 @@ export function Badge({ status }) {
 
 /** Skeleton evita o "pulo" de layout quando os dados chegam. */
 export function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded bg-slate-200/70 ${className}`} />;
+  return <div className={`animate-pulse rounded-lg bg-slate-200/70 ${className}`} />;
 }
 
 export function Spinner({ className = 'h-5 w-5' }) {
@@ -32,7 +32,7 @@ export function Alerta({ tipo = 'erro', children, onFechar }) {
     aviso: 'bg-ouro-100 text-ouro-700 border-ouro-300',
   };
   return (
-    <div className={`flex items-start gap-3 rounded-md border px-4 py-3 text-sm ${cores[tipo]}`}>
+    <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${cores[tipo]}`}>
       <div className="flex-1">{children}</div>
       {onFechar && (
         <button onClick={onFechar} className="opacity-60 hover:opacity-100" aria-label="Fechar">✕</button>
@@ -59,17 +59,17 @@ export function Modal({ aberto, titulo, onFechar, children, largura = 'max-w-lg'
   if (!aberto) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto
-                    bg-painel-950/50 p-4 backdrop-blur-[2px] sm:p-8"
+                    bg-painel-950/60 p-4 backdrop-blur-[3px] sm:p-8"
          onClick={onFechar}>
-      <div className={`anima w-full ${largura} card my-4 overflow-hidden`}
+      <div className={`anima w-full ${largura} card my-4 overflow-hidden rounded-2xl shadow-lift`}
            onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
-          <h3 className="font-display text-lg font-semibold text-maninho-800">{titulo}</h3>
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-maninho-800">{titulo}</h3>
           <button onClick={onFechar}
-                  className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  className="-mr-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Fechar">✕</button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-5 py-5">{children}</div>
       </div>
     </div>
   );

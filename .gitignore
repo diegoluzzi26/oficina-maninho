@@ -4,3 +4,8 @@ node_modules/
 backups/
 anexos/
 
+# Ferramentas locais (skills de agente) — não vão pro repositório/servidor
+.agents/
+.claude/
+skills-lock.json
+

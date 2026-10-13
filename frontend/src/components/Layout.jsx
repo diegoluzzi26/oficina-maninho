@@ -66,12 +66,13 @@ export default function Layout() {
       {itens.map(({ para, texto, exato, badge, Icone }) => (
         <NavLink key={para} to={para} end={exato}
           className={({ isActive }) =>
-            `group flex items-center gap-3 rounded-md px-3 py-2 font-display text-[13px]
-             font-medium uppercase tracking-[.06em] transition
+            `group relative flex items-center gap-3 rounded-lg px-3 py-2 font-display text-[13px]
+             font-medium uppercase tracking-[.06em] transition duration-150
              ${isActive
-               ? 'bg-maninho-600 text-white shadow-sm'
-               : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
-          <Icone size={18} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+               ? 'bg-maninho-600 text-white shadow-sm before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-ouro-500'
+               : 'text-white/65 hover:bg-white/[.07] hover:text-white'}`}>
+          <Icone size={18} strokeWidth={2}
+            className="shrink-0 transition group-hover:scale-105" aria-hidden="true" />
           <span className="flex-1 truncate">{texto}</span>
           {badge && pendencias > 0 && (
             <span className="pulso inline-flex h-[17px] min-w-[17px] items-center justify-center
@@ -87,15 +88,24 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen bg-slate-50">
       {/* ---------- Sidebar desktop (fixa à esquerda) ---------- */}
-      <aside className="hidden lg:flex sticky top-0 h-screen w-[220px] shrink-0
-                        flex-col bg-painel-900 shadow-painel">
-        <div className="border-b border-white/10 px-5 pb-4 pt-5">
+      <aside className="relative hidden lg:flex sticky top-0 h-screen w-[232px] shrink-0
+                        flex-col overflow-hidden bg-gradient-to-b from-maninho-800 via-painel-900 to-painel-950
+                        shadow-painel">
+        {/* Arco gigante como marca d'água, cortando o rodapé da barra. */}
+        <svg viewBox="0 0 64 30" aria-hidden="true" fill="none"
+          className="pointer-events-none absolute -left-6 bottom-8 h-40 w-auto opacity-[.06]">
+          <path d="M2 27C10 9 26 2 44 2" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
+          <path d="M20 27C26 15 36 9 48 8" stroke="#D4A843" strokeWidth="3.2" strokeLinecap="round" />
+        </svg>
+        {/* Fio dourado no topo, como a borda do painel da fachada. */}
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-ouro-500 to-transparent" />
+        <div className="relative border-b border-white/10 px-5 pb-4 pt-5">
           <Marca variante="claro" tamanho="sm" />
         </div>
-        <div className="flex flex-1 flex-col overflow-y-auto p-3">
+        <div className="relative flex flex-1 flex-col overflow-y-auto p-3">
           <Links />
         </div>
-        <div className="border-t border-white/10 p-4">
+        <div className="relative border-t border-white/10 p-4">
           <div className="mb-3">
             <p className="truncate text-sm font-semibold text-white">{usuario?.nome}</p>
             <p className="font-display text-[10px] uppercase tracking-[.14em] text-white/45">
@@ -142,7 +152,8 @@ export default function Layout() {
         {abertoMobile && (
           <div className="fixed inset-0 z-50 lg:hidden">
             <div className="absolute inset-0 bg-black/50" onClick={() => setAbertoMobile(false)} />
-            <aside className="absolute inset-y-0 left-0 flex w-[260px] flex-col bg-painel-900 shadow-2xl">
+            <aside className="absolute inset-y-0 left-0 flex w-[260px] flex-col
+                              bg-gradient-to-b from-maninho-800 via-painel-900 to-painel-950 shadow-2xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 pb-4 pt-5">
                 <Marca variante="claro" tamanho="sm" />
                 <button onClick={() => setAbertoMobile(false)}

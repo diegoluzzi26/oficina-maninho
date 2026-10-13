@@ -18,6 +18,21 @@ export default {
           900: '#141748',
           950: '#0b0d2b',
         },
+        // Alias histórico: algumas telas pedem `marca-*`. Aponta pra marca
+        // pra essas classes não ficarem mortas (badge "Finalizada" etc.).
+        marca: {
+          50:  '#eef0fa',
+          100: '#dadef4',
+          200: '#b4bce8',
+          300: '#8b96d9',
+          400: '#5c6bc4',
+          500: '#3a48a8',
+          600: '#283090',
+          700: '#222878',
+          800: '#1a1f5e',
+          900: '#141748',
+          950: '#0b0d2b',
+        },
         // Preto do painel da fachada
         painel: {
           800: '#1c1c22',
@@ -40,10 +55,19 @@ export default {
         sans: ['"Public Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
+      borderRadius: {
+        // Escala unificada: controles 10px, cards 14px.
+        lg: '0.625rem',   // 10px — inputs, botões
+        xl: '0.875rem',   // 14px — cards
+        '2xl': '1.125rem', // 18px — superfícies maiores (modal, hero)
+      },
       boxShadow: {
-        card: '0 1px 2px rgba(20,23,72,.05), 0 4px 14px -6px rgba(20,23,72,.12)',
-        lift: '0 2px 6px rgba(20,23,72,.10), 0 16px 32px -12px rgba(20,23,72,.25)',
+        // Sombras em camadas, tingidas de índigo da marca: profundidade
+        // de verdade sem o cinza chapado genérico.
+        card: '0 1px 2px rgba(20,23,72,.04), 0 2px 6px -2px rgba(20,23,72,.07), 0 10px 26px -14px rgba(20,23,72,.16)',
+        lift: '0 2px 8px rgba(20,23,72,.08), 0 22px 44px -18px rgba(20,23,72,.26)',
         painel: '0 2px 0 0 #D4A843',
+        'foco-marca': '0 0 0 3px rgba(40,48,144,.18)',
       },
       backgroundImage: {
         // Faixa diagonal do arco do logo, usada em cabeçalhos
