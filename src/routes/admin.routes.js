@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const svc = require('../services/provisionamento.service');
+const assinatura = require('../services/assinatura.service');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
 
@@ -29,5 +30,20 @@ router.post('/oficinas', validate({ body: criarBody }), h(async (req, res) => {
   const oficina = await svc.criarOficina(req.body);
   res.status(201).json(oficina);
 }));
+
+// Gestão manual da assinatura (Fase A). Só os campos enviados mudam.
+const assinaturaBody = z.object({
+  assinatura_status: z.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
+  plano: z.string().max(60).nullable().optional(),
+  trial_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  proximo_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  graca_dias: z.coerce.number().int().min(0).max(90).optional(),
+});
+
+router.patch('/oficinas/:id/assinatura',
+  validate({ body: assinaturaBody }),
+  h(async (req, res) => {
+    res.json(await assinatura.atualizar(req.params.id, req.body));
+  }));
 
 module.exports = router;

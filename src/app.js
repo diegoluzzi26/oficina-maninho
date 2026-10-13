@@ -56,27 +56,36 @@ app.use('/api/oficinas', require('./routes/oficinas.routes'));
 const requireSuperAdmin = require('./middleware/requireSuperAdmin');
 app.use('/api/admin', auth, requireSuperAdmin, require('./routes/admin.routes'));
 
-// Daqui pra baixo, tudo exige token. bloquearBasico proíbe exclusões
-// pro papel 'basico' — não afeta admin nem atendente.
-app.use('/api/clientes',   auth, oficinaContext, bloquearBasico, require('./routes/clientes.routes'));
-app.use('/api/carros',     auth, oficinaContext, bloquearBasico, require('./routes/carros.routes'));
-app.use('/api/servicos',   auth, oficinaContext, bloquearBasico, require('./routes/servicos.routes'));
-app.use('/api/pecas',      auth, oficinaContext, bloquearBasico, require('./routes/pecas.routes'));
-app.use('/api/funcionarios', auth, oficinaContext, bloquearBasico, require('./routes/funcionarios.routes'));
-app.use('/api/despesas-recorrentes', auth, oficinaContext, bloquearBasico, require('./routes/despesas-recorrentes.routes'));
-app.use('/api/os',         auth, oficinaContext, bloquearBasico, require('./routes/os.routes'));
-app.use('/api/etapas',     auth, oficinaContext, bloquearBasico, require('./routes/etapas.routes'));
-app.use('/api/relatorios', auth, oficinaContext, bloquearBasico, require('./routes/relatorios.routes'));
-app.use('/api/despesas',     auth, oficinaContext, bloquearBasico, require('./routes/despesas.routes'));
-app.use('/api/fornecedores', auth, oficinaContext, bloquearBasico, require('./routes/fornecedores.routes'));
-app.use('/api/financeiro',   auth, oficinaContext, bloquearBasico, require('./routes/financeiro.routes'));
-app.use('/api/retornos',     auth, oficinaContext, bloquearBasico, require('./routes/retornos.routes'));
-app.use('/api/agendamentos', auth, oficinaContext, bloquearBasico, require('./routes/agendamentos.routes'));
-app.use('/api/followup',     auth, oficinaContext, bloquearBasico, require('./routes/followup.routes'));
-app.use('/api/ia',           auth, oficinaContext, bloquearBasico, require('./routes/ia.routes'));
-app.use('/api/config',       auth, oficinaContext, bloquearBasico, require('./routes/config.routes'));
+// Status da assinatura da própria oficina. Fica FORA do enforcement
+// (exigirAssinatura) pra o front conseguir ler mesmo quando bloqueado.
+app.use('/api/assinatura', auth, oficinaContext, require('./routes/assinatura.routes'));
+
+// Daqui pra baixo, tudo exige token E assinatura em dia. A ordem é:
+//   auth → contexto da oficina → enforcement de assinatura → bloquearBasico.
+// bloquearBasico proíbe exclusões pro papel 'basico'. exigirAssinatura
+// devolve 402 quando a assinatura venceu (super-admin passa sempre).
+const exigirAssinatura = require('./middleware/exigirAssinatura');
+const protegido = [auth, oficinaContext, exigirAssinatura, bloquearBasico];
+
+app.use('/api/clientes',   ...protegido, require('./routes/clientes.routes'));
+app.use('/api/carros',     ...protegido, require('./routes/carros.routes'));
+app.use('/api/servicos',   ...protegido, require('./routes/servicos.routes'));
+app.use('/api/pecas',      ...protegido, require('./routes/pecas.routes'));
+app.use('/api/funcionarios', ...protegido, require('./routes/funcionarios.routes'));
+app.use('/api/despesas-recorrentes', ...protegido, require('./routes/despesas-recorrentes.routes'));
+app.use('/api/os',         ...protegido, require('./routes/os.routes'));
+app.use('/api/etapas',     ...protegido, require('./routes/etapas.routes'));
+app.use('/api/relatorios', ...protegido, require('./routes/relatorios.routes'));
+app.use('/api/despesas',     ...protegido, require('./routes/despesas.routes'));
+app.use('/api/fornecedores', ...protegido, require('./routes/fornecedores.routes'));
+app.use('/api/financeiro',   ...protegido, require('./routes/financeiro.routes'));
+app.use('/api/retornos',     ...protegido, require('./routes/retornos.routes'));
+app.use('/api/agendamentos', ...protegido, require('./routes/agendamentos.routes'));
+app.use('/api/followup',     ...protegido, require('./routes/followup.routes'));
+app.use('/api/ia',           ...protegido, require('./routes/ia.routes'));
+app.use('/api/config',       ...protegido, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
-app.use('/api',              auth, oficinaContext, bloquearBasico, require('./routes/anexos.routes'));
+app.use('/api',              ...protegido, require('./routes/anexos.routes'));
 
 app.use((req, _res, next) => next(new AppError(`Rota não encontrada: ${req.method} ${req.path}`, 404)));
 app.use(errorHandler);

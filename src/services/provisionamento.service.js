@@ -70,8 +70,10 @@ async function criarOficina({ slug, nome, admin }) {
     const existe = await client.query('SELECT 1 FROM oficinas WHERE slug = $1', [slug]);
     if (existe.rows[0]) throw new AppError(`Já existe oficina com slug "${slug}"`, 409);
 
+    // Nasce em trial de 14 dias (Fase A da assinatura).
     const of = await client.query(
-      'INSERT INTO oficinas (slug, nome) VALUES ($1, $2) RETURNING id', [slug, nome],
+      `INSERT INTO oficinas (slug, nome, assinatura_status, trial_fim)
+       VALUES ($1, $2, 'trial', CURRENT_DATE + 14) RETURNING id`, [slug, nome],
     );
     const oficinaId = of.rows[0].id;
 
@@ -119,6 +121,10 @@ async function criarOficina({ slug, nome, admin }) {
 async function listarOficinas() {
   const { rows } = await db.pool.query(
     `SELECT o.id, o.slug, o.nome, o.ativo, o.criado_em,
+            o.assinatura_status, o.plano,
+            o.trial_fim::text          AS trial_fim,
+            o.proximo_vencimento::text AS proximo_vencimento,
+            o.graca_dias,
             (SELECT count(*) FROM users u WHERE u.oficina_id = o.id)::int AS usuarios
        FROM oficinas o
       ORDER BY o.criado_em DESC`,
