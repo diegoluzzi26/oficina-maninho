@@ -51,6 +51,11 @@ app.use('/api/auth', require('./routes/auth.routes'));
 // Lista pública de oficinas (só o dropdown do login)
 app.use('/api/oficinas', require('./routes/oficinas.routes'));
 
+// Plataforma (super-admin): provisiona oficinas. Sem oficinaContext —
+// opera sobre o public e cria schemas novos.
+const requireSuperAdmin = require('./middleware/requireSuperAdmin');
+app.use('/api/admin', auth, requireSuperAdmin, require('./routes/admin.routes'));
+
 // Daqui pra baixo, tudo exige token. bloquearBasico proíbe exclusões
 // pro papel 'basico' — não afeta admin nem atendente.
 app.use('/api/clientes',   auth, oficinaContext, bloquearBasico, require('./routes/clientes.routes'));
