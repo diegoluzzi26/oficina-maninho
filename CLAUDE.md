@@ -18,5 +18,5 @@ Marque o status ao concluir cada fase.
 
 1. [ ] Multi-empresa e paginação das listas.
 2. [x] Lembrete automático de revisão via WhatsApp. (geração diária da fila é automática; o envio do WhatsApp segue manual, com revisão no Kanban)
-3. [ ] Cada oficina com o próprio número de WhatsApp.
+3. [x] Cada oficina com o próprio número de WhatsApp. (config por oficina, instância = slug, webhook roteado por instância; no deploy, reconectar o QR da Maninho na instância 'maninho')
 4. [ ] Assinatura, onboarding e contrato.
