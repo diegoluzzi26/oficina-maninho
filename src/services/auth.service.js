@@ -68,16 +68,49 @@ async function login(email, senha, oficinaSlug) {
   };
 }
 
-async function criarUsuario({ nome, email, senha, role, oficina_id }, criadorOficinaId) {
+/**
+ * Cria usuário SEMPRE dentro da oficina do criador. `oficina_id` do body é
+ * ignorado de propósito — um admin não pode criar usuário em outra oficina.
+ */
+async function criarUsuario({ nome, email, senha, role }, oficinaId) {
+  if (!oficinaId) throw new AppError('Oficina do criador ausente', 400);
   const hash = await bcrypt.hash(senha, 10);
-  // Se o admin não passou oficina_id, cria dentro da própria oficina
-  const oficina = oficina_id || criadorOficinaId;
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO users (nome, email, senha_hash, role, oficina_id)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, nome, email, role, ativo, oficina_id, criado_em`,
+      [nome, email.toLowerCase(), hash, role || 'atendente', oficinaId],
+    );
+    return rows[0];
+  } catch (err) {
+    if (/duplicate|unique/i.test(err.message)) {
+      throw new AppError('Já existe usuário com esse e-mail nesta oficina', 409);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Atualiza um usuário DA MESMA oficina (oficina_id no WHERE impede mexer em
+ * usuário de outra oficina). Só os campos enviados mudam. Senha opcional.
+ */
+async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
+  const sets = []; const params = [];
+  if (nome !== undefined)  { params.push(nome);  sets.push(`nome = $${params.length}`); }
+  if (role !== undefined)  { params.push(role);  sets.push(`role = $${params.length}`); }
+  if (ativo !== undefined) { params.push(ativo); sets.push(`ativo = $${params.length}`); }
+  if (senha) { params.push(await bcrypt.hash(senha, 10)); sets.push(`senha_hash = $${params.length}`); }
+  if (!sets.length) throw new AppError('Nada para atualizar', 422);
+
+  params.push(id, oficinaId);
   const { rows } = await db.query(
-    `INSERT INTO users (nome, email, senha_hash, role, oficina_id)
-     VALUES ($1,$2,$3,$4,$5)
-     RETURNING id, nome, email, role, oficina_id, criado_em`,
-    [nome, email.toLowerCase(), hash, role, oficina],
+    `UPDATE users SET ${sets.join(', ')}
+      WHERE id = $${params.length - 1} AND oficina_id = $${params.length}
+      RETURNING id, nome, email, role, ativo, oficina_id, criado_em`,
+    params,
   );
+  if (!rows[0]) throw AppError.notFound('Usuário não encontrado');
   return rows[0];
 }
 
@@ -96,4 +129,4 @@ async function listarUsuarios(oficinaId) {
   return rows;
 }
 
-module.exports = { login, criarUsuario, listarUsuarios };
+module.exports = { login, criarUsuario, atualizarUsuario, listarUsuarios };

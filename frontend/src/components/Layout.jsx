@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
-  Wrench, Settings, Menu, X, FileText, Building2,
+  Wrench, Settings, Menu, X, FileText, Building2, UserCog,
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
 import { Marca, MarcaCompacta } from './Marca';
@@ -28,6 +28,7 @@ const MENU = [
   { para: '/retornos', texto: 'Retornos', Icone: PhoneCall },
   { para: '/followup', texto: 'Follow-up', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
+  { para: '/equipe', texto: 'Equipe', somenteAdmin: true, Icone: UserCog },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true, Icone: Settings },
   { para: '/plataforma', texto: 'Plataforma', somenteSuperAdmin: true, Icone: Building2 },
 ];

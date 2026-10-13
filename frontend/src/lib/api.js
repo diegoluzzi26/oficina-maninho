@@ -68,6 +68,11 @@ export const api = {
   }),
   oficinas: () => request('/oficinas'),
 
+  // --- usuários da própria oficina (só admin) ---
+  usuarios: () => request('/auth/usuarios'),
+  criarUsuario: (body) => request('/auth/usuarios', { method: 'POST', body }),
+  atualizarUsuario: (id, body) => request(`/auth/usuarios/${id}`, { method: 'PATCH', body }),
+
   dashboard: (params) => request('/relatorios/dashboard', { params }),
   faturamentoSemanal: (params) => request('/relatorios/faturamento/semanal', { params }),
   dre: (params) => request('/relatorios/dre', { params }),
