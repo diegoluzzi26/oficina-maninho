@@ -72,6 +72,7 @@ export const api = {
   usuarios: () => request('/auth/usuarios'),
   criarUsuario: (body) => request('/auth/usuarios', { method: 'POST', body }),
   atualizarUsuario: (id, body) => request(`/auth/usuarios/${id}`, { method: 'PATCH', body }),
+  atualizarMinhaOficina: (body) => request('/auth/oficina', { method: 'PATCH', body }),
 
   dashboard: (params) => request('/relatorios/dashboard', { params }),
   faturamentoSemanal: (params) => request('/relatorios/faturamento/semanal', { params }),

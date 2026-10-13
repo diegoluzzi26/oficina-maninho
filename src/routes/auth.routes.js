@@ -46,4 +46,11 @@ router.patch('/usuarios/:id', auth, requireRole('admin'),
     res.json(await svc.atualizarUsuario(req.params.id, req.body, req.user.oficina_id));
   }));
 
+// Editar dados da própria oficina (só nome).
+router.patch('/oficina', auth, requireRole('admin'),
+  validate({ body: z.object({ nome: z.string().min(1).max(120) }) }),
+  h(async (req, res) => {
+    res.json(await svc.atualizarMinhaOficina(req.user.oficina_id, req.body));
+  }));
+
 module.exports = router;

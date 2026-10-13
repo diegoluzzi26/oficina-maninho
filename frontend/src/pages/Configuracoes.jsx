@@ -1,6 +1,49 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, getUser, getToken, setSession } from '../lib/api';
 import { Alerta, Campo, Modal, Skeleton, Spinner, Vazio } from '../components/ui';
+
+/** Edita o nome da própria oficina (o slug é o schema e não muda). */
+function DadosOficina() {
+  const u = getUser();
+  const [nome, setNome] = useState(u?.oficina_nome || '');
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro(''); setOk(''); setSalvando(true);
+    try {
+      const r = await api.atualizarMinhaOficina({ nome });
+      // Atualiza o nome guardado na sessão pra refletir na UI sem re-login.
+      const atual = getUser();
+      if (atual) setSession(getToken(), { ...atual, oficina_nome: r.nome });
+      setOk('Nome da oficina atualizado.');
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <form onSubmit={salvar} className="card p-5">
+      <h2 className="titulo-secao">Dados da oficina</h2>
+      <p className="mb-4 text-xs text-slate-500">
+        Nome que aparece no login e nos relatórios. O identificador interno
+        (slug <code className="font-mono">{u?.oficina_slug}</code>) não muda.
+      </p>
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {ok && <Alerta tipo="ok" onFechar={() => setOk('')}>{ok}</Alerta>}
+      <div className="flex flex-wrap items-end gap-3">
+        <Campo label="Nome da oficina" obrigatorio>
+          <input className="input" value={nome} onChange={(e) => setNome(e.target.value)}
+            required maxLength={120} />
+        </Campo>
+        <button type="submit" className="btn-primary" disabled={salvando || !nome.trim()}>
+          {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Salvar nome'}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 const ROTULO_ESCOPO = { oficina: 'Oficina', pessoal: 'Pessoal', ambos: 'Ambos' };
 const CORES_SUGERIDAS = [
@@ -918,6 +961,8 @@ export default function Configuracoes() {
       </form>
 
       {/* Categorias de despesa — fora do formulário, tem CRUD próprio */}
+      <DadosOficina />
+
       <CategoriasDespesa />
 
       {/* Etapas do Kanban de OS — CRUD próprio */}

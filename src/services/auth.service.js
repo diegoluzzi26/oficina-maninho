@@ -114,6 +114,21 @@ async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
   return rows[0];
 }
 
+/**
+ * Edita dados da PRÓPRIA oficina (só o nome — o slug é o schema e não muda).
+ * Escopado pelo oficina_id do admin logado.
+ */
+async function atualizarMinhaOficina(oficinaId, { nome }) {
+  const n = String(nome || '').trim();
+  if (!n) throw new AppError('Nome da oficina é obrigatório', 422);
+  const { rows } = await db.pool.query(
+    'UPDATE oficinas SET nome = $1 WHERE id = $2 RETURNING id, slug, nome',
+    [n, oficinaId],
+  );
+  if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
+  return rows[0];
+}
+
 async function listarUsuarios(oficinaId) {
   const params = [];
   let where = '';
@@ -129,4 +144,6 @@ async function listarUsuarios(oficinaId) {
   return rows;
 }
 
-module.exports = { login, criarUsuario, atualizarUsuario, listarUsuarios };
+module.exports = {
+  login, criarUsuario, atualizarUsuario, listarUsuarios, atualizarMinhaOficina,
+};
