@@ -61,6 +61,16 @@ async function evolutionRequest(path, { method = 'GET', body } = {}) {
     if (err.name === 'AbortError') {
       throw new AppError('Evolution API não respondeu em 15s', 504);
     }
+    // fetch falhou na camada de rede (container evolution fora, DNS EAI_AGAIN,
+    // conexão recusada): devolve 503 com mensagem clara em vez de vazar um
+    // 500 cru pra tela de Configurações.
+    if (err instanceof TypeError) {
+      throw new AppError(
+        'WhatsApp indisponível: não foi possível falar com a Evolution API. '
+        + 'Verifique se o container evolution está de pé.',
+        503,
+      );
+    }
     throw err;
   } finally {
     clearTimeout(timer);
