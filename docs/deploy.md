@@ -46,8 +46,19 @@ cd frontend && npm run build && cd ..
 ### 2. No servidor — puxar e subir
 
 ```bash
-cd /opt/oficina && git pull && docker compose -f docker-compose.prod.yml up -d --build
+cd /opt/oficina && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+
+**Sempre os dois arquivos `-f`.** O `docker-compose.prod.yml` é um
+*overlay*: ele só sobrescreve campos (ex.: `ports: !override []`). O
+`build:` dos serviços mora no `docker-compose.yml` base. Rodar com
+`-f docker-compose.prod.yml` **sozinho** dá o erro
+`service "web" has neither an image nor a build context specified`.
+Sempre: `-f docker-compose.yml -f docker-compose.prod.yml`.
+
+> Pra não precisar digitar os dois toda vez, dá pra fixar no `.env` do
+> servidor: `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
+> Aí um `docker compose up -d --build` simples já usa o overlay.
 
 **Sempre a stack inteira — nunca nomeie um serviço só.**
 `up -d --build web` sobe apenas o `web` e as dependências dele; como nada
@@ -104,8 +115,8 @@ no deploy.
 Correção:
 
 ```bash
-cd /opt/oficina && docker compose -f docker-compose.prod.yml up -d
-cd /opt/oficina && docker compose -f docker-compose.prod.yml ps
+cd /opt/oficina && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+cd /opt/oficina && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ```
 
 O `oficina-evolution` tem que aparecer `Up`. Se a sessão do WhatsApp já
@@ -118,9 +129,9 @@ Configurações.
 ### Ver o estado e os logs
 
 ```bash
-cd /opt/oficina && docker compose -f docker-compose.prod.yml ps
-cd /opt/oficina && docker compose -f docker-compose.prod.yml logs --tail=50 api
-cd /opt/oficina && docker compose -f docker-compose.prod.yml logs --tail=50 evolution
+cd /opt/oficina && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+cd /opt/oficina && docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 api
+cd /opt/oficina && docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 evolution
 ```
 
 ### Mudança no frontend não aparece
