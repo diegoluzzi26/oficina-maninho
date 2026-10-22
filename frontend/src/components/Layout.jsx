@@ -40,14 +40,20 @@ export default function Layout() {
   const [alertas, setAlertas] = useState(null);
   const [abertoMobile, setAbertoMobile] = useState(false);
   const [assin, setAssin] = useState(null);
+  const [contrato, setContrato] = useState(null);
   const { tema, alternar } = useTema();
 
-  // Status da assinatura da oficina (pra bloquear/avisar). Busca uma vez.
+  // Status de assinatura e contrato da oficina (pra bloquear/avisar).
   useEffect(() => {
     let cancelado = false;
     api.assinaturaMinha().then((a) => !cancelado && setAssin(a)).catch(() => {});
+    api.contratoStatus().then((c) => !cancelado && setContrato(c)).catch(() => {});
     return () => { cancelado = true; };
   }, []);
+
+  function recarregarContrato() {
+    api.contratoStatus().then(setContrato).catch(() => {});
+  }
 
   // Recarrega ao trocar de tela: o contador não pode ficar velho
   // depois que o usuário dá baixa num boleto.
@@ -203,6 +209,8 @@ export default function Layout() {
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
           {assin?.avaliacao?.bloqueada ? (
             <BloqueioAssinatura info={assin} onSair={sair} />
+          ) : contrato?.pendente ? (
+            <AceiteContrato contrato={contrato} onAceito={recarregarContrato} onSair={sair} />
           ) : (
             <>
               {assin?.avaliacao?.em_graca && (
@@ -228,6 +236,56 @@ export default function Layout() {
             Auto Elétrica Maninho · RS-020, 1055 · Gravataí/RS
           </p>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+/** Tela de aceite do contrato / termos de uso (pendente). */
+function AceiteContrato({ contrato, onAceito, onSair }) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const podeAceitar = contrato?.pode_aceitar;
+  const texto = contrato?.contrato?.texto || '';
+  const titulo = contrato?.contrato?.titulo || 'Termos de uso';
+
+  async function aceitar() {
+    setSalvando(true); setErro('');
+    try {
+      await api.aceitarContrato();
+      onAceito();
+    } catch (e) { setErro(e.message); setSalvando(false); }
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl py-8">
+      <div className="card p-6">
+        <h1 className="font-display text-xl font-semibold uppercase tracking-wide text-maninho-800">
+          {titulo}
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {podeAceitar
+            ? 'Leia e aceite para continuar usando o sistema.'
+            : 'Os termos precisam ser aceitos pelo administrador da oficina para liberar o acesso.'}
+        </p>
+        {erro && (
+          <div className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            {erro}
+          </div>
+        )}
+        <div className="mt-4 max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-700">
+          {texto || 'Nenhum texto de contrato publicado.'}
+        </div>
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <button onClick={onSair} className="btn-ghost">Sair</button>
+          {podeAceitar ? (
+            <button onClick={aceitar} className="btn-primary" disabled={salvando}>
+              {salvando ? 'Registrando…' : 'Li e aceito os termos'}
+            </button>
+          ) : (
+            <span className="text-xs text-slate-500">Aguardando o administrador.</span>
+          )}
+        </div>
       </div>
     </div>
   );

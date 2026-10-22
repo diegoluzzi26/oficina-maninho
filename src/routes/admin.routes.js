@@ -3,6 +3,7 @@ const router = require('express').Router();
 const { z } = require('zod');
 const svc = require('../services/provisionamento.service');
 const assinatura = require('../services/assinatura.service');
+const contrato = require('../services/contrato.service');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
 
@@ -45,5 +46,20 @@ router.patch('/oficinas/:id/assinatura',
   h(async (req, res) => {
     res.json(await assinatura.atualizar(req.params.id, req.body));
   }));
+
+// --- Contrato / Termos de uso (super-admin edita o texto) ---
+router.get('/contratos', h(async (_req, res) => {
+  res.json({ atual: await contrato.versaoAtual(), versoes: await contrato.listarVersoes() });
+}));
+
+const contratoBody = z.object({
+  titulo: z.string().min(1).max(160),
+  texto: z.string().min(1).max(50000),
+});
+
+// Publicar versão nova (incrementa o número; obriga re-aceite geral).
+router.post('/contratos', validate({ body: contratoBody }), h(async (req, res) => {
+  res.status(201).json(await contrato.publicarVersao(req.body));
+}));
 
 module.exports = router;

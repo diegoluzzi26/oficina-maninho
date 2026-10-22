@@ -281,6 +281,12 @@ export const api = {
   // --- assinatura da própria oficina ---
   assinaturaMinha: () => request('/assinatura/minha'),
 
+  // --- contrato / termos de uso ---
+  contratoStatus: () => request('/contrato/status'),
+  aceitarContrato: () => request('/contrato/aceitar', { method: 'POST', body: {} }),
+  adminContratos: () => request('/admin/contratos'),
+  adminPublicarContrato: (body) => request('/admin/contratos', { method: 'POST', body }),
+
   // --- configurações (só admin) ---
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),

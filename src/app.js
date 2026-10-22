@@ -56,16 +56,16 @@ app.use('/api/oficinas', require('./routes/oficinas.routes'));
 const requireSuperAdmin = require('./middleware/requireSuperAdmin');
 app.use('/api/admin', auth, requireSuperAdmin, require('./routes/admin.routes'));
 
-// Status da assinatura da própria oficina. Fica FORA do enforcement
-// (exigirAssinatura) pra o front conseguir ler mesmo quando bloqueado.
+// Status da assinatura e do contrato da própria oficina. Ficam FORA do
+// enforcement pra o front ler/aceitar mesmo quando bloqueado/pendente.
 app.use('/api/assinatura', auth, oficinaContext, require('./routes/assinatura.routes'));
+app.use('/api/contrato',   auth, oficinaContext, require('./routes/contrato.routes'));
 
-// Daqui pra baixo, tudo exige token E assinatura em dia. A ordem é:
-//   auth → contexto da oficina → enforcement de assinatura → bloquearBasico.
-// bloquearBasico proíbe exclusões pro papel 'basico'. exigirAssinatura
-// devolve 402 quando a assinatura venceu (super-admin passa sempre).
+// Daqui pra baixo, tudo exige token, assinatura em dia E contrato aceito.
+// Ordem: auth → contexto → assinatura (402) → contrato (403) → bloquearBasico.
 const exigirAssinatura = require('./middleware/exigirAssinatura');
-const protegido = [auth, oficinaContext, exigirAssinatura, bloquearBasico];
+const exigirContrato = require('./middleware/exigirContrato');
+const protegido = [auth, oficinaContext, exigirAssinatura, exigirContrato, bloquearBasico];
 
 app.use('/api/clientes',   ...protegido, require('./routes/clientes.routes'));
 app.use('/api/carros',     ...protegido, require('./routes/carros.routes'));

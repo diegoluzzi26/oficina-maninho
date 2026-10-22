@@ -188,11 +188,62 @@ function FormOficina({ aberto, onFechar, onCriada }) {
   );
 }
 
+function FormContrato({ onFechar, onPublicado }) {
+  const [dados, setDados] = useState(null);
+  const [form, setForm] = useState({ titulo: '', texto: '' });
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    api.adminContratos().then((d) => {
+      setDados(d);
+      setForm({ titulo: d.atual?.titulo || 'Termos de Uso', texto: d.atual?.texto || '' });
+    }).catch((e) => setErro(e.message));
+  }, []);
+
+  async function publicar(e) {
+    e.preventDefault();
+    setErro(''); setSalvando(true);
+    try {
+      await api.adminPublicarContrato({ titulo: form.titulo.trim(), texto: form.texto.trim() });
+      onPublicado();
+    } catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <Modal aberto largura="max-w-2xl" titulo="Contrato / Termos de uso" onFechar={onFechar}>
+      <form onSubmit={publicar} className="space-y-4">
+        {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+        <p className="text-xs text-slate-500">
+          Versão vigente: <strong>v{dados?.atual?.versao ?? '—'}</strong>. Publicar uma
+          versão nova <strong>obriga todas as oficinas a aceitarem de novo</strong>.
+        </p>
+        <Campo label="Título" obrigatorio>
+          <input className="input" value={form.titulo}
+            onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} required maxLength={160} />
+        </Campo>
+        <Campo label="Texto do contrato" obrigatorio>
+          <textarea className="input min-h-[280px] resize-y font-mono text-xs" value={form.texto}
+            onChange={(e) => setForm((f) => ({ ...f, texto: e.target.value }))} required />
+        </Campo>
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onFechar}>Fechar</button>
+          <button type="submit" className="btn-primary" disabled={salvando}>
+            {salvando ? <><Spinner className="h-4 w-4" /> Publicando…</> : 'Publicar nova versão'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function PlataformaOficinas() {
   const [oficinas, setOficinas] = useState(null);
   const [erro, setErro] = useState('');
   const [aberto, setAberto] = useState(false);
   const [editandoAssin, setEditandoAssin] = useState(null);
+  const [contratoAberto, setContratoAberto] = useState(false);
   const [ok, setOk] = useState('');
 
   function carregar() {
@@ -212,9 +263,14 @@ export default function PlataformaOficinas() {
             Provisione novas oficinas no sistema. Cada uma ganha banco próprio e um admin.
           </p>
         </div>
-        <button className="btn-primary" onClick={() => { setOk(''); setAberto(true); }}>
-          + Nova oficina
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => setContratoAberto(true)}>
+            Termos de uso
+          </button>
+          <button className="btn-primary" onClick={() => { setOk(''); setAberto(true); }}>
+            + Nova oficina
+          </button>
+        </div>
       </div>
 
       {ok && <Alerta tipo="ok" onFechar={() => setOk('')}>{ok}</Alerta>}
@@ -265,6 +321,12 @@ export default function PlataformaOficinas() {
           setOk(`Oficina "${o.nome}" criada (em trial de 14 dias). O admin já pode entrar escolhendo a oficina "${o.nome}" no login.`);
           carregar();
         }} />
+
+      {contratoAberto && (
+        <FormContrato
+          onFechar={() => setContratoAberto(false)}
+          onPublicado={() => { setContratoAberto(false); setOk('Nova versão do contrato publicada. As oficinas vão precisar aceitar de novo.'); }} />
+      )}
 
       {editandoAssin && (
         <FormAssinatura oficina={editandoAssin}
