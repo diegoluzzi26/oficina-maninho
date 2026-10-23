@@ -1,5 +1,6 @@
 'use strict';
 const router = require('express').Router();
+const multer = require('multer');
 const { z } = require('zod');
 const svc = require('../services/auth.service');
 const v = require('../validators/schemas');
@@ -46,11 +47,53 @@ router.patch('/usuarios/:id', auth, requireRole('admin'),
     res.json(await svc.atualizarUsuario(req.params.id, req.body, req.user.oficina_id));
   }));
 
-// Editar dados da própria oficina (só nome).
+// Identidade visual da própria oficina (qualquer usuário logado lê:
+// sidebar e impressão da OS usam logo e cores).
+router.get('/oficina', auth,
+  h(async (req, res) => res.json(await svc.identidadeOficina(req.user.oficina_id))));
+
+// Editar dados da própria oficina: nome e cores. Cor null = volta ao padrão.
+const corHex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida (use #rrggbb)').nullable();
 router.patch('/oficina', auth, requireRole('admin'),
-  validate({ body: z.object({ nome: z.string().min(1).max(120) }) }),
+  validate({ body: z.object({
+    nome: z.string().min(1).max(120).optional(),
+    cor_primaria: corHex.optional(),
+    cor_secundaria: corHex.optional(),
+  }) }),
   h(async (req, res) => {
     res.json(await svc.atualizarMinhaOficina(req.user.oficina_id, req.body));
   }));
+
+// Logo da oficina: imagem pequena, guardada no banco (public.oficinas).
+// SVG fica de fora de propósito: é servido sem login e pode carregar script.
+const MIMES_LOGO = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const uploadLogo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!MIMES_LOGO.has(file.mimetype)) {
+      return cb(new AppError(`A logo precisa ser PNG, JPG ou WebP (recebi ${file.mimetype})`, 415));
+    }
+    cb(null, true);
+  },
+});
+
+function erroUploadLogo(err, _req, _res, next) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') return next(new AppError('A logo precisa ter no máximo 1 MB', 413));
+    return next(new AppError(`Falha no upload: ${err.message}`, 400));
+  }
+  next(err);
+}
+
+router.post('/oficina/logo', auth, requireRole('admin'),
+  uploadLogo.single('arquivo'), erroUploadLogo,
+  h(async (req, res) => {
+    if (!req.file) throw new AppError('Envie a imagem no campo "arquivo"', 400);
+    res.json(await svc.salvarLogoOficina(req.user.oficina_id, req.file));
+  }));
+
+router.delete('/oficina/logo', auth, requireRole('admin'),
+  h(async (req, res) => res.json(await svc.removerLogoOficina(req.user.oficina_id))));
 
 module.exports = router;

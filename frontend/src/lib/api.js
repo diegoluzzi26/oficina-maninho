@@ -73,6 +73,23 @@ export const api = {
   criarUsuario: (body) => request('/auth/usuarios', { method: 'POST', body }),
   atualizarUsuario: (id, body) => request(`/auth/usuarios/${id}`, { method: 'PATCH', body }),
   atualizarMinhaOficina: (body) => request('/auth/oficina', { method: 'PATCH', body }),
+  minhaOficina: () => request('/auth/oficina'),
+  removerLogoOficina: () => request('/auth/oficina/logo', { method: 'DELETE' }),
+  // Multipart, igual ao upload de anexo (não passa pelo `request`).
+  async enviarLogoOficina(arquivo) {
+    const fd = new FormData();
+    fd.append('arquivo', arquivo);
+    const token = getToken();
+    const res = await fetch(`${BASE}/auth/oficina/logo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.erro || `Erro ${res.status}`, res.status, data.detalhes);
+    return data;
+  },
+  urlLogoOficina: (slug, versao) => `${BASE}/oficinas/${slug}/logo?v=${versao}`,
 
   dashboard: (params) => request('/relatorios/dashboard', { params }),
   faturamentoSemanal: (params) => request('/relatorios/faturamento/semanal', { params }),

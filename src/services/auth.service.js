@@ -139,16 +139,69 @@ async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
   return rows[0];
 }
 
+// Campos públicos da identidade visual. `logo_versao` muda a cada upload
+// e entra na URL da logo pra furar o cache do navegador.
+const COLUNAS_IDENTIDADE = `id, slug, nome, cor_primaria, cor_secundaria,
+  CASE WHEN logo IS NULL THEN NULL
+       ELSE (extract(epoch FROM logo_atualizada_em) * 1000)::bigint::text END AS logo_versao`;
+
+/** Identidade visual (nome, cores, versão da logo) da própria oficina. */
+async function identidadeOficina(oficinaId) {
+  const { rows } = await db.pool.query(
+    `SELECT ${COLUNAS_IDENTIDADE} FROM oficinas WHERE id = $1`, [oficinaId],
+  );
+  if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
+  return rows[0];
+}
+
 /**
- * Edita dados da PRÓPRIA oficina (só o nome — o slug é o schema e não muda).
+ * Edita dados da PRÓPRIA oficina: nome e cores (o slug é o schema e não
+ * muda). Só os campos enviados mudam; cor `null` volta pro padrão.
  * Escopado pelo oficina_id do admin logado.
  */
-async function atualizarMinhaOficina(oficinaId, { nome }) {
-  const n = String(nome || '').trim();
-  if (!n) throw new AppError('Nome da oficina é obrigatório', 422);
+async function atualizarMinhaOficina(oficinaId, { nome, cor_primaria, cor_secundaria }) {
+  const sets = []; const params = [];
+  if (nome !== undefined) {
+    const n = String(nome || '').trim();
+    if (!n) throw new AppError('Nome da oficina é obrigatório', 422);
+    params.push(n); sets.push(`nome = $${params.length}`);
+  }
+  if (cor_primaria !== undefined) {
+    params.push(cor_primaria && cor_primaria.toLowerCase());
+    sets.push(`cor_primaria = $${params.length}`);
+  }
+  if (cor_secundaria !== undefined) {
+    params.push(cor_secundaria && cor_secundaria.toLowerCase());
+    sets.push(`cor_secundaria = $${params.length}`);
+  }
+  if (!sets.length) throw new AppError('Nada para atualizar', 422);
+
+  params.push(oficinaId);
   const { rows } = await db.pool.query(
-    'UPDATE oficinas SET nome = $1 WHERE id = $2 RETURNING id, slug, nome',
-    [n, oficinaId],
+    `UPDATE oficinas SET ${sets.join(', ')} WHERE id = $${params.length}
+      RETURNING ${COLUNAS_IDENTIDADE}`,
+    params,
+  );
+  if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
+  return rows[0];
+}
+
+/** Grava (ou troca) a logo da própria oficina. Arquivo já validado no upload. */
+async function salvarLogoOficina(oficinaId, { buffer, mimetype }) {
+  const { rows } = await db.pool.query(
+    `UPDATE oficinas SET logo = $1, logo_mime = $2, logo_atualizada_em = now()
+      WHERE id = $3 RETURNING ${COLUNAS_IDENTIDADE}`,
+    [buffer, mimetype, oficinaId],
+  );
+  if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
+  return rows[0];
+}
+
+async function removerLogoOficina(oficinaId) {
+  const { rows } = await db.pool.query(
+    `UPDATE oficinas SET logo = NULL, logo_mime = NULL, logo_atualizada_em = NULL
+      WHERE id = $1 RETURNING ${COLUNAS_IDENTIDADE}`,
+    [oficinaId],
   );
   if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
   return rows[0];
@@ -171,4 +224,5 @@ async function listarUsuarios(oficinaId) {
 
 module.exports = {
   login, criarUsuario, atualizarUsuario, listarUsuarios, atualizarMinhaOficina,
+  identidadeOficina, salvarLogoOficina, removerLogoOficina, COLUNAS_IDENTIDADE,
 };

@@ -1,6 +1,32 @@
 import { useEffect, useState } from 'react';
 import { api, getUser, getToken, setSession } from '../lib/api';
 import { Alerta, Campo, Modal, Skeleton, Spinner, Vazio } from '../components/ui';
+import IdentidadeVisual from '../components/IdentidadeVisual';
+import { publicarIdentidade } from '../lib/oficina';
+
+const ABAS = [
+  { id: 'geral', texto: 'Geral' },
+  { id: 'identidade', texto: 'Identidade visual' },
+];
+
+/** Barra de abas da página. */
+function Abas({ ativa, onChange }) {
+  return (
+    <div role="tablist" className="flex gap-1 border-b border-slate-200">
+      {ABAS.map((a) => (
+        <button key={a.id} type="button" role="tab" aria-selected={ativa === a.id}
+          onClick={() => onChange(a.id)}
+          className={`-mb-px border-b-2 px-4 py-2.5 font-display text-[13px] font-semibold uppercase
+            tracking-[.06em] transition
+            ${ativa === a.id
+              ? 'border-maninho-600 text-maninho-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+          {a.texto}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Edita o nome da própria oficina (o slug é o schema e não muda). */
 function DadosOficina() {
@@ -18,6 +44,7 @@ function DadosOficina() {
       // Atualiza o nome guardado na sessão pra refletir na UI sem re-login.
       const atual = getUser();
       if (atual) setSession(getToken(), { ...atual, oficina_nome: r.nome });
+      publicarIdentidade(r);
       setOk('Nome da oficina atualizado.');
     } catch (err) { setErro(err.message); }
     finally { setSalvando(false); }
@@ -766,6 +793,7 @@ function BlocoConexao({ enabled }) {
 }
 
 export default function Configuracoes() {
+  const [aba, setAba] = useState('geral');
   const [dados, setDados] = useState(null);
   const [form, setForm] = useState({ setup: {}, alerta: {}, meta: {}, followup: {} });
   const [erro, setErro] = useState('');
@@ -810,10 +838,35 @@ export default function Configuracoes() {
     }
   }
 
+  const cabecalho = (
+    <>
+      <div>
+        <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
+          Configurações
+        </h1>
+        <p className="mt-0.5 text-sm text-slate-500">
+          {aba === 'identidade'
+            ? 'Logo e cores da oficina, usadas no login, na barra lateral e na impressão da OS.'
+            : 'Ajuste WhatsApp (Evolution API), meta mensal e alertas internos.'}
+        </p>
+      </div>
+      <Abas ativa={aba} onChange={setAba} />
+    </>
+  );
+
+  if (aba === 'identidade') {
+    return (
+      <div className="space-y-5">
+        {cabecalho}
+        <IdentidadeVisual />
+      </div>
+    );
+  }
+
   if (!dados) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
+      <div className="space-y-5">
+        {cabecalho}
         <Skeleton className="h-[500px]" />
       </div>
     );
@@ -824,14 +877,7 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
-          Configurações
-        </h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Ajuste WhatsApp (Evolution API), meta mensal e alertas internos.
-        </p>
-      </div>
+      {cabecalho}
 
       {/* Status geral */}
       <div className={`card p-4 border-l-4 ${dados.enabled ? 'border-l-emerald-500' : 'border-l-rose-500'}`}>

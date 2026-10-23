@@ -10,6 +10,34 @@ import { Marca, MarcaCompacta, Arco } from './Marca';
 import ResumoDiario from './ResumoDiario';
 import { useTema, ToggleTema } from '../lib/tema';
 import { VERSAO_ROTULO, VERSAO_DETALHE } from '../lib/versao';
+import { useIdentidadeOficina, corTextoSobre, iniciais } from '../lib/oficina';
+
+/** Logo + nome da oficina logada, com a faixa nas 2 cores dela. */
+function OficinaAtual({ ident }) {
+  if (!ident) return null;
+  return (
+    <div className="mt-4 flex items-center gap-2.5 rounded-lg bg-white/[.06] p-2">
+      {ident.logo_url ? (
+        <div className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md bg-white p-1">
+          <img src={ident.logo_url} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      ) : (
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md font-display
+                        text-xs font-extrabold"
+          style={{ backgroundColor: ident.primaria, color: corTextoSobre(ident.primaria) }}>
+          {iniciais(ident.nome)}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-semibold leading-tight text-white" title={ident.nome}>
+          {ident.nome}
+        </p>
+        <div className="mt-1 h-[3px] w-10 rounded-full"
+          style={{ background: `linear-gradient(90deg, ${ident.primaria}, ${ident.secundaria})` }} />
+      </div>
+    </div>
+  );
+}
 
 // paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
 // só admin/atendente enxergam. somenteAdmin restringe ainda mais.
@@ -44,6 +72,7 @@ export default function Layout() {
   const [assin, setAssin] = useState(null);
   const [contrato, setContrato] = useState(null);
   const { tema, alternar } = useTema();
+  const identidade = useIdentidadeOficina();
 
   // Status de assinatura e contrato da oficina (pra bloquear/avisar).
   useEffect(() => {
@@ -118,6 +147,7 @@ export default function Layout() {
         <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-ouro-500 to-transparent" />
         <div className="relative border-b border-white/10 px-5 pb-4 pt-5">
           <Marca variante="claro" tamanho="sm" />
+          <OficinaAtual ident={identidade} />
         </div>
         <div className="relative flex flex-1 flex-col overflow-y-auto p-3">
           <Links />
@@ -184,6 +214,7 @@ export default function Layout() {
                 </button>
               </div>
               <div className="flex flex-1 flex-col overflow-y-auto p-3">
+                <div className="mb-3 [&>div]:mt-0"><OficinaAtual ident={identidade} /></div>
                 <Links />
               </div>
               <div className="border-t border-white/10 p-4">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import CabecalhoImpressao from '../components/CabecalhoImpressao';
 import { dataHora, telefone } from '../lib/format';
 
 const SECOES = [
@@ -36,17 +37,7 @@ export default function ImprimirChecklist() {
 
   return (
     <div className="mx-auto max-w-[210mm] bg-white p-8 text-slate-800 print:p-6">
-      <header className="mb-6 flex items-center justify-between gap-6 border-b border-slate-300 pb-4">
-        <img src={`${import.meta.env.BASE_URL}logo-maninho.svg`} alt="Auto Elétrica Maninho"
-          className="h-14 w-auto" />
-        <div className="text-right text-xs leading-snug text-slate-600">
-          <p className="font-display text-[13px] font-semibold uppercase tracking-wide text-slate-800">
-            Auto Elétrica Maninho
-          </p>
-          <p>RS-020, 1055 · Gravataí/RS</p>
-          <p>Elétrica · Injeção · Ar-condicionado</p>
-        </div>
-      </header>
+      <CabecalhoImpressao />
 
       <div className="mb-5 flex items-baseline justify-between">
         <div>

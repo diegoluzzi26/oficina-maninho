@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { api, setSession } from '../lib/api';
 import { Alerta, Spinner, Campo } from '../components/ui';
 import { Marca, Engrenagem } from '../components/Marca';
-
-/** Iniciais a partir do nome da oficina (até 2 letras). */
-function iniciais(nome = '') {
-  const partes = nome.trim().split(/\s+/).filter(Boolean);
-  return ((partes[0]?.[0] || '') + (partes[1]?.[0] || '')).toUpperCase() || 'OF';
-}
+import { normalizarIdentidade, corTextoSobre, iniciais } from '../lib/oficina';
 
 /**
  * Slot da logo da oficina. Se a oficina tem `logo_url`, mostra a imagem;
- * senão cai num selo com as iniciais + nome. Sem oficina, placeholder.
+ * senão cai num selo com as iniciais + nome nas cores da oficina.
+ * Sem oficina, placeholder.
  */
 function LogoOficina({ oficina }) {
   if (oficina?.logo_url) {
@@ -26,11 +23,13 @@ function LogoOficina({ oficina }) {
   if (oficina) {
     return (
       <div className="flex items-center justify-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-maninho-600
-                        font-display text-xl font-extrabold text-white">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl
+                        font-display text-xl font-extrabold"
+          style={{ backgroundColor: oficina.primaria, color: corTextoSobre(oficina.primaria) }}>
           {iniciais(oficina.nome)}
         </div>
-        <div className="font-display text-lg font-extrabold leading-tight text-maninho-800">
+        <div className="font-display text-lg font-extrabold leading-tight"
+          style={{ color: oficina.primaria }}>
           {oficina.nome}
         </div>
       </div>
@@ -48,6 +47,7 @@ function LogoOficina({ oficina }) {
 export default function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [verSenha, setVerSenha] = useState(false);
   const [oficinaSlug, setOficinaSlug] = useState('');
   const [oficinas, setOficinas] = useState(null);
   const [erro, setErro] = useState('');
@@ -59,7 +59,7 @@ export default function Login() {
   useEffect(() => {
     api.oficinas()
       .then((lista) => {
-        setOficinas(lista);
+        setOficinas(lista.map(normalizarIdentidade));
         if (lista.length === 1) setOficinaSlug(lista[0].slug);
       })
       .catch(() => setOficinas([]));
@@ -129,8 +129,12 @@ export default function Login() {
           </div>
 
           {/* Slot da logo da oficina */}
-          <div className="anima mb-6 flex justify-center">
+          <div className="anima mb-6 flex flex-col items-center">
             <LogoOficina oficina={oficinaSel} />
+            {oficinaSel?.cor_primaria && (
+              <div className="mt-4 h-1 w-16 rounded-full"
+                style={{ background: `linear-gradient(90deg, ${oficinaSel.primaria}, ${oficinaSel.secundaria})` }} />
+            )}
           </div>
 
           <div className="anima mb-6 text-center" style={{ animationDelay: '40ms' }}>
@@ -160,11 +164,24 @@ export default function Login() {
             </Campo>
 
             <Campo label="Senha" obrigatorio>
-              <input type="password" className="input" value={senha} autoComplete="current-password"
-                onChange={(e) => setSenha(e.target.value)} required placeholder="••••••••" />
+              <div className="relative">
+                <input type={verSenha ? 'text' : 'password'} className="input pr-10" value={senha}
+                  autoComplete="current-password"
+                  onChange={(e) => setSenha(e.target.value)} required placeholder="••••••••" />
+                <button type="button" onClick={() => setVerSenha((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center
+                             text-slate-400 transition hover:text-slate-600"
+                  aria-label={verSenha ? 'Esconder senha' : 'Mostrar senha'}
+                  aria-pressed={verSenha} title={verSenha ? 'Esconder senha' : 'Mostrar senha'}>
+                  {verSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </Campo>
 
-            <button type="submit" className="btn-primary w-full py-2.5" disabled={enviando}>
+            <button type="submit" className="btn-primary w-full py-2.5" disabled={enviando}
+              style={oficinaSel?.cor_primaria
+                ? { background: oficinaSel.primaria, color: corTextoSobre(oficinaSel.primaria) }
+                : undefined}>
               {enviando ? <><Spinner className="h-4 w-4" /> Entrando…</> : 'Entrar'}
             </button>
           </form>

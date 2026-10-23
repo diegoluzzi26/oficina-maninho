@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import CabecalhoImpressao from '../components/CabecalhoImpressao';
+import { useIdentidadeOficina } from '../lib/oficina';
 import { brl, data, dataHora, telefone, rotuloForma } from '../lib/format';
 
 /**
@@ -20,6 +22,7 @@ export default function ImprimirOS() {
   const { id } = useParams();
   const [os, setOS] = useState(null);
   const [erro, setErro] = useState('');
+  const oficina = useIdentidadeOficina();
 
   useEffect(() => {
     api.ordem(id).then(setOS).catch((e) => setErro(e.message));
@@ -39,17 +42,7 @@ export default function ImprimirOS() {
   return (
     <div className="mx-auto max-w-[210mm] bg-white p-8 text-slate-800 print:p-6">
       {/* Cabeçalho da oficina */}
-      <header className="mb-6 flex items-center justify-between gap-6 border-b border-slate-300 pb-4">
-        <img src={`${import.meta.env.BASE_URL}logo-maninho.svg`} alt="Auto Elétrica Maninho"
-          className="h-14 w-auto" />
-        <div className="text-right text-xs leading-snug text-slate-600">
-          <p className="font-display text-[13px] font-semibold uppercase tracking-wide text-slate-800">
-            Auto Elétrica Maninho
-          </p>
-          <p>RS-020, 1055 · Gravataí/RS</p>
-          <p>Elétrica · Injeção · Ar-condicionado</p>
-        </div>
-      </header>
+      <CabecalhoImpressao />
 
       {/* Título + número */}
       <div className="mb-5 flex items-baseline justify-between">
@@ -57,7 +50,8 @@ export default function ImprimirOS() {
           <p className="text-xs uppercase tracking-wide text-slate-500">
             {ehPaga ? 'Recibo de pagamento' : 'Ordem de serviço'}
           </p>
-          <h1 className="tnum font-display text-3xl font-bold text-slate-900">
+          <h1 className="tnum font-display text-3xl font-bold text-slate-900"
+            style={oficina?.cor_primaria ? { color: oficina.primaria } : undefined}>
             Nº {os.numero_os}
           </h1>
         </div>
