@@ -5,7 +5,8 @@ import {
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
   Wrench, Settings, Menu, X, FileText, Building2, UserCog, BadgeCheck,
 } from 'lucide-react';
-import { api, getUser, clearSession } from '../lib/api';
+import { api, getUser, getToken, setSession, clearSession } from '../lib/api';
+import { temPermissao, MODULO_DA_ROTA } from '../lib/permissoes';
 import { Marca, MarcaCompacta, Arco } from './Marca';
 import ResumoDiario from './ResumoDiario';
 import { useTema, ToggleTema } from '../lib/tema';
@@ -39,13 +40,13 @@ function OficinaAtual({ ident }) {
   );
 }
 
-// paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
-// só admin/atendente enxergam. somenteAdmin restringe ainda mais.
+// Itens com rota em MODULO_DA_ROTA só aparecem se o admin liberou o módulo
+// pro usuário (Equipe). somenteAdmin restringe ao papel admin.
 // recurso = só aparece se o plano da oficina inclui (src/config/planos.js).
 const MENU = [
   { para: '/', texto: 'Painel', exato: true, Icone: LayoutDashboard },
-  { para: '/agenda', texto: 'Agenda', paraBasico: true, Icone: Calendar },
-  { para: '/ordens', texto: 'Ordens', paraBasico: true, Icone: ClipboardList },
+  { para: '/agenda', texto: 'Agenda', Icone: Calendar },
+  { para: '/ordens', texto: 'Ordens', Icone: ClipboardList },
   { para: '/clientes', texto: 'Clientes', Icone: Users },
   { para: '/despesas', texto: 'Despesas', badge: true, Icone: Receipt },
   { para: '/fornecedores', texto: 'Fornecedores', Icone: Truck },
@@ -71,6 +72,7 @@ export default function Layout() {
   const [abertoMobile, setAbertoMobile] = useState(false);
   const [assin, setAssin] = useState(null);
   const [contrato, setContrato] = useState(null);
+  const [, setPermissoes] = useState(usuario?.permissoes);
   const { tema, alternar } = useTema();
   const identidade = useIdentidadeOficina();
 
@@ -79,6 +81,12 @@ export default function Layout() {
     let cancelado = false;
     api.assinaturaMinha().then((a) => !cancelado && setAssin(a)).catch(() => {});
     api.contratoStatus().then((c) => !cancelado && setContrato(c)).catch(() => {});
+    // Permissões frescas: o admin pode ter mudado desde o login.
+    api.minhasPermissoes().then(({ minhas }) => {
+      if (cancelado) return;
+      setSession(getToken(), { ...getUser(), permissoes: minhas });
+      setPermissoes(minhas);
+    }).catch(() => {});
     return () => { cancelado = true; };
   }, []);
 
@@ -96,10 +104,9 @@ export default function Layout() {
   }, [local.pathname]);
 
   const pendencias = (alertas?.atrasadas.length || 0) + (alertas?.vence_hoje.length || 0);
-  const ehBasico = usuario?.role === 'basico';
   const itens = MENU.filter((m) => {
     if (m.recurso && assin?.recursos && !assin.recursos.includes(m.recurso)) return false;
-    if (ehBasico) return m.paraBasico === true;
+    if (MODULO_DA_ROTA[m.para] && !temPermissao(MODULO_DA_ROTA[m.para])) return false;
     if (m.somenteSuperAdmin) return usuario?.super_admin === true;
     if (m.somenteAdmin) return usuario?.role === 'admin';
     return true;
@@ -252,7 +259,10 @@ export default function Layout() {
                   Regularize com o responsável pra não perder o acesso.
                 </div>
               )}
-              <Outlet />
+              {MODULO_DA_ROTA[local.pathname] && local.pathname !== '/'
+                && !temPermissao(MODULO_DA_ROTA[local.pathname])
+                ? <SemAcesso />
+                : <Outlet />}
             </>
           )}
         </main>
@@ -266,6 +276,23 @@ export default function Layout() {
             Gestão Torque · sua oficina, organizada
           </p>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+/** Tela aberta por link direto sem o módulo liberado. */
+export function SemAcesso() {
+  return (
+    <div className="mx-auto max-w-lg py-10 text-center">
+      <div className="card p-8">
+        <h1 className="font-display text-xl font-semibold uppercase tracking-wide text-maninho-800">
+          Sem acesso a esta área
+        </h1>
+        <p className="mt-2 text-sm text-slate-500">
+          O administrador da oficina não liberou esta tela pro seu usuário.
+          Se precisar dela, peça pra ele ajustar suas permissões em Equipe.
+        </p>
       </div>
     </div>
   );

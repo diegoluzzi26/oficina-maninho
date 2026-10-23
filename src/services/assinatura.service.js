@@ -139,7 +139,7 @@ async function recursoNaOficinaAtual(recurso) {
 }
 
 async function atualizar(oficinaId, campos) {
-  const permit = ['assinatura_status', 'plano', 'trial_fim', 'proximo_vencimento', 'graca_dias'];
+  const permit = ['assinatura_status', 'plano', 'ciclo', 'trial_fim', 'proximo_vencimento', 'graca_dias'];
   const sets = []; const params = [];
   for (const [k, v] of Object.entries(campos)) {
     if (!permit.includes(k) || v === undefined) continue;

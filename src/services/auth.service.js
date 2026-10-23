@@ -5,6 +5,7 @@ const db = require('../config/db');
 const env = require('../config/env');
 const AppError = require('../utils/AppError');
 const planos = require('../config/planos');
+const permissoes = require('../config/permissoes');
 
 /**
  * Login multi-oficina. O usuário informa email + senha e (opcionalmente)
@@ -41,6 +42,9 @@ async function login(email, senha, oficinaSlug) {
   const ok = await bcrypt.compare(senha, user.senha_hash);
   if (!ok) throw generico;
 
+  // Conta o acesso pro painel da plataforma. Falha aqui não impede o login.
+  await registrarAcesso(user).catch((err) => console.error('[acesso]', err.message));
+
   const token = jwt.sign(
     {
       sub: user.id,
@@ -65,8 +69,25 @@ async function login(email, senha, oficinaSlug) {
       oficina_slug: user.oficina_slug,
       oficina_nome: user.oficina_nome,
       super_admin: user.super_admin === true,
+      permissoes: permissoes.efetivas(user),
     },
   };
+}
+
+async function registrarAcesso(user) {
+  await db.pool.query('UPDATE users SET ultimo_acesso_em = now() WHERE id = $1', [user.id]);
+  await db.pool.query(
+    'INSERT INTO acessos_login (oficina_id, user_id) VALUES ($1, $2)', [user.oficina_id, user.id],
+  );
+}
+
+/**
+ * Normaliza a lista de permissões vinda da tela de Equipe: só chaves
+ * conhecidas, sem repetição. `null` = volta ao padrão do papel.
+ */
+function limparPermissoes(lista) {
+  if (lista === null) return null;
+  return [...new Set(lista)].filter((p) => permissoes.TODAS.includes(p));
 }
 
 /**
@@ -95,18 +116,26 @@ async function checarLimiteUsuarios(oficinaId, ignorarId = null) {
   }
 }
 
-async function criarUsuario({ nome, email, senha, role }, oficinaId) {
+const COLUNAS_USUARIO = 'id, nome, email, role, ativo, oficina_id, criado_em, permissoes, ultimo_acesso_em';
+
+/** Linha de usuário + as permissões que valem de fato (padrão do papel ou as escolhidas). */
+function comPermissoes(u) {
+  return { ...u, permissoes_padrao: u.permissoes === null, permissoes: permissoes.efetivas(u) };
+}
+
+async function criarUsuario({ nome, email, senha, role, permissoes: lista }, oficinaId) {
   if (!oficinaId) throw new AppError('Oficina do criador ausente', 400);
   await checarLimiteUsuarios(oficinaId);
   const hash = await bcrypt.hash(senha, 10);
   try {
     const { rows } = await db.query(
-      `INSERT INTO users (nome, email, senha_hash, role, oficina_id)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, nome, email, role, ativo, oficina_id, criado_em`,
-      [nome, email.toLowerCase(), hash, role || 'atendente', oficinaId],
+      `INSERT INTO users (nome, email, senha_hash, role, oficina_id, permissoes)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING ${COLUNAS_USUARIO}`,
+      [nome, email.toLowerCase(), hash, role || 'atendente', oficinaId,
+        lista === undefined ? null : limparPermissoes(lista)],
     );
-    return rows[0];
+    return comPermissoes(rows[0]);
   } catch (err) {
     if (/duplicate|unique/i.test(err.message)) {
       throw new AppError('Já existe usuário com esse e-mail nesta oficina', 409);
@@ -119,8 +148,9 @@ async function criarUsuario({ nome, email, senha, role }, oficinaId) {
  * Atualiza um usuário DA MESMA oficina (oficina_id no WHERE impede mexer em
  * usuário de outra oficina). Só os campos enviados mudam. Senha opcional.
  */
-async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
+async function atualizarUsuario(id, { nome, role, ativo, senha, permissoes: lista }, oficinaId) {
   const sets = []; const params = [];
+  if (lista !== undefined) { params.push(limparPermissoes(lista)); sets.push(`permissoes = $${params.length}`); }
   if (nome !== undefined)  { params.push(nome);  sets.push(`nome = $${params.length}`); }
   if (role !== undefined)  { params.push(role);  sets.push(`role = $${params.length}`); }
   if (ativo !== undefined) { params.push(ativo); sets.push(`ativo = $${params.length}`); }
@@ -132,11 +162,11 @@ async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
   const { rows } = await db.query(
     `UPDATE users SET ${sets.join(', ')}
       WHERE id = $${params.length - 1} AND oficina_id = $${params.length}
-      RETURNING id, nome, email, role, ativo, oficina_id, criado_em`,
+      RETURNING ${COLUNAS_USUARIO}`,
     params,
   );
   if (!rows[0]) throw AppError.notFound('Usuário não encontrado');
-  return rows[0];
+  return comPermissoes(rows[0]);
 }
 
 // Campos públicos da identidade visual. `logo_versao` muda a cada upload
@@ -230,11 +260,11 @@ async function listarUsuarios(oficinaId) {
     where = 'WHERE oficina_id = $1';
   }
   const { rows } = await db.query(
-    `SELECT id, nome, email, role, ativo, oficina_id, criado_em
+    `SELECT ${COLUNAS_USUARIO}
        FROM users ${where} ORDER BY criado_em`,
     params,
   );
-  return rows;
+  return rows.map(comPermissoes);
 }
 
 module.exports = {

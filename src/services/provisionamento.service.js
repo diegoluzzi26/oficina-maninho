@@ -2,6 +2,8 @@
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const planos = require('../config/planos');
+const assinatura = require('./assinatura.service');
 
 /**
  * Provisionamento de oficinas novas (onboarding por admin da plataforma).
@@ -118,18 +120,84 @@ async function criarOficina({ slug, nome, admin }) {
   }
 }
 
+/**
+ * Oficinas com o que o dono da plataforma precisa ver de cada uma:
+ * plano e valor cobrado, situação da assinatura, usuários e acessos.
+ */
 async function listarOficinas() {
   const { rows } = await db.pool.query(
     `SELECT o.id, o.slug, o.nome, o.ativo, o.criado_em,
-            o.assinatura_status, o.plano,
+            o.assinatura_status, o.plano, o.ciclo,
             o.trial_fim::text          AS trial_fim,
             o.proximo_vencimento::text AS proximo_vencimento,
             o.graca_dias,
-            (SELECT count(*) FROM users u WHERE u.oficina_id = o.id)::int AS usuarios
+            CURRENT_DATE::text         AS hoje,
+            (SELECT count(*) FROM users u WHERE u.oficina_id = o.id)::int AS usuarios,
+            (SELECT count(*) FROM users u WHERE u.oficina_id = o.id AND u.ativo)::int AS usuarios_ativos,
+            (SELECT count(*) FROM acessos_login a
+              WHERE a.oficina_id = o.id AND a.criado_em > now() - interval '30 days')::int AS acessos_30d,
+            (SELECT count(*) FROM acessos_login a WHERE a.oficina_id = o.id)::int AS acessos_total,
+            (SELECT max(u.ultimo_acesso_em) FROM users u WHERE u.oficina_id = o.id) AS ultimo_acesso
        FROM oficinas o
       ORDER BY o.criado_em DESC`,
   );
-  return rows;
+  return rows.map((o) => {
+    const p = planos.doPlano(o.plano);
+    const { hoje, ...resto } = o;
+    return {
+      ...resto,
+      valor: o.ciclo === 'anual' ? p.anual : p.mensal,
+      // Quanto a oficina vale por mês, pra somar a receita recorrente.
+      valor_mensal: o.ciclo === 'anual' ? Math.round((p.anual / 12) * 100) / 100 : p.mensal,
+      avaliacao: assinatura.avaliar(o),
+    };
+  });
 }
 
-module.exports = { criarOficina, listarOficinas };
+/** Números gerais da plataforma pro topo do painel do super-admin. */
+async function resumoPlataforma() {
+  const oficinas = await listarOficinas();
+  const por = (st) => oficinas.filter((o) => o.assinatura_status === st);
+  const ativas = por('ativa');
+  const trial = por('trial');
+
+  const { rows: [acessos] } = await db.pool.query(
+    `SELECT count(*) FILTER (WHERE criado_em::date = CURRENT_DATE)::int        AS hoje,
+            count(*) FILTER (WHERE criado_em > now() - interval '30 days')::int AS ultimos_30d
+       FROM acessos_login`,
+  );
+  const { rows: visitasDia } = await db.pool.query(
+    `SELECT d::date::text AS dia, coalesce(sum(v.total), 0)::int AS total
+       FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, interval '1 day') d
+       LEFT JOIN visitas_site v ON v.dia = d::date
+      GROUP BY d ORDER BY d`,
+  );
+
+  return {
+    oficinas: {
+      total: oficinas.length,
+      ativas: ativas.length,
+      trial: trial.length,
+      // Em teste com o fim chegando nos próximos 7 dias: hora de ligar.
+      trial_vencendo: trial.filter((o) => o.avaliacao.dias_restantes != null
+        && !o.avaliacao.em_graca && o.avaliacao.dias_restantes <= 7).length,
+      inadimplentes: por('inadimplente').length,
+      canceladas: por('cancelada').length,
+    },
+    receita: {
+      // Receita recorrente mensal: só quem está pagando (ativa).
+      mensal: Math.round(ativas.reduce((s, o) => s + o.valor_mensal, 0) * 100) / 100,
+      // Se todas em teste virassem clientes no plano atual.
+      potencial_trial: Math.round(trial.reduce((s, o) => s + o.valor_mensal, 0) * 100) / 100,
+      em_atraso: Math.round(por('inadimplente').reduce((s, o) => s + o.valor, 0) * 100) / 100,
+    },
+    acessos,
+    visitas_site: {
+      hoje: visitasDia[visitasDia.length - 1]?.total || 0,
+      ultimos_30d: visitasDia.reduce((s, d) => s + d.total, 0),
+      por_dia: visitasDia,
+    },
+  };
+}
+
+module.exports = { criarOficina, listarOficinas, resumoPlataforma };

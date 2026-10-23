@@ -17,6 +17,11 @@ const h = require('../utils/asyncHandler');
  * e provisionam schemas novos.
  */
 
+// Números gerais: receita, oficinas em teste, acessos e visitas do site.
+router.get('/resumo', h(async (_req, res) => {
+  res.json(await svc.resumoPlataforma());
+}));
+
 router.get('/oficinas', h(async (_req, res) => {
   res.json(await svc.listarOficinas());
 }));
@@ -40,6 +45,7 @@ router.post('/oficinas', validate({ body: criarBody }), h(async (req, res) => {
 const assinaturaBody = z.object({
   assinatura_status: z.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
   plano: z.enum(planos.ORDEM).optional(),
+  ciclo: z.enum(['mensal', 'anual']).optional(),
   trial_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   proximo_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   graca_dias: z.coerce.number().int().min(0).max(90).optional(),

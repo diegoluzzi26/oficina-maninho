@@ -70,6 +70,7 @@ export const api = {
 
   // --- usuários da própria oficina (só admin) ---
   usuarios: () => request('/auth/usuarios'),
+  minhasPermissoes: () => request('/auth/permissoes'),
   criarUsuario: (body) => request('/auth/usuarios', { method: 'POST', body }),
   atualizarUsuario: (id, body) => request(`/auth/usuarios/${id}`, { method: 'PATCH', body }),
   atualizarMinhaOficina: (body) => request('/auth/oficina', { method: 'PATCH', body }),
@@ -292,6 +293,7 @@ export const api = {
 
   // --- plataforma (só super-admin) ---
   adminOficinas: () => request('/admin/oficinas'),
+  adminResumo: () => request('/admin/resumo'),
   adminCriarOficina: (body) => request('/admin/oficinas', { method: 'POST', body }),
   adminAtualizarAssinatura: (id, body) => request(`/admin/oficinas/${id}/assinatura`, { method: 'PATCH', body }),
 

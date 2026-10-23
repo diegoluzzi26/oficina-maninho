@@ -1,10 +1,92 @@
 import { useEffect, useState } from 'react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 import { api } from '../lib/api';
+import { brl, dataHora, semanaCurta } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 
 function dataBR(iso) {
   if (!iso) return '—';
+  // Datas puras (YYYY-MM-DD) sem fuso: senão o dia volta um no Brasil.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.split('-').reverse().join('/');
   return new Date(iso).toLocaleDateString('pt-BR');
+}
+
+/** Cartão de número do topo do painel. */
+function Numero({ titulo, valor, detalhe, destaque }) {
+  return (
+    <div className={`card p-4 ${destaque ? 'border-maninho-300 bg-maninho-50/50' : ''}`}>
+      <p className="label">{titulo}</p>
+      <p className="mt-1 font-display text-[26px] font-semibold leading-tight text-slate-800 tnum">{valor}</p>
+      {detalhe && <p className="mt-0.5 text-xs text-slate-500">{detalhe}</p>}
+    </div>
+  );
+}
+
+/** Resumo da plataforma: receita, oficinas em teste, acessos e visitas do site. */
+function Resumo({ resumo }) {
+  if (!resumo) {
+    return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}</div>;
+  }
+  const { oficinas: o, receita, acessos, visitas_site: v } = resumo;
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Numero destaque titulo="Receita mensal" valor={brl(receita.mensal)}
+          detalhe={`${o.ativas} oficina(s) pagando`} />
+        <Numero titulo="Em período de teste" valor={o.trial}
+          detalhe={o.trial_vencendo
+            ? `${o.trial_vencendo} terminam em até 7 dias · ${brl(receita.potencial_trial)}/mês se fecharem`
+            : `${brl(receita.potencial_trial)}/mês se todas fecharem`} />
+        <Numero titulo="Pagamento atrasado" valor={o.inadimplentes}
+          detalhe={o.inadimplentes ? `${brl(receita.em_atraso)} em aberto` : 'Ninguém atrasado'} />
+        <Numero titulo="Oficinas" valor={o.total}
+          detalhe={`${o.canceladas} cancelada(s)`} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_2fr]">
+        <Numero titulo="Acessos ao sistema" valor={acessos.ultimos_30d}
+          detalhe={`logins nos últimos 30 dias · ${acessos.hoje} hoje`} />
+        <Numero titulo="Visitas no site" valor={v.ultimos_30d}
+          detalhe={`últimos 30 dias · ${v.hoje} hoje`} />
+        <div className="card p-4">
+          <p className="label">Visitas no site por dia</p>
+          <div className="mt-2 h-[72px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={v.por_dia} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                <XAxis dataKey="dia" hide />
+                <Tooltip cursor={{ fill: 'rgba(15,46,77,.06)' }}
+                  labelFormatter={(d) => semanaCurta(d)}
+                  formatter={(n) => [n, 'visitas']} />
+                <Bar dataKey="total" fill="#f97316" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Situação da cobrança em texto curto: dias de teste, vencimento, atraso. */
+function Situacao({ o }) {
+  const a = o.avaliacao || {};
+  if (a.bloqueada) return <span className="text-rose-600">Bloqueada · {a.motivo}</span>;
+  if (o.assinatura_status === 'trial') {
+    if (a.em_graca) return <span className="text-ouro-700">Teste acabou · {a.dias_restantes} dia(s) de graça</span>;
+    if (a.dias_restantes != null) return <span>Teste até {dataBR(o.trial_fim)} · faltam {a.dias_restantes} dia(s)</span>;
+    return <span>Em teste</span>;
+  }
+  if (o.assinatura_status === 'inadimplente') {
+    return (
+      <span className="text-rose-600">
+        Venceu {dataBR(o.proximo_vencimento)}
+        {a.dias_restantes != null && ` · ${a.dias_restantes} dia(s) até bloquear`}
+      </span>
+    );
+  }
+  if (o.assinatura_status === 'ativa') {
+    return <span>Próx. cobrança {dataBR(o.proximo_vencimento)}</span>;
+  }
+  return <span className="text-slate-500">—</span>;
 }
 
 const ASSIN_BADGE = {
@@ -14,7 +96,7 @@ const ASSIN_BADGE = {
   cancelada:    'bg-slate-200 text-slate-700',
 };
 const ASSIN_LABEL = {
-  ativa: 'Ativa', trial: 'Trial', inadimplente: 'Inadimplente', cancelada: 'Cancelada',
+  ativa: 'Ativa', trial: 'Em teste', inadimplente: 'Inadimplente', cancelada: 'Cancelada',
 };
 // Mesmas chaves de src/config/planos.js.
 const PLANO_LABEL = {
@@ -33,6 +115,7 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
   const [form, setForm] = useState({
     assinatura_status: oficina.assinatura_status || 'trial',
     plano: oficina.plano || 'profissional',
+    ciclo: oficina.ciclo || 'mensal',
     trial_fim: oficina.trial_fim || '',
     proximo_vencimento: oficina.proximo_vencimento || '',
     graca_dias: oficina.graca_dias ?? 5,
@@ -48,6 +131,7 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
       await onSalvo({
         assinatura_status: form.assinatura_status,
         plano: form.plano,
+        ciclo: form.ciclo,
         trial_fim: form.trial_fim || null,
         proximo_vencimento: form.proximo_vencimento || null,
         graca_dias: Number(form.graca_dias),
@@ -68,11 +152,19 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
             <option value="cancelada">Cancelada</option>
           </select>
         </Campo>
-        <Campo label="Plano" obrigatorio>
-          <select className="input" value={form.plano} onChange={set('plano')}>
-            {Object.entries(PLANO_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </Campo>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo label="Plano" obrigatorio>
+            <select className="input" value={form.plano} onChange={set('plano')}>
+              {Object.entries(PLANO_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Cobrança" obrigatorio>
+            <select className="input" value={form.ciclo} onChange={set('ciclo')}>
+              <option value="mensal">Mensal</option>
+              <option value="anual">Anual (2 meses grátis)</option>
+            </select>
+          </Campo>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Fim do trial" ajuda="Usado quando status = trial">
             <input type="date" className="input" value={form.trial_fim} onChange={set('trial_fim')} />
@@ -251,6 +343,7 @@ function FormContrato({ onFechar, onPublicado }) {
 
 export default function PlataformaOficinas() {
   const [oficinas, setOficinas] = useState(null);
+  const [resumo, setResumo] = useState(null);
   const [erro, setErro] = useState('');
   const [aberto, setAberto] = useState(false);
   const [editandoAssin, setEditandoAssin] = useState(null);
@@ -260,6 +353,7 @@ export default function PlataformaOficinas() {
   function carregar() {
     setErro('');
     api.adminOficinas().then(setOficinas).catch((e) => setErro(e.message));
+    api.adminResumo().then(setResumo).catch((e) => setErro(e.message));
   }
   useEffect(carregar, []);
 
@@ -268,10 +362,10 @@ export default function PlataformaOficinas() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
-            Plataforma · Oficinas
+            Plataforma
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Provisione novas oficinas no sistema. Cada uma ganha banco próprio e um admin.
+            Como estão as oficinas: pagamento, período de teste e uso do sistema.
           </p>
         </div>
         <div className="flex gap-2">
@@ -287,34 +381,51 @@ export default function PlataformaOficinas() {
       {ok && <Alerta tipo="ok" onFechar={() => setOk('')}>{ok}</Alerta>}
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
+      <Resumo resumo={resumo} />
+
       {!oficinas ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : oficinas.length === 0 ? (
         <Vazio titulo="Nenhuma oficina" descricao="Crie a primeira com o botão acima." />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-2">Nome</th>
-                <th className="px-4 py-2">Slug</th>
-                <th className="px-4 py-2">Usuários</th>
-                <th className="px-4 py-2">Criada em</th>
+                <th className="px-4 py-2">Oficina</th>
                 <th className="px-4 py-2">Plano</th>
+                <th className="px-4 py-2 text-right">Valor</th>
                 <th className="px-4 py-2">Assinatura</th>
+                <th className="px-4 py-2">Situação</th>
+                <th className="px-4 py-2 text-right">Usuários</th>
+                <th className="px-4 py-2 text-right" title="Logins nos últimos 30 dias">Acessos 30d</th>
+                <th className="px-4 py-2">Último acesso</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {oficinas.map((o) => (
-                <tr key={o.id}>
-                  <td className="px-4 py-2 font-semibold text-slate-800">{o.nome}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-slate-600">{o.slug}</td>
-                  <td className="px-4 py-2 tnum">{o.usuarios}</td>
-                  <td className="px-4 py-2 text-slate-600">{dataBR(o.criado_em)}</td>
-                  <td className="px-4 py-2 text-slate-700">{PLANO_LABEL[o.plano] || '—'}</td>
-                  <td className="px-4 py-2"><AssinaturaBadge status={o.assinatura_status} /></td>
-                  <td className="px-4 py-2 text-right">
+                <tr key={o.id} className="align-top">
+                  <td className="px-4 py-2.5">
+                    <p className="font-semibold text-slate-800">{o.nome}</p>
+                    <p className="font-mono text-[11px] text-slate-500">{o.slug} · desde {dataBR(o.criado_em)}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-700">{PLANO_LABEL[o.plano] || '—'}</td>
+                  <td className="px-4 py-2.5 text-right tnum">
+                    <span className="font-semibold text-slate-800">{brl(o.valor)}</span>
+                    <span className="text-xs text-slate-500">/{o.ciclo === 'anual' ? 'ano' : 'mês'}</span>
+                  </td>
+                  <td className="px-4 py-2.5"><AssinaturaBadge status={o.assinatura_status} /></td>
+                  <td className="px-4 py-2.5 text-xs text-slate-600"><Situacao o={o} /></td>
+                  <td className="px-4 py-2.5 text-right tnum">{o.usuarios_ativos}</td>
+                  <td className="px-4 py-2.5 text-right tnum">
+                    {o.acessos_30d}
+                    <span className="block text-[11px] text-slate-400">{o.acessos_total} no total</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-slate-600">
+                    {o.ultimo_acesso ? dataHora(o.ultimo_acesso) : 'Nunca entrou'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
                     <button onClick={() => { setOk(''); setEditandoAssin(o); }}
                       className="rounded px-2 py-1 text-xs font-semibold text-maninho-600 hover:bg-maninho-50">
                       Assinatura

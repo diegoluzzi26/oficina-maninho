@@ -9,6 +9,10 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const AppError = require('../utils/AppError');
 const h = require('../utils/asyncHandler');
+const permissoes = require('../config/permissoes');
+const { carregarPermissoes } = require('../middleware/permissoes');
+const planos = require('../config/planos');
+const db = require('../config/db');
 
 router.post('/login', validate({ body: v.login }), h(async (req, res) => {
   res.json(await svc.login(req.body.email, req.body.senha, req.body.oficina_slug));
@@ -16,13 +20,32 @@ router.post('/login', validate({ body: v.login }), h(async (req, res) => {
 
 router.get('/me', auth, (req, res) => res.json(req.user));
 
+// Módulos que dá pra liberar por usuário + as permissões de quem está logado
+// (o menu usa isto, então mudança feita pelo admin aparece sem relogar).
+router.get('/permissoes', auth, carregarPermissoes, (req, res) => res.json({
+  modulos: permissoes.MODULOS,
+  padrao: permissoes.PADRAO_POR_PAPEL,
+  minhas: req.user.permissoes,
+}));
+
 // Só admin cria usuários — sempre dentro da própria oficina
 router.post('/usuarios', auth, requireRole('admin'), validate({ body: v.criarUsuario }),
   h(async (req, res) => res.status(201).json(
     await svc.criarUsuario(req.body, req.user.oficina_id))));
 
+// Lista da equipe + quanto do limite do plano já foi usado.
 router.get('/usuarios', auth, requireRole('admin'),
-  h(async (req, res) => res.json(await svc.listarUsuarios(req.user.oficina_id))));
+  h(async (req, res) => {
+    const usuarios = await svc.listarUsuarios(req.user.oficina_id);
+    const { rows } = await db.pool.query('SELECT plano FROM oficinas WHERE id = $1', [req.user.oficina_id]);
+    const plano = planos.doPlano(rows[0]?.plano);
+    res.json({
+      usuarios,
+      limite: plano.usuarios,
+      plano: plano.nome,
+      ativos: usuarios.filter((u) => u.ativo).length,
+    });
+  }));
 
 // Editar usuário da própria oficina. Guarda: admin não se auto-desativa
 // nem se auto-rebaixa (evita lock-out da oficina).
@@ -31,6 +54,7 @@ const atualizarUsuarioBody = z.object({
   role: z.enum(['admin', 'atendente', 'basico']).optional(),
   ativo: z.boolean().optional(),
   senha: z.string().min(8).max(100).optional(),
+  permissoes: z.array(z.enum(permissoes.TODAS)).nullable().optional(),
 });
 
 router.patch('/usuarios/:id', auth, requireRole('admin'),

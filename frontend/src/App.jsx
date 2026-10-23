@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { getToken, getUser } from './lib/api';
-import Layout from './components/Layout';
+import { getToken } from './lib/api';
+import { temPermissao, telaInicial } from './lib/permissoes';
+import Layout, { SemAcesso } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
@@ -28,10 +29,9 @@ function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
 }
 
-/** Papel 'basico' vai direto pra Ordens — não enxerga o Painel. */
+/** Quem não tem o Painel liberado vai direto pra primeira tela permitida. */
 function PainelOuOrdens() {
-  const u = getUser();
-  return u?.role === 'basico' ? <Navigate to="/ordens" replace /> : <Dashboard />;
+  return temPermissao('painel') ? <Dashboard /> : <Navigate to={telaInicial()} replace />;
 }
 
 export default function App() {
@@ -64,6 +64,7 @@ export default function App() {
           <Route path="equipe" element={<Usuarios />} />
           <Route path="plano" element={<Plano />} />
           <Route path="plataforma" element={<PlataformaOficinas />} />
+          <Route path="sem-acesso" element={<SemAcesso />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

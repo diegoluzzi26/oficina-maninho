@@ -51,6 +51,9 @@ app.use('/api/webhooks/asaas', require('./routes/asaas.routes'));
 // Login é público
 app.use('/api/auth', require('./routes/auth.routes'));
 
+// Contador de visitas da landing (público)
+app.use('/api/visitas', require('./routes/visitas.routes'));
+
 // Lista pública de oficinas (só o dropdown do login)
 app.use('/api/oficinas', require('./routes/oficinas.routes'));
 
@@ -65,11 +68,16 @@ app.use('/api/assinatura', auth, oficinaContext, require('./routes/assinatura.ro
 app.use('/api/contrato',   auth, oficinaContext, require('./routes/contrato.routes'));
 
 // Daqui pra baixo, tudo exige token, assinatura em dia E contrato aceito.
-// Ordem: auth → contexto → assinatura (402) → contrato (403) → bloquearBasico.
+// Ordem: auth → contexto → assinatura (402) → contrato (403) → permissões
+// do usuário → bloqueio de exclusão de quem não tem `excluir`.
 const exigirAssinatura = require('./middleware/exigirAssinatura');
 const exigirContrato = require('./middleware/exigirContrato');
-const protegido = [auth, oficinaContext, exigirAssinatura, exigirContrato, bloquearBasico];
+const { carregarPermissoes, exigirPermissao: pode } = require('./middleware/permissoes');
+const protegido = [auth, oficinaContext, exigirAssinatura, exigirContrato, carregarPermissoes, bloquearBasico];
 // Recursos fora do núcleo só no plano que os inclui (src/config/planos.js).
+// `pode(modulo)` barra quem o admin não liberou (src/config/permissoes.js).
+// Clientes, OS, catálogo e retornos ficam sem barreira na API: a tela de
+// Ordens e a Agenda consultam esses dados; o menu é que some.
 const exigirRecurso = require('./middleware/exigirRecurso');
 
 app.use('/api/clientes',   ...protegido, require('./routes/clientes.routes'));
@@ -80,13 +88,13 @@ app.use('/api/funcionarios', ...protegido, exigirRecurso('funcionarios'), requir
 app.use('/api/despesas-recorrentes', ...protegido, exigirRecurso('gestao'), require('./routes/despesas-recorrentes.routes'));
 app.use('/api/os',         ...protegido, require('./routes/os.routes'));
 app.use('/api/etapas',     ...protegido, require('./routes/etapas.routes'));
-app.use('/api/relatorios', ...protegido, require('./routes/relatorios.routes'));
-app.use('/api/despesas',     ...protegido, require('./routes/despesas.routes'));
-app.use('/api/fornecedores', ...protegido, require('./routes/fornecedores.routes'));
-app.use('/api/financeiro',   ...protegido, require('./routes/financeiro.routes'));
+app.use('/api/relatorios', ...protegido, pode('painel'), require('./routes/relatorios.routes'));
+app.use('/api/despesas',     ...protegido, pode('despesas'), require('./routes/despesas.routes'));
+app.use('/api/fornecedores', ...protegido, pode('despesas'), require('./routes/fornecedores.routes'));
+app.use('/api/financeiro',   ...protegido, pode('financeiro'), require('./routes/financeiro.routes'));
 app.use('/api/retornos',     ...protegido, exigirRecurso('followup'), require('./routes/retornos.routes'));
-app.use('/api/agendamentos', ...protegido, require('./routes/agendamentos.routes'));
-app.use('/api/followup',     ...protegido, exigirRecurso('followup'), require('./routes/followup.routes'));
+app.use('/api/agendamentos', ...protegido, pode('agenda'), require('./routes/agendamentos.routes'));
+app.use('/api/followup',     ...protegido, pode('followup'), exigirRecurso('followup'), require('./routes/followup.routes'));
 app.use('/api/ia',           ...protegido, exigirRecurso('ia'), require('./routes/ia.routes'));
 app.use('/api/config',       ...protegido, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router

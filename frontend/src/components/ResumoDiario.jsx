@@ -6,6 +6,7 @@ import {
 import { api, getUser } from '../lib/api';
 import { brl, brlCurto, nomeMes } from '../lib/format';
 import { Modal, Skeleton } from './ui';
+import { temPermissao } from '../lib/permissoes';
 
 const AZUL = '#0f2e4d';
 const OURO = '#f97316';
@@ -38,7 +39,7 @@ export default function ResumoDiario() {
 
   useEffect(() => {
     // Papel 'basico' (mecânico/operador) não vê dados financeiros
-    if (usuario?.role === 'basico') return;
+    if (!temPermissao('painel', usuario)) return;
     if (jaViuHoje()) return;
     const hoje = new Date();
     api.painelMes({ ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 })

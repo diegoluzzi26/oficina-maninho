@@ -1,6 +1,7 @@
 'use strict';
 const { z } = require('zod');
 const { toE164 } = require('../utils/phone');
+const { TODAS: PERMISSOES } = require('../config/permissoes');
 
 const uuid = z.string().uuid('Identificador inválido');
 
@@ -37,6 +38,8 @@ const criarUsuario = z.object({
   senha: z.string().min(8, 'Senha deve ter ao menos 8 caracteres'),
   role: z.enum(['admin', 'atendente', 'basico']).default('atendente'),
   oficina_id: z.string().uuid().optional(),
+  // Ausente = padrão do papel (src/config/permissoes.js).
+  permissoes: z.array(z.enum(PERMISSOES)).nullable().optional(),
 });
 
 // ----- clientes -----
