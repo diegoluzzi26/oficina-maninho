@@ -40,7 +40,7 @@ export default function ImprimirOS() {
     <div className="mx-auto max-w-[210mm] bg-white p-8 text-slate-800 print:p-6">
       {/* Cabeçalho da oficina */}
       <header className="mb-6 flex items-center justify-between gap-6 border-b border-slate-300 pb-4">
-        <img src="/logo-maninho.svg" alt="Auto Elétrica Maninho"
+        <img src={`${import.meta.env.BASE_URL}logo-maninho.svg`} alt="Auto Elétrica Maninho"
           className="h-14 w-auto" />
         <div className="text-right text-xs leading-snug text-slate-600">
           <p className="font-display text-[13px] font-semibold uppercase tracking-wide text-slate-800">

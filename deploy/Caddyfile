@@ -1,10 +1,12 @@
 # Caddy fica na frente do sistema em produção. Serve:
-#   {$DOMINIO}          sistema: /api/* → backend Node (container `api`, porta 3000)
-#                                qualquer / → frontend React (container `web`, nginx porta 80)
-#   {$LANDING_DOMINIO}  landing de vendas → container `web` (o nginx separa pelo Host)
-#   www.{$LANDING_DOMINIO} → redireciona pro domínio sem www
+#   {$DOMINIO}          tudo num domínio só:
+#                         /api/* e /health → backend Node (container `api`, porta 3000)
+#                         /app/*           → sistema (container `web`, nginx porta 80)
+#                         /                → landing de vendas (mesmo container `web`)
+#   www.{$DOMINIO}      → redireciona pro domínio sem www
+#   {$DOMINIO_ANTIGO}   → endereço antigo (duckdns) redireciona pro sistema novo
 #
-# Ambos vêm do .env (ex: DOMINIO=app.oficinahub.com.br, LANDING_DOMINIO=oficinahub.com.br).
+# Vêm do .env (ex: DOMINIO=oficinahub.com.br, DOMINIO_ANTIGO=eletricamaninho.duckdns.org).
 # HTTPS grátis via Let's Encrypt, HTTP/3 ativo.
 
 (comum) {
@@ -39,17 +41,16 @@
 		reverse_proxy api:3000
 	}
 
-	# Frontend estático (build do Vite servido pelo nginx do container web)
+	# Landing + sistema (o nginx do container web separa por caminho)
 	handle {
 		reverse_proxy web:80
 	}
 }
 
-{$LANDING_DOMINIO} {
-	import comum
-	reverse_proxy web:80
+www.{$DOMINIO} {
+	redir https://{$DOMINIO}{uri} permanent
 }
 
-www.{$LANDING_DOMINIO} {
-	redir https://{$LANDING_DOMINIO}{uri} permanent
+{$DOMINIO_ANTIGO} {
+	redir https://{$DOMINIO}/app/ permanent
 }

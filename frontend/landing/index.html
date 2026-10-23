@@ -108,8 +108,8 @@ h1,h2,h3{overflow-wrap:break-word}
 .nav-links{display:flex;gap:30px;font-size:15px;color:var(--mudo)}
 .nav-links a:hover{color:var(--creme)}
 .nav-acoes{display:flex;align-items:center;gap:18px}
-.entrar{font-size:15px;font-weight:600;color:var(--mudo)}
-.entrar:hover{color:var(--creme)}
+.entrar{display:inline-flex;align-items:center;padding:10px 20px;border:1px solid rgba(255,244,234,.22);border-radius:999px;font-size:14.5px;font-weight:700;color:var(--creme);white-space:nowrap;transition:background .25s,border-color .25s}
+.entrar:hover{background:rgba(255,244,234,.08);border-color:rgba(255,244,234,.4)}
 .nav .btn{padding:11px 20px;font-size:14.5px}
 
 /* ===== hero ===== */
@@ -474,7 +474,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
       <a href="#duvidas">Dúvidas</a>
     </nav>
     <div class="nav-acoes">
-      <a class="entrar" href="https://app.oficinahub.com.br/login">Entrar</a>
+      <a class="entrar" href="/app/#/login">Entrar</a>
       <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Oficina Hub grátis por 14 dias." href="#">
         <svg><use href="#i-zap"/></svg><span>Testar <span class="longo">grátis</span></span>
       </a>
@@ -513,7 +513,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 
       <div class="palco sobe" style="animation-delay:.35s" aria-label="Prévia do sistema: quadro de ordens de serviço">
         <div class="janela">
-          <div class="janela-topo"><i></i><i></i><i></i><span class="url">app.oficinahub.com.br/kanban</span></div>
+          <div class="janela-topo"><i></i><i></i><i></i><span class="url">oficinahub.com.br/app</span></div>
           <div class="painel">
             <div class="painel-cab"><h4>Pátio de hoje</h4><span class="chip">7 carros</span></div>
             <div class="kanban" id="kanban">

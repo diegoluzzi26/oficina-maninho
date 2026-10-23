@@ -10,6 +10,8 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
 export default defineConfig({
   plugins: [react()],
+  // O sistema mora em /app/ no mesmo domínio da landing (oficinahub.com.br).
+  base: '/app/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

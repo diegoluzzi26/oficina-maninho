@@ -4,8 +4,8 @@
 # Diferenças em relação ao dev:
 #   - db, api, evolution, web não expõem porta no host — só Caddy
 #   - Caddy na frente pegando 80/443 e fazendo HTTPS via Let's Encrypt
-#   - Roteamento: / e /assets/* → web (React), /api/* → api (Node)
-#   - DOMINIO (sistema) e LANDING_DOMINIO (landing de vendas) controlam os certificados do Caddy
+#   - Roteamento: / → landing, /app/ → sistema (ambos no web), /api/* → api (Node)
+#   - DOMINIO (landing em /, sistema em /app/) e DOMINIO_ANTIGO (redireciona) controlam os certificados do Caddy
 
 services:
   db:
@@ -36,8 +36,8 @@ services:
       - "443:443"
       - "443:443/udp"     # HTTP/3
     environment:
-      DOMINIO: "${DOMINIO:?defina DOMINIO no .env, ex app.oficinahub.com.br}"
-      LANDING_DOMINIO: "${LANDING_DOMINIO:?defina LANDING_DOMINIO no .env, ex oficinahub.com.br}"
+      DOMINIO: "${DOMINIO:?defina DOMINIO no .env, ex oficinahub.com.br}"
+      DOMINIO_ANTIGO: "${DOMINIO_ANTIGO:-eletricamaninho.duckdns.org}"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
