@@ -8,8 +8,8 @@ import { brl, brlCurto, mesCurto, periodoMeses, rotuloForma, hojeISO } from '../
 import { Skeleton, Alerta, Vazio } from '../components/ui';
 import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
-const AZUL = '#283090';
-const OURO = '#D4A843';
+const AZUL = '#0f2e4d';
+const OURO = '#f97316';
 const ROSA = '#e11d48';
 const VERDE = '#059669';
 

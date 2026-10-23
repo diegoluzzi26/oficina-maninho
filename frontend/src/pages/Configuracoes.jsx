@@ -74,7 +74,7 @@ function DadosOficina() {
 
 const ROTULO_ESCOPO = { oficina: 'Oficina', pessoal: 'Pessoal', ambos: 'Ambos' };
 const CORES_SUGERIDAS = [
-  '#2B3D8F', '#7c3aed', '#0891b2', '#ea580c', '#D4A843',
+  '#0f2e4d', '#7c3aed', '#0891b2', '#ea580c', '#f97316',
   '#dc2626', '#65a30d', '#db2777', '#0d9488', '#64748b',
 ];
 

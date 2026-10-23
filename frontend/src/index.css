@@ -11,11 +11,11 @@
        discreta o bastante para não competir com o conteúdo. Fica mais
        densa no topo e dissolve conforme desce. */
     background-image:
-      radial-gradient(120% 70% at 78% -10%, rgba(40, 48, 144, .07) 0%, transparent 55%),
+      radial-gradient(120% 70% at 78% -10%, rgba(15, 46, 77, .07) 0%, transparent 55%),
       repeating-linear-gradient(
         100deg,
-        rgba(40, 48, 144, .018) 0px,
-        rgba(40, 48, 144, .018) 1px,
+        rgba(15, 46, 77, .018) 0px,
+        rgba(15, 46, 77, .018) 1px,
         transparent 1px,
         transparent 6px
       );
@@ -27,7 +27,7 @@
   ::selection { @apply bg-maninho-600 text-white; }
 
   :focus-visible {
-    outline: 2px solid #283090;
+    outline: 2px solid #0f2e4d;
     outline-offset: 2px;
     border-radius: 3px;
   }
@@ -131,7 +131,7 @@
   --txt-2: #c4c6d2;  /* texto médio  (slate-700/600) */
   --txt-3: #9a9cab;  /* texto fraco  (slate-500)     */
   --txt-4: #74768a;  /* texto muito fraco (slate-400/300) */
-  --marca: #9aa6ea;  /* azul da marca clareado p/ títulos em fundo escuro */
+  --marca: #7fb0d8;  /* navy da marca clareado p/ títulos em fundo escuro */
 }
 
 [data-tema="escuro"] body {
@@ -165,14 +165,14 @@
 [data-tema="escuro"] .bg-slate-200 { background-color: #363746; }
 [data-tema="escuro"] .bg-maninho-50,
 [data-tema="escuro"] .bg-maninho-50\/40,
-[data-tema="escuro"] .bg-maninho-50\/60 { background-color: rgba(58,72,168,.16); }
-[data-tema="escuro"] .bg-maninho-100 { background-color: rgba(58,72,168,.24); }
+[data-tema="escuro"] .bg-maninho-50\/60 { background-color: rgba(30,78,120,.18); }
+[data-tema="escuro"] .bg-maninho-100 { background-color: rgba(30,78,120,.26); }
 
 /* Hover de fundo (linhas de tabela, botões-fantasma inline) */
 [data-tema="escuro"] .hover\:bg-slate-50:hover { background-color: var(--sup-2); }
 [data-tema="escuro"] .hover\:bg-slate-100:hover { background-color: var(--sup-3); }
 [data-tema="escuro"] .hover\:bg-maninho-50:hover,
-[data-tema="escuro"] .hover\:bg-maninho-50\/60:hover { background-color: rgba(58,72,168,.16); }
+[data-tema="escuro"] .hover\:bg-maninho-50\/60:hover { background-color: rgba(30,78,120,.18); }
 
 /* Texto */
 [data-tema="escuro"] .text-slate-900,

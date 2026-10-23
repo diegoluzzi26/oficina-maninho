@@ -9,12 +9,12 @@ import { brl, brlCurto, nomeMes, telefone, rotuloForma, data } from '../lib/form
 import { Skeleton, Alerta, Vazio, Modal, Spinner } from '../components/ui';
 import { useDensidade, ToggleDensidade } from '../lib/densidade';
 
-const AZUL = '#283090';
-const OURO = '#D4A843';
+const AZUL = '#0f2e4d';
+const OURO = '#f97316';
 const VERDE = '#059669';
 const VERMELHO = '#DC2626';
 
-const CORES_FORMA = ['#283090', '#D4A843', '#059669', '#0EA5E9', '#EC4899', '#F97316', '#7C3AED', '#64748B'];
+const CORES_FORMA = ['#0f2e4d', '#f97316', '#059669', '#0EA5E9', '#EC4899', '#8B5CF6', '#14b8a6', '#64748B'];
 
 function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0, preset, onClick }) {
   const cor = {
@@ -23,27 +23,19 @@ function Kpi({ titulo, valor, sub, tomValor = 'normal', atraso = 0, preset, onCl
     verde: 'text-emerald-600',
     vermelho: 'text-rose-600',
   }[tomValor];
-  // Acento vertical colorido pelo tom — dá identidade e leitura rápida.
-  const acento = {
-    normal: 'bg-slate-300',
-    marca: 'bg-gradient-to-b from-maninho-500 to-maninho-700',
-    verde: 'bg-gradient-to-b from-emerald-400 to-emerald-600',
-    vermelho: 'bg-gradient-to-b from-rose-400 to-rose-600',
-  }[tomValor];
   const clicavel = typeof onClick === 'function';
   const Tag = clicavel ? 'button' : 'div';
   return (
     <Tag onClick={onClick}
-      className={`card anima relative block w-full overflow-hidden text-left ${preset?.kpiPad || 'p-5'} pl-6
-        ${clicavel ? 'cursor-pointer transition hover:-translate-y-0.5 hover:border-maninho-300 hover:shadow-lift'
+      className={`card anima block w-full text-left ${preset?.kpiPad || 'p-5'}
+        ${clicavel ? 'cursor-pointer transition hover:border-maninho-400 hover:shadow-md'
           + ' focus:outline-none focus:ring-2 focus:ring-maninho-600/30' : ''}`}
       style={{ animationDelay: `${atraso}ms` }}>
-      <span className={`absolute inset-y-0 left-0 w-1.5 ${acento}`} aria-hidden="true" />
       <p className="label flex items-center gap-1">
         {titulo}
         {clicavel && <span className="text-maninho-500" aria-hidden>›</span>}
       </p>
-      <p className={`numero mt-2.5 ${preset?.kpiValor || 'text-[34px]'} ${cor}`}>{valor}</p>
+      <p className={`numero mt-2 ${preset?.kpiValor || 'text-[30px]'} ${cor}`}>{valor}</p>
       {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
     </Tag>
   );

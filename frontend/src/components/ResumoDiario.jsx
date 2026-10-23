@@ -7,8 +7,8 @@ import { api, getUser } from '../lib/api';
 import { brl, brlCurto, nomeMes } from '../lib/format';
 import { Modal, Skeleton } from './ui';
 
-const AZUL = '#283090';
-const OURO = '#D4A843';
+const AZUL = '#0f2e4d';
+const OURO = '#f97316';
 const VERDE = '#059669';
 const CINZA = '#94a3b8';
 

@@ -1,4 +1,5 @@
 import { STATUS } from '../lib/format';
+import { Engrenagem } from './Marca';
 
 export function Badge({ status }) {
   const s = STATUS[status] || STATUS.aberta;
@@ -44,10 +45,7 @@ export function Alerta({ tipo = 'erro', children, onFechar }) {
 export function Vazio({ titulo, descricao, acao }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-      <svg viewBox="0 0 64 30" className="mb-1 h-7 w-auto opacity-25" fill="none" aria-hidden="true">
-        <path d="M2 27C10 9 26 2 44 2" stroke="#283090" strokeWidth="5.5" strokeLinecap="round"/>
-        <path d="M20 27C26 15 36 9 48 8" stroke="#283090" strokeOpacity=".5" strokeWidth="4.5" strokeLinecap="round"/>
-      </svg>
+      <Engrenagem className="mb-1 h-9 w-9 opacity-25" engrenagem="#94a3b8" h="#94a3b8" />
       <p className="font-display text-base font-semibold uppercase tracking-wide text-slate-600">{titulo}</p>
       {descricao && <p className="max-w-sm text-sm text-slate-500">{descricao}</p>}
       {acao}
