@@ -123,10 +123,11 @@ function Consultor() {
 // ------------------ Precificação ------------------
 function FaixaPreco({ rotulo, valor, destaque, ajuda }) {
   return (
-    <div className={`rounded-lg border p-3 text-center ${destaque
+    <div className={`min-w-0 rounded-lg border px-2 py-3 text-center ${destaque
       ? 'border-maninho-400 bg-maninho-50' : 'border-slate-200 bg-white'}`}>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
-      <p className={`tnum mt-1 font-display font-bold ${destaque ? 'text-2xl text-maninho-700' : 'text-xl text-slate-800'}`}>
+      <p className={`tnum mt-1 whitespace-nowrap font-display font-bold ${destaque
+        ? 'text-xl text-maninho-700 xl:text-2xl' : 'text-lg text-slate-800 xl:text-xl'}`}>
         {brl(valor)}
       </p>
       <p className="mt-0.5 text-[11px] text-slate-500">{ajuda}</p>
@@ -239,7 +240,8 @@ function Precificar({ servicoInicial }) {
                 {r.tempo_estimado_pela_ia && r.tempo_estimado_min ? ' (estimado pela IA)' : ''}
                 {r.servico.valor_padrao != null && <> · preço atual no catálogo: <strong>{brl(r.servico.valor_padrao)}</strong></>}
               </p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {/* Em lg a coluna do resultado fica estreita (form ao lado): empilha. */}
+              <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
                 <FaixaPreco rotulo="Mínimo" valor={r.preco_minimo} ajuda="abaixo disso dá prejuízo" />
                 <FaixaPreco rotulo="Sugerido" valor={r.preco_sugerido} destaque ajuda="preço justo com margem" />
                 <FaixaPreco rotulo="Premium" valor={r.preco_premium} ajuda="urgência, garantia, complexidade" />
