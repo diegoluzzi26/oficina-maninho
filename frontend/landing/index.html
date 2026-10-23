@@ -422,6 +422,17 @@ section{padding:120px 0;position:relative}
 footer{border-top:1px solid var(--linha);padding:40px 0 120px;color:var(--mudo);font-size:14px}
 footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
 
+/* frase que acende palavra por palavra conforme rola */
+.frase-rola{height:230vh;padding:0;position:relative}
+.frase-rola .fixa{position:sticky;top:0;height:100vh;display:flex;align-items:center}
+.frase-rola p{
+  font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:1.15;
+  font-size:clamp(30px,5vw,64px);color:var(--creme);max-width:20ch;
+}
+.frase-rola .p{opacity:.14;transition:opacity .25s,color .25s}
+.frase-rola .p.on{opacity:1}
+.frase-rola .p.destaque.on{color:var(--laranja)}
+
 /* revelação ao rolar */
 .revela{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.8,.2,1),transform .9s cubic-bezier(.2,.8,.2,1)}
 .revela.visivel{opacity:1;transform:none}
@@ -511,6 +522,9 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .sobe,.revela{opacity:1;transform:none}
+  .frase-rola{height:auto;padding:90px 0}
+  .frase-rola .fixa{position:static;height:auto}
+  .frase-rola .p{opacity:1}
 }
 </style>
 </head>
@@ -660,6 +674,15 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
           <p>Dinheiro entra, peça sai, conta vence. No fim do mês, a conta não fecha e ninguém sabe por quê.</p>
           <div class="agora"><svg><use href="#i-ok"/></svg>Caixa, contas a pagar e receber e DRE claros, sem planilha.</div>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FRASE QUE APARECE AO ROLAR (palavras com * ficam em laranja) ===== -->
+  <section class="frase-rola" id="fraseRola">
+    <div class="fixa">
+      <div class="wrap">
+        <p data-frase="Enquanto você aperta parafuso, o *Gestão *Torque abre a OS, lembra o cliente da *revisão, cobra quem deve e te mostra no fim do mês *quanto *sobrou."></p>
       </div>
     </div>
   </section>
@@ -1030,6 +1053,31 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     else if (y < ultimo - 6) nav.classList.remove('escondida');
     ultimo = y;
   }, { passive: true });
+
+  // Frase grande: cada palavra acende conforme a seção passa pela tela.
+  var fraseSec = document.getElementById('fraseRola');
+  var fraseP = fraseSec.querySelector('[data-frase]');
+  fraseP.setAttribute('aria-label', fraseP.dataset.frase.replace(/\*/g, ''));
+  var palavras = fraseP.dataset.frase.split(' ').map(function (t) {
+    var el = document.createElement('span');
+    el.className = 'p' + (t.charAt(0) === '*' ? ' destaque' : '');
+    el.setAttribute('aria-hidden', 'true');
+    el.textContent = t.replace('*', '');
+    fraseP.appendChild(el);
+    fraseP.appendChild(document.createTextNode(' '));
+    return el;
+  });
+  function acendeFrase() {
+    var caixa = fraseSec.getBoundingClientRect();
+    var curso = caixa.height - innerHeight;
+    // Começa a acender um pouco antes de a frase parar no meio da tela.
+    var prog = Math.min(1, Math.max(0, (-caixa.top + innerHeight * .35) / (curso + innerHeight * .2)));
+    var n = Math.round(prog * palavras.length);
+    palavras.forEach(function (el, i) { el.classList.toggle('on', i < n); });
+  }
+  addEventListener('scroll', acendeFrase, { passive: true });
+  addEventListener('resize', acendeFrase);
+  acendeFrase();
 
   // Revela ao rolar
   var io = new IntersectionObserver(function (es) {
