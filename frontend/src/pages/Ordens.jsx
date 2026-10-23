@@ -477,25 +477,59 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [salvando, setSalvando] = useState(false);
+  // Sinais já recebidos: o fechamento cobra só o restante (total − adiantado).
+  const [adiantado, setAdiantado] = useState(0);
 
   useEffect(() => {
-    if (os) {
-      setLinhas([{ forma: 'dinheiro', valor: String(os.valor_total || '') }]);
-      setPagoEm(hojeISO()); setNotificarRecibo(false);
-      setErro(''); setAviso('');
-    }
+    if (!os) return;
+    const total = Number(os.valor_total || 0);
+    setLinhas([{ forma: 'dinheiro', valor: total ? String(total) : '' }]);
+    setAdiantado(0);
+    setPagoEm(hojeISO()); setNotificarRecibo(false);
+    setErro(''); setAviso('');
+    api.adiantamentosOS(os.id).then((lista) => {
+      const soma = lista.reduce((s, a) => s + Number(a.valor), 0);
+      setAdiantado(soma);
+      const resta = Math.max(0, Number((total - soma).toFixed(2)));
+      setLinhas([{ forma: 'dinheiro', valor: resta ? String(resta) : '' }]);
+    }).catch(() => {});
   }, [os?.id]);
 
   if (!os) return null;
 
+  const total = Number(os.valor_total || 0);
+  const restante = Math.max(0, Number((total - adiantado).toFixed(2)));
+  const quitadaPeloSinal = adiantado > 0 && restante === 0;
   const split = linhas.length > 1;
   const totalPago = linhas.reduce((s, l) => s + (Number(l.valor) || 0), 0);
-  const diferenca = totalPago - Number(os.valor_total);
+  const diferenca = totalPago - restante;
 
+  // Com exatamente 2 formas, mexer no valor da primeira preenche a segunda
+  // com o que falta — o caso comum "parte no PIX, resto no cartão".
   const setLinha = (i, campo, val) =>
-    setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: val } : l)));
+    setLinhas((ls) => {
+      const novas = ls.map((l, j) => (j === i ? { ...l, [campo]: val } : l));
+      if (campo === 'valor' && i === 0 && novas.length === 2) {
+        const resto = Number((restante - (Number(val) || 0)).toFixed(2));
+        novas[1] = { ...novas[1], valor: resto > 0 ? String(resto) : '' };
+      }
+      return novas;
+    });
   const addLinha = () =>
-    setLinhas((ls) => (ls.length >= 5 ? ls : [...ls, { forma: 'pix', valor: '' }]));
+    setLinhas((ls) => {
+      if (ls.length >= 5) return ls;
+      const jaLancado = ls.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+      const resto = Number((restante - jaLancado).toFixed(2));
+      return [...ls, { forma: 'pix', valor: resto > 0 ? String(resto) : '' }];
+    });
+  // Atalho "dividir em 2": metade em cada forma, ajustável depois.
+  const dividirEmDois = () => {
+    const metade = Math.round((restante / 2) * 100) / 100;
+    setLinhas((ls) => [
+      { ...ls[0], valor: String(metade) },
+      { forma: ls[0].forma === 'pix' ? 'cartao_credito' : 'pix', valor: String(Number((restante - metade).toFixed(2))) },
+    ]);
+  };
   const removeLinha = (i) =>
     setLinhas((ls) => (ls.length <= 1 ? ls : ls.filter((_, j) => j !== i)));
 
@@ -503,19 +537,24 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
     e.preventDefault();
     setErro(''); setAviso('');
 
-    for (const l of linhas) {
-      if (!(Number(l.valor) > 0)) {
-        setErro('Cada forma de pagamento precisa de um valor maior que zero.');
-        return;
+    if (!quitadaPeloSinal) {
+      for (const l of linhas) {
+        if (!(Number(l.valor) > 0)) {
+          setErro('Cada forma de pagamento precisa de um valor maior que zero.');
+          return;
+        }
       }
     }
 
     setSalvando(true);
+    // Quitada pelo sinal → fecha com valor 0 (nada novo entra no caixa).
     // 1 forma → mantém o payload antigo (forma_pagamento + valor_pago).
     // 2+ formas → manda o array `pagamentos` (o backend prioriza ele).
-    const payload = split
-      ? { pagamentos: linhas.map((l) => ({ forma: l.forma, valor: Number(l.valor) })), pago_em: pagoEm }
-      : { forma_pagamento: linhas[0].forma, valor_pago: Number(linhas[0].valor), pago_em: pagoEm };
+    const payload = quitadaPeloSinal
+      ? { forma_pagamento: linhas[0].forma, valor_pago: 0, pago_em: pagoEm }
+      : split
+        ? { pagamentos: linhas.map((l) => ({ forma: l.forma, valor: Number(l.valor) })), pago_em: pagoEm }
+        : { forma_pagamento: linhas[0].forma, valor_pago: Number(linhas[0].valor), pago_em: pagoEm };
     try {
       // Vindo do Kanban (etapaId), move pra etapa E dá baixa; senão só muda
       // o status. Nos dois casos o backend registra o pagamento igual.
@@ -542,13 +581,43 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
         {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
         {aviso && <Alerta tipo="aviso" onFechar={() => { setAviso(''); onPago(os); }}>{aviso}</Alerta>}
 
-        <div className="rounded-md bg-maninho-50 p-3 text-center">
-          <p className="text-xs text-slate-500">Total da OS</p>
-          <p className="numero text-2xl text-maninho-700">{brl(os.valor_total)}</p>
-        </div>
+        {adiantado > 0 ? (
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-md bg-slate-50 p-2">
+              <p className="text-[11px] text-slate-500">Total da OS</p>
+              <p className="tnum text-sm font-semibold text-slate-700">{brl(total)}</p>
+            </div>
+            <div className="rounded-md bg-emerald-50 p-2">
+              <p className="text-[11px] text-slate-500">Adiantado</p>
+              <p className="tnum text-sm font-semibold text-emerald-700">− {brl(adiantado)}</p>
+            </div>
+            <div className="rounded-md bg-maninho-50 p-2">
+              <p className="text-[11px] text-slate-500">A receber</p>
+              <p className="numero text-lg text-maninho-700">{brl(restante)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-md bg-maninho-50 p-3 text-center">
+            <p className="text-xs text-slate-500">Total da OS</p>
+            <p className="numero text-2xl text-maninho-700">{brl(total)}</p>
+          </div>
+        )}
 
+        {quitadaPeloSinal ? (
+          <Alerta tipo="sucesso">
+            O adiantamento já cobre o total da OS. Confirme para dar baixa sem novo recebimento.
+          </Alerta>
+        ) : (
         <div className="space-y-2">
-          <p className="label">{split ? 'Formas de pagamento' : 'Forma de pagamento'}</p>
+          <div className="flex items-center justify-between">
+            <p className="label">{split ? 'Formas de pagamento' : 'Forma de pagamento'}</p>
+            {!split && restante > 0 && (
+              <button type="button" onClick={dividirEmDois}
+                className="text-xs font-semibold text-maninho-600 hover:underline">
+                Dividir em 2 formas
+              </button>
+            )}
+          </div>
           {linhas.map((l, i) => (
             <div key={i} className="flex items-center gap-2">
               <select className="input flex-1" value={l.forma}
@@ -568,13 +637,14 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
               )}
             </div>
           ))}
-          {linhas.length < 5 && (
+          {split && linhas.length < 5 && (
             <button type="button" onClick={addLinha}
               className="text-xs font-semibold text-maninho-600 hover:underline">
               + Adicionar outra forma de pagamento
             </button>
           )}
         </div>
+        )}
 
         {split && (
           <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
@@ -587,7 +657,7 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
         {split && Math.abs(diferenca) > 0.005 && (
           <Alerta tipo="aviso">
             {diferenca > 0
-              ? `Recebido ${brl(diferenca)} a mais que o total da OS.`
+              ? `Recebido ${brl(diferenca)} a mais que o valor a receber.`
               : `Pagamento parcial: faltam ${brl(Math.abs(diferenca))}. O saldo fica em aberto.`}
           </Alerta>
         )}
@@ -604,7 +674,7 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
           Enviar recibo por WhatsApp ao cliente
         </label>
 
-        {!split && (
+        {!split && !quitadaPeloSinal && (
           <p className="text-xs text-slate-500">
             Valor menor que o total é aceito (pagamento parcial). O saldo fica em aberto na OS.
           </p>
@@ -911,7 +981,6 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
   }, [os?.id]);
 
   const totalAdiantado = adiantamentos.reduce((s, a) => s + Number(a.valor), 0);
-  const restanteDevido = Math.max(0, Number(os?.valor_total || 0) - totalAdiantado);
 
   async function adicionarAdiantamento() {
     if (!novoAdiant.valor || Number(novoAdiant.valor) <= 0) return;
@@ -1239,17 +1308,40 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
                   Adiantamentos recebidos
                 </p>
-                <p className="text-[11px] text-slate-500">
-                  {adiantamentos.length > 0
-                    ? `Total recebido: ${brl(totalAdiantado)} · Falta receber: ${brl(restanteDevido)}`
-                    : 'Nenhum sinal recebido ainda. Ao fechar, o valor a receber será o total da OS.'}
-                </p>
+                {adiantamentos.length === 0 && !(Number(novoAdiant.valor) > 0) && (
+                  <p className="text-[11px] text-slate-500">
+                    Nenhum sinal recebido ainda. Ao fechar, o valor a receber será o total da OS.
+                  </p>
+                )}
               </div>
               <button type="button" onClick={() => setAddAdiantAberto(!addAdiantAberto)}
                 className="btn-primary px-3 py-1 text-xs">
                 {addAdiantAberto ? 'Cancelar' : '+ Adiantamento'}
               </button>
             </div>
+
+            {(adiantamentos.length > 0 || Number(novoAdiant.valor) > 0) && (() => {
+              // Prévia ao vivo: inclui o valor que está sendo digitado.
+              const digitado = addAdiantAberto ? Number(novoAdiant.valor) || 0 : 0;
+              const adiant = totalAdiantado + digitado;
+              const falta = Math.max(0, Number(os.valor_total || 0) - adiant);
+              return (
+                <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded bg-white p-2">
+                    <p className="text-[11px] text-slate-500">Total da OS</p>
+                    <p className="tnum text-sm font-semibold text-slate-700">{brl(os.valor_total)}</p>
+                  </div>
+                  <div className="rounded bg-white p-2">
+                    <p className="text-[11px] text-slate-500">Adiantado{digitado > 0 ? ' (com este)' : ''}</p>
+                    <p className="tnum text-sm font-semibold text-emerald-700">− {brl(adiant)}</p>
+                  </div>
+                  <div className="rounded bg-white p-2 ring-1 ring-maninho-200">
+                    <p className="text-[11px] text-slate-500">Falta receber</p>
+                    <p className="tnum text-sm font-bold text-maninho-700">{brl(falta)}</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {addAdiantAberto && (
               <div className="mb-3 grid gap-2 rounded bg-white p-3 sm:grid-cols-[110px_140px_140px_auto]">

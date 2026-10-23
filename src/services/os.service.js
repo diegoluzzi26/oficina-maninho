@@ -365,7 +365,17 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
       if (!forma_pagamento) {
         throw new AppError('Informe a forma de pagamento para dar baixa na OS', 422);
       }
-      lista = [{ forma: forma_pagamento, valor: valor_pago ?? Number(atual.rows[0].valor_total) }];
+      // Sem valor informado, o default é o restante devido (total − sinais):
+      // os adiantamentos já entraram no caixa por conta própria, então
+      // valor_pago guarda só o que foi recebido no fechamento.
+      let valor = valor_pago;
+      if (valor == null) {
+        const adiant = await db.query(
+          'SELECT COALESCE(sum(valor), 0)::numeric AS total FROM os_adiantamentos WHERE os_id = $1', [id]);
+        valor = Math.max(Number(atual.rows[0].valor_total) - Number(adiant.rows[0].total), 0);
+      }
+      // Valor zero = OS já quitada pelos adiantamentos: fecha sem parcela.
+      lista = Number(valor) > 0 ? [{ forma: forma_pagamento, valor }] : [];
     }
 
     for (const p of lista) {
@@ -377,10 +387,10 @@ async function mudarStatus(id, novo, dadosPagamento = {}) {
 
     const totalSplit = Number(lista.reduce((s, p) => s + p.valor, 0).toFixed(2));
     // forma "principal" (a de maior valor) mantém a coluna legada útil.
-    const principal = lista.reduce((a, b) => (b.valor > a.valor ? b : a)).forma;
-    // Com split o valor_pago é a soma das partes; sem split respeitamos o
-    // que veio (null cai no default valor_total via COALESCE, como antes).
-    const valorPagoFinal = usaSplit ? totalSplit : (valor_pago ?? null);
+    const principal = lista.length
+      ? lista.reduce((a, b) => (b.valor > a.valor ? b : a)).forma
+      : forma_pagamento;
+    const valorPagoFinal = totalSplit;
 
     await db.withTransaction(async (client) => {
       await client.query(
