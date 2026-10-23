@@ -61,6 +61,26 @@ async function chamarClaude(prompt, { maxTokens = 400, modelo } = {}) {
 }
 
 /**
+ * Nome e cidade da oficina logada, pra personalizar os prompts. Sai do
+ * schema public (tabela oficinas), pelo slug do contexto da requisição.
+ */
+async function perfilOficina() {
+  const { rows } = await db.pool.query(
+    'SELECT nome, cidade, uf, especialidades FROM oficinas WHERE slug = $1',
+    [db.slugAtual()],
+  );
+  const o = rows[0] || {};
+  const local = [o.cidade, o.uf].filter(Boolean).join('/');
+  return {
+    nome: o.nome || 'a oficina',
+    local,
+    especialidades: o.especialidades || null,
+    // "Oficina X" (Cidade/UF) — pronto pra entrar no texto do prompt.
+    rotulo: `"${o.nome || 'a oficina'}"${local ? ` (${local})` : ''}`,
+  };
+}
+
+/**
  * Redige uma mensagem de WhatsApp pra o cliente da oficina.
  * `tipo` orienta o TOM: manutencao/reativacao/promocao/avaliacao/aviso.
  * `contexto` é texto livre com detalhes que a IA deve considerar.
@@ -76,7 +96,8 @@ async function redigirMensagem({ tipo, cliente_nome, veiculo, contexto }) {
     livre:      'mensagem livre baseada no contexto fornecido.',
   }[tipo] || 'mensagem livre baseada no contexto fornecido.';
 
-  const prompt = `Você redige mensagens de WhatsApp para clientes da "Auto Elétrica Maninho" (Gravataí/RS, desde 1997).
+  const of = await perfilOficina();
+  const prompt = `Você redige mensagens de WhatsApp para clientes da oficina ${of.rotulo}.
 
 Objetivo desta mensagem: ${orientacao}
 
@@ -85,9 +106,9 @@ Cliente: ${cliente_nome}${veiculo ? `\nVeículo: ${veiculo}` : ''}${contexto ? `
 Escreva a mensagem em português brasileiro, tom cordial mas direto (como oficina de bairro que conhece o cliente).
 - Máximo 5-6 linhas curtas
 - Use no máximo 2-3 emojis, com moderação
-- Sem "Olá,\\nSou o Diego, da Auto Elétrica Maninho" — vai direto ao ponto
+- Sem "Olá, sou fulano, da ${of.nome}" — vai direto ao ponto
 - Termina convidando pra responder ou marcar
-- Assinatura só se fizer sentido; não repita "Auto Elétrica Maninho" mais de 1 vez
+- Assinatura só se fizer sentido; não repita "${of.nome}" mais de 1 vez
 
 Responda APENAS com o texto da mensagem, sem introdução, sem aspas, sem markdown.`;
 
@@ -123,7 +144,8 @@ async function gerarParecer(dados) {
     comparativo_mes_anterior: dados.comparativo,
   };
 
-  const prompt = `Você é consultor de gestão pra oficinas mecânicas de bairro no Brasil. Analise os números da "Auto Elétrica Maninho" (Gravataí/RS, funcionando desde 1997) e dê um parecer prático.
+  const of = await perfilOficina();
+  const prompt = `Você é consultor de gestão pra oficinas mecânicas de bairro no Brasil. Analise os números da oficina ${of.rotulo} e dê um parecer prático.
 
 Dados do mês:
 ${JSON.stringify(resumo, null, 2)}
@@ -228,7 +250,8 @@ async function coletarContextoCliente(clienteId) {
 async function sugerirFollowup({ cliente_id }) {
   const ctx = await coletarContextoCliente(cliente_id);
 
-  const prompt = `Você ajuda a "Auto Elétrica Maninho" (Gravataí/RS, desde 1997) a decidir o próximo follow-up de WhatsApp para um cliente.
+  const of = await perfilOficina();
+  const prompt = `Você ajuda a oficina ${of.rotulo} a decidir o próximo follow-up de WhatsApp para um cliente.
 
 Histórico do cliente:
 ${JSON.stringify(ctx, null, 2)}
@@ -243,7 +266,7 @@ Escolha o tipo MAIS adequado agora e escreva a mensagem. Regras da mensagem:
 - Português brasileiro, tom de oficina de bairro que conhece o cliente.
 - Máximo 5-6 linhas curtas, no máx 2-3 emojis.
 - Personalize com o nome e, quando fizer sentido, o carro/serviço.
-- Não repita "Auto Elétrica Maninho" mais de 1 vez.
+- Não repita "${of.nome}" mais de 1 vez.
 
 Responda APENAS com um objeto JSON válido, sem markdown, nesta forma exata:
 {
@@ -306,7 +329,8 @@ async function sugerirRecorrencia({ servico_id }) {
   );
   const amostra = statQ.rows[0];
 
-  const prompt = `Você é consultor de oficinas mecânicas. Vamos definir a recorrência de follow-up para o serviço "${servico.nome}" da "Auto Elétrica Maninho".
+  const of = await perfilOficina();
+  const prompt = `Você é consultor de oficinas mecânicas. Vamos definir a recorrência de follow-up para o serviço "${servico.nome}" da oficina ${of.rotulo}.
 
 Dados reais de retorno dos clientes que já fizeram esse serviço:
 ${JSON.stringify({
@@ -348,7 +372,8 @@ Responda APENAS com um objeto JSON válido, sem markdown:
 async function melhorarMensagem({ texto, tipo, contexto }) {
   if (!texto || !texto.trim()) throw new AppError('Texto é obrigatório', 422);
 
-  const prompt = `Reescreva a mensagem de WhatsApp abaixo, da "Auto Elétrica Maninho" (oficina de bairro em Gravataí/RS, desde 1997), deixando-a mais clara, cordial e natural.
+  const of = await perfilOficina();
+  const prompt = `Reescreva a mensagem de WhatsApp abaixo, da oficina ${of.rotulo}, deixando-a mais clara, cordial e natural.
 
 Mensagem atual:
 """
@@ -359,7 +384,7 @@ ${tipo ? `\nObjetivo: ${tipo}.` : ''}${contexto ? `\nContexto: ${contexto}.` : '
 Regras:
 - Mantenha EXATAMENTE quaisquer variáveis entre chaves como {nome_cliente}, {modelo_carro}, {placa}, {servico}, {dias_desde} — não traduza nem remova.
 - Português brasileiro, tom de quem conhece o cliente. Máximo 5-6 linhas curtas, no máx 2-3 emojis.
-- Não repita "Auto Elétrica Maninho" mais de 1 vez.
+- Não repita "${of.nome}" mais de 1 vez.
 
 Responda APENAS com o texto da mensagem, sem aspas, sem markdown, sem introdução.`;
 
