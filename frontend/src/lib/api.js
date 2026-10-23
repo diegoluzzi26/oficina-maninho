@@ -265,6 +265,8 @@ export const api = {
   iaSugerirFollowup: (cliente_id) => request('/ia/sugerir-followup', { method: 'POST', body: { cliente_id } }),
   iaSugerirRecorrencia: (servico_id) => request('/ia/sugerir-recorrencia', { method: 'POST', body: { servico_id } }),
   iaMelhorarMensagem: (body) => request('/ia/melhorar-mensagem', { method: 'POST', body }),
+  iaPrecificar: (body) => request('/ia/precificar', { method: 'POST', body }),
+  iaConversar: (mensagens) => request('/ia/conversar', { method: 'POST', body: { mensagens } }),
 
   /**
    * Baixa o Excel do mês. Como o backend exige JWT, não dá pra usar

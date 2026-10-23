@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import Ordens from './pages/Ordens';
 import Servicos from './pages/Servicos';
+import Assistente from './pages/Assistente';
 import Despesas from './pages/Despesas';
 import Fornecedores from './pages/Fornecedores';
 import Financeiro from './pages/Financeiro';
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="retornos" element={<Retornos />} />
           <Route path="agenda" element={<Agenda />} />
           <Route path="servicos" element={<Servicos />} />
+          <Route path="assistente" element={<Assistente />} />
           <Route path="followup" element={<Followup />} />
           <Route path="followup/regras" element={<FollowupRegras />} />
           <Route path="configuracoes" element={<Configuracoes />} />
