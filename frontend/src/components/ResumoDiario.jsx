@@ -38,7 +38,7 @@ export default function ResumoDiario() {
   const usuario = getUser();
 
   useEffect(() => {
-    // Papel 'basico' (mecânico/operador) não vê dados financeiros
+    // Sem o Painel liberado, o usuário não vê dados financeiros
     if (!temPermissao('painel', usuario)) return;
     if (jaViuHoje()) return;
     const hoje = new Date();
