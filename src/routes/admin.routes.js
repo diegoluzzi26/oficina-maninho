@@ -4,7 +4,10 @@ const { z } = require('zod');
 const svc = require('../services/provisionamento.service');
 const assinatura = require('../services/assinatura.service');
 const contrato = require('../services/contrato.service');
+const asaas = require('../services/asaas.service');
 const planos = require('../config/planos');
+const db = require('../config/db');
+const AppError = require('../utils/AppError');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
 
@@ -61,6 +64,35 @@ const contratoBody = z.object({
 // Publicar versão nova (incrementa o número; obriga re-aceite geral).
 router.post('/contratos', validate({ body: contratoBody }), h(async (req, res) => {
   res.status(201).json(await contrato.publicarVersao(req.body));
+}));
+
+// --- Cobrança via Asaas (Fase B) ---
+// Cria cliente + assinatura recorrente no Asaas pra uma oficina. O status
+// passa a ser atualizado pelos webhooks de pagamento.
+const cobrancaBody = z.object({
+  cpf_cnpj: z.string().min(11).max(18),
+  ciclo: z.enum(['MONTHLY', 'YEARLY']).default('MONTHLY'),
+});
+
+router.post('/oficinas/:id/cobranca', validate({ body: cobrancaBody }), h(async (req, res) => {
+  if (!asaas.configurado()) {
+    throw new AppError('Asaas não configurado — defina ASAAS_API_KEY no .env', 503);
+  }
+  const of = (await db.pool.query(
+    `SELECT o.id, o.nome, o.plano, o.trial_fim::text AS trial_fim,
+            (SELECT u.email FROM users u
+              WHERE u.oficina_id = o.id AND u.role = 'admin' AND u.ativo
+              ORDER BY u.criado_em LIMIT 1) AS email
+       FROM oficinas o WHERE o.id = $1`, [req.params.id])).rows[0];
+  if (!of) throw AppError.notFound('Oficina não encontrada');
+  if (!of.email) throw new AppError('Oficina sem admin com e-mail pra cobrar', 422);
+
+  const prox = of.trial_fim || new Date().toISOString().slice(0, 10);
+  const r = await asaas.criarClienteEAssinatura({
+    oficinaId: of.id, nome: of.nome, email: of.email, cpfCnpj: req.body.cpf_cnpj,
+    plano: of.plano, ciclo: req.body.ciclo, proximoVencimento: prox,
+  });
+  res.status(201).json(r);
 }));
 
 module.exports = router;

@@ -49,6 +49,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       IA_MODELO: ${IA_MODELO:-}
       IA_MODELO_ANALISE: ${IA_MODELO_ANALISE:-}
+      # Cobrança (Asaas). Sem a chave, a cobrança automática fica desligada.
+      # ASAAS_BASE_URL: sandbox por default; em prod use https://api.asaas.com/v3
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_BASE_URL: ${ASAAS_BASE_URL:-}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
       # Origens permitidas pelo CORS. Vazio em dev = aceita qualquer.
       # Em prod, listar frontend Vercel + custom domain, ex:
       # "https://oficina-maninho.vercel.app,*.vercel.app,https://sistema.dominio.com.br"

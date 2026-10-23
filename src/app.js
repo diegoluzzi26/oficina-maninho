@@ -45,6 +45,9 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOStrin
 // WhatsApp entra primeiro: o webhook não pode exigir JWT.
 app.use('/api/whatsapp', require('./routes/whatsapp.routes'));
 
+// Webhook de cobrança do Asaas — sem JWT (autenticado por token do Asaas).
+app.use('/api/webhooks/asaas', require('./routes/asaas.routes'));
+
 // Login é público
 app.use('/api/auth', require('./routes/auth.routes'));
 
