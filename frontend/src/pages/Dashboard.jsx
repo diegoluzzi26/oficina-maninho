@@ -283,7 +283,8 @@ export default function Dashboard() {
     let cancelado = false;
     setCarregando(true); setErro('');
 
-    Promise.all([api.painelMes(ref), api.retornosDoMes(ref)])
+    // Retornos só existem no plano com follow-up (403 nos demais → lista vazia).
+    Promise.all([api.painelMes(ref), api.retornosDoMes(ref).catch(() => [])])
       .then(([p, r]) => {
         if (cancelado) return;
         setPainel(p); setRetornos(r);
