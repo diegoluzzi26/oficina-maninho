@@ -48,9 +48,12 @@ export default {
         },
       },
       fontFamily: {
+        // Marca Gestão Torque — só no wordmark e na tela de login
         marca: ['"Syne"', 'system-ui', 'sans-serif'],
-        display: ['"Syne"', 'system-ui', 'sans-serif'],
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+        'marca-texto': ['"DM Sans"', 'system-ui', 'sans-serif'],
+        // Condensada industrial para títulos e números: cara de oficina
+        display: ['"Oswald"', 'Impact', 'sans-serif'],
+        sans: ['"Public Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       borderRadius: {

@@ -24,11 +24,11 @@ function LogoOficina({ oficina }) {
     return (
       <div className="flex items-center justify-center gap-3">
         <div className="flex h-14 w-14 items-center justify-center rounded-xl
-                        font-display text-xl font-extrabold"
+                        font-marca text-xl font-extrabold"
           style={{ backgroundColor: oficina.primaria, color: corTextoSobre(oficina.primaria) }}>
           {iniciais(oficina.nome)}
         </div>
-        <div className="font-display text-lg font-extrabold leading-tight"
+        <div className="font-marca text-lg font-extrabold leading-tight"
           style={{ color: oficina.primaria }}>
           {oficina.nome}
         </div>
@@ -83,7 +83,7 @@ export default function Login() {
   const oficinaSel = oficinas?.find((o) => o.slug === oficinaSlug) || null;
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen font-marca-texto lg:grid-cols-[1.05fr_1fr]">
       {/* ---------- Painel da plataforma (Gestão Torque) ---------- */}
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-maninho-700 via-maninho-800 to-painel-950 lg:block">
         {/* Engrenagem gigante como marca d'água */}
@@ -99,14 +99,14 @@ export default function Login() {
           <Marca variante="claro" tamanho="md" />
 
           <div>
-            <p className="max-w-md font-display text-[40px] font-extrabold leading-[1.1] tracking-[-.02em] text-white">
+            <p className="max-w-md font-marca text-[40px] font-extrabold leading-[1.1] tracking-[-.02em] text-white">
               Gestão completa<br />da sua oficina,<br />
               <span className="text-ouro-500">num lugar só.</span>
             </p>
             <div className="mt-7 flex flex-wrap gap-2.5">
               {['Ordens de serviço', 'Financeiro', 'Revisão no WhatsApp', 'Kanban do pátio'].map((s) => (
                 <span key={s}
-                  className="rounded-full border border-white/15 px-3.5 py-1.5 font-display
+                  className="rounded-full border border-white/15 px-3.5 py-1.5 font-marca
                              text-[11px] uppercase tracking-[.12em] text-white/70">
                   {s}
                 </span>
@@ -114,7 +114,7 @@ export default function Login() {
             </div>
           </div>
 
-          <p className="font-display text-[10.5px] uppercase tracking-[.2em] text-white/35">
+          <p className="font-marca text-[10.5px] uppercase tracking-[.2em] text-white/35">
             Gestão Torque · plataforma de gestão para oficinas
           </p>
         </div>
@@ -138,7 +138,7 @@ export default function Login() {
           </div>
 
           <div className="anima mb-6 text-center" style={{ animationDelay: '40ms' }}>
-            <h1 className="font-display text-xl font-bold text-maninho-800">Bem-vindo de volta</h1>
+            <h1 className="font-marca text-xl font-bold text-maninho-800">Bem-vindo de volta</h1>
             <p className="mt-1 text-sm text-slate-500">Entre com seu usuário para continuar.</p>
           </div>
 
