@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Oficina Hub — Sistema para oficina mecânica com WhatsApp automático</title>
+<title>Gestão Torque — Sistema para oficina mecânica com WhatsApp automático</title>
 <meta name="description" content="Ordem de serviço, orçamento, Kanban, financeiro e lembrete de revisão automático no WhatsApp. Teste grátis por 14 dias, sem cartão e sem taxa de implantação." />
 <meta name="theme-color" content="#16121B" />
 <link rel="icon" type="image/svg+xml" href="favicon-vortice.svg" />
@@ -11,11 +11,11 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
 <!-- Open Graph (preview no WhatsApp, Facebook, Instagram). Troque o domínio se mudar. -->
-<meta property="og:title" content="Oficina Hub — sua oficina no controle, o cliente voltando sozinho" />
+<meta property="og:title" content="Gestão Torque — sua oficina no controle, o cliente voltando sozinho" />
 <meta property="og:description" content="OS, orçamento, financeiro e lembrete de revisão automático no WhatsApp. 14 dias grátis." />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="https://oficinahub.com.br" />
-<meta property="og:image" content="https://oficinahub.com.br/og-image.png" />
+<meta property="og:url" content="https://gestaotorque.com.br" />
+<meta property="og:image" content="https://gestaotorque.com.br/og-image.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -437,6 +437,15 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
   .alterna button{padding:9px 13px;font-size:14px}
   .alterna .ganha{font-size:9.5px;padding:2px 6px}
   .final .btn{width:100%;white-space:normal;padding:17px 20px!important;font-size:16.5px!important}
+  .logo{font-size:19px;gap:8px}
+  .logo svg{width:28px;height:28px}
+  .logo span{white-space:nowrap}
+  .nav-acoes{gap:10px}
+  .entrar{padding:9px 15px;font-size:14px}
+}
+/* Celular estreito: o "Testar" do topo sai (tem o botão flutuante e o do hero), fica o Entrar */
+@media (max-width:440px){
+  .nav .btn-zap{display:none}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -463,9 +472,9 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 
 <header class="nav" id="nav">
   <div class="wrap">
-    <a href="#topo" class="logo" aria-label="Oficina Hub — início">
+    <a href="#topo" class="logo" aria-label="Gestão Torque — início">
       <svg style="color:#fff"><use href="#vortice"/></svg>
-      <span><b>Oficina</b> <em>Hub</em></span>
+      <span><b>Gestão</b> <em>Torque</em></span>
     </a>
     <nav class="nav-links" aria-label="Seções">
       <a href="#recursos">Recursos</a>
@@ -475,7 +484,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     </nav>
     <div class="nav-acoes">
       <a class="entrar" href="/app/#/login">Entrar</a>
-      <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Oficina Hub grátis por 14 dias." href="#">
+      <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Gestão Torque grátis por 14 dias." href="#">
         <svg><use href="#i-zap"/></svg><span>Testar <span class="longo">grátis</span></span>
       </a>
     </div>
@@ -496,10 +505,10 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
         <p class="lead sobe" style="animation-delay:.3s">
           Ordem de serviço, orçamento, agenda e financeiro num lugar só — e o cliente
           <strong style="color:var(--creme)">recebendo lembrete de revisão no WhatsApp sozinho</strong>.
-          Você cuida do carro, o Oficina Hub cuida do resto.
+          Você cuida do carro, o Gestão Torque cuida do resto.
         </p>
         <div class="hero-ctas sobe" style="animation-delay:.45s">
-          <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Oficina Hub grátis por 14 dias." href="#">
+          <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Gestão Torque grátis por 14 dias." href="#">
             <svg><use href="#i-zap"/></svg>Quero testar 14 dias grátis
           </a>
           <a class="btn btn-linha" href="#planos">Ver planos a partir de R$ 59</a>
@@ -513,7 +522,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 
       <div class="palco sobe" style="animation-delay:.35s" aria-label="Prévia do sistema: quadro de ordens de serviço">
         <div class="janela">
-          <div class="janela-topo"><i></i><i></i><i></i><span class="url">oficinahub.com.br/app</span></div>
+          <div class="janela-topo"><i></i><i></i><i></i><span class="url">gestaotorque.com.br/app</span></div>
           <div class="painel">
             <div class="painel-cab"><h4>Pátio de hoje</h4><span class="chip">7 carros</span></div>
             <div class="kanban" id="kanban">
@@ -643,7 +652,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
       <div class="revela">
         <span class="kicker" style="color:var(--zap)">O recurso que paga o sistema</span>
         <h2 style="margin-top:20px">O cliente volta<br>sem você ligar.</h2>
-        <p class="lead" style="margin-top:22px">Todo dia o Oficina Hub monta a lista de quem está perto da revisão. Você confere e a mensagem sai pelo WhatsApp da oficina. Um carro que volta por mês já paga a mensalidade.</p>
+        <p class="lead" style="margin-top:22px">Todo dia o Gestão Torque monta a lista de quem está perto da revisão. Você confere e a mensagem sai pelo WhatsApp da oficina. Um carro que volta por mês já paga a mensalidade.</p>
         <ul class="lista-check">
           <li><svg><use href="#i-ok"/></svg><span><b>Lembrete de revisão</b> calculado pela última visita de cada cliente.</span></li>
           <li><svg><use href="#i-ok"/></svg><span><b>Retorno e pós-serviço</b>: pergunta se ficou tudo certo e puxa a avaliação.</span></li>
@@ -719,7 +728,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
             <li class="nao"><svg><use href="#i-x"/></svg>WhatsApp automático</li>
             <li class="nao"><svg><use href="#i-x"/></svg>DRE e despesas recorrentes</li>
           </ul>
-          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Essencial do Oficina Hub." href="#">Começar no Essencial</a>
+          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Essencial do Gestão Torque." href="#">Começar no Essencial</a>
         </article>
 
         <article class="plano top revela d1">
@@ -736,7 +745,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
             <li><svg><use href="#i-ok"/></svg>Despesas recorrentes, fornecedores e DRE</li>
             <li><svg><use href="#i-ok"/></svg>Funcionários e equipe</li>
           </ul>
-          <a class="btn btn-zap" data-zap="Oi! Quero testar o plano Profissional do Oficina Hub (com WhatsApp automático)." href="#"><svg><use href="#i-zap"/></svg>Testar 14 dias grátis</a>
+          <a class="btn btn-zap" data-zap="Oi! Quero testar o plano Profissional do Gestão Torque (com WhatsApp automático)." href="#"><svg><use href="#i-zap"/></svg>Testar 14 dias grátis</a>
         </article>
 
         <article class="plano revela d2">
@@ -750,7 +759,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
             <li><svg><use href="#i-ok"/></svg>Recursos de inteligência artificial</li>
             <li><svg><use href="#i-ok"/></svg>Suporte prioritário</li>
           </ul>
-          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Completo do Oficina Hub." href="#">Falar sobre o Completo</a>
+          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Completo do Gestão Torque." href="#">Falar sobre o Completo</a>
         </article>
       </div>
 
@@ -770,7 +779,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
       </div>
       <div class="faq revela">
         <details><summary>Preciso instalar alguma coisa?<span class="mais"></span></summary>
-          <p>Não. O Oficina Hub roda no navegador: computador do balcão, notebook, tablet ou celular. Seus dados ficam na nuvem, com backup.</p></details>
+          <p>Não. O Gestão Torque roda no navegador: computador do balcão, notebook, tablet ou celular. Seus dados ficam na nuvem, com backup.</p></details>
         <details><summary>O WhatsApp é o número da minha oficina mesmo?<span class="mais"></span></summary>
           <p>Sim. Nos planos Profissional e Completo você conecta o WhatsApp da oficina lendo um QR Code, igual ao WhatsApp Web. O cliente recebe a mensagem do número que ele já conhece.</p></details>
         <details><summary>O teste grátis pede cartão?<span class="mais"></span></summary>
@@ -792,7 +801,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
         <svg class="vortice" style="color:#fff"><use href="#vortice"/></svg>
         <h2>Bora organizar essa oficina?</h2>
         <p>Chama no WhatsApp, a gente libera seu teste de 14 dias e te ajuda a deixar tudo pronto. Sem cartão, sem taxa, sem enrolação.</p>
-        <a class="btn btn-zap" style="font-size:18px;padding:19px 32px" data-zap="Oi! Quero organizar minha oficina com o Oficina Hub. Como começo o teste grátis?" href="#">
+        <a class="btn btn-zap" style="font-size:18px;padding:19px 32px" data-zap="Oi! Quero organizar minha oficina com o Gestão Torque. Como começo o teste grátis?" href="#">
           <svg><use href="#i-zap"/></svg>Chamar no WhatsApp agora
         </a>
       </div>
@@ -802,9 +811,9 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 
 <footer>
   <div class="wrap">
-    <a href="#topo" class="logo" style="font-size:19px"><svg style="color:#fff;width:28px;height:28px"><use href="#vortice"/></svg><span><b>Oficina</b> <em>Hub</em></span></a>
-    <span>© <span id="ano">2026</span> Oficina Hub · Sistema de gestão para oficinas mecânicas</span>
-    <a href="#" data-zap="Oi! Tenho uma dúvida sobre o Oficina Hub." class="mono" style="color:var(--creme)">(51) 98037-9695</a>
+    <a href="#topo" class="logo" style="font-size:19px"><svg style="color:#fff;width:28px;height:28px"><use href="#vortice"/></svg><span><b>Gestão</b> <em>Torque</em></span></a>
+    <span>© <span id="ano">2026</span> Gestão Torque · Sistema de gestão para oficinas mecânicas</span>
+    <a href="#" data-zap="Oi! Tenho uma dúvida sobre o Gestão Torque." class="mono" style="color:var(--creme)">(51) 98037-9695</a>
   </div>
 </footer>
 
@@ -815,7 +824,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     <b>Quer ver o sistema rodando? 👋</b>
     Chama aqui que a gente te mostra em 5 minutos e libera seu teste grátis.
   </div>
-  <a class="zap-botao" id="zapBotao" data-zap="Oi! Vi o site do Oficina Hub e quero saber mais." href="#" aria-label="Falar no WhatsApp">
+  <a class="zap-botao" id="zapBotao" data-zap="Oi! Vi o site do Gestão Torque e quero saber mais." href="#" aria-label="Falar no WhatsApp">
     <span class="rosto"><svg><use href="#i-zap"/></svg></span>
     <span class="rotulo">Fale com a gente</span>
     <span class="ponto">1</span>

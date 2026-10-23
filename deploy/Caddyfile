@@ -6,7 +6,7 @@
 #   www.{$DOMINIO}      → redireciona pro domínio sem www
 #   {$DOMINIO_ANTIGO}   → endereço antigo (duckdns) redireciona pro sistema novo
 #
-# Vêm do .env (ex: DOMINIO=oficinahub.com.br, DOMINIO_ANTIGO=eletricamaninho.duckdns.org).
+# Vêm do .env (ex: DOMINIO=gestaotorque.com.br, DOMINIO_ANTIGO=eletricamaninho.duckdns.org).
 # HTTPS grátis via Let's Encrypt, HTTP/3 ativo.
 
 (comum) {
