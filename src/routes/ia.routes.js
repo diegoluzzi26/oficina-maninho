@@ -78,4 +78,40 @@ router.post('/melhorar-mensagem', validate({ body: melhorarBody }),
     res.json({ mensagem });
   }));
 
+// --- Assistente de gestão ---
+
+// Sugere preço de mão de obra (mínimo/sugerido/premium). Não grava nada.
+const precificarBody = z.object({
+  servico_id: z.string().uuid().optional(),
+  descricao: z.string().max(200).optional(),
+  tempo_min: z.coerce.number().int().min(1).max(6000).optional(),
+  veiculo: z.string().max(120).optional(),
+  observacao: z.string().max(500).optional(),
+  horas_produtivas_mes: z.coerce.number().int().min(1).max(10000).optional(),
+}).refine((b) => b.servico_id || (b.descricao && b.descricao.trim()), {
+  message: 'Informe o serviço ou uma descrição',
+});
+
+router.post('/precificar', validate({ body: precificarBody }),
+  h(async (req, res) => {
+    res.json(await svc.precificarServico(req.body));
+  }));
+
+// Conversa com o consultor. O histórico vem do frontend; a última
+// mensagem tem que ser do usuário (exigência da API do Claude).
+const conversarBody = z.object({
+  mensagens: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(4000),
+  })).min(1).max(30)
+    .refine((m) => m[m.length - 1].role === 'user', { message: 'A última mensagem deve ser do usuário' }),
+});
+
+router.post('/conversar', validate({ body: conversarBody }),
+  h(async (req, res) => {
+    const painel = await relatorios.painelMes({});
+    const resposta = await svc.conversar(req.body, painel);
+    res.json({ resposta });
+  }));
+
 module.exports = router;

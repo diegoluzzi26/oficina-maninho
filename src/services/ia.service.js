@@ -31,9 +31,19 @@ function chaveOuFalha() {
   return chave;
 }
 
-async function chamarClaude(prompt, { maxTokens = 400, modelo } = {}) {
+// Modelos antigos que não aceitam output_config.effort (dão 400).
+const SEM_ESFORCO = /haiku-4|sonnet-4-5|claude-3/;
+
+/**
+ * `esforco` (low|medium|high) controla quanto o modelo pensa antes de
+ * responder. Nos modelos novos o raciocínio é ligado por padrão e os
+ * tokens dele contam no max_tokens — por isso quem passa esforço deve
+ * dar folga no maxTokens, senão a resposta sai vazia.
+ */
+async function chamarClaude(prompt, { maxTokens = 400, modelo, system, messages, esforco } = {}) {
   const chave = chaveOuFalha();
   const modeloFinal = modelo || process.env.IA_MODELO || MODELO_DEFAULT;
+  const comEsforco = esforco && !SEM_ESFORCO.test(modeloFinal);
 
   const res = await fetch(ENDPOINT, {
     method: 'POST',
@@ -45,7 +55,9 @@ async function chamarClaude(prompt, { maxTokens = 400, modelo } = {}) {
     body: JSON.stringify({
       model: modeloFinal,
       max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
+      ...(system ? { system } : {}),
+      ...(comEsforco ? { output_config: { effort: esforco } } : {}),
+      messages: messages || [{ role: 'user', content: prompt }],
     }),
   });
 
@@ -55,8 +67,13 @@ async function chamarClaude(prompt, { maxTokens = 400, modelo } = {}) {
     throw new AppError(`IA indisponível (HTTP ${res.status})`, 502);
   }
   const data = await res.json();
-  const texto = data?.content?.[0]?.text?.trim();
-  if (!texto) throw new AppError('IA devolveu resposta vazia', 502);
+  // A resposta pode vir com bloco de raciocínio (thinking) antes do texto.
+  const texto = (data?.content || [])
+    .filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+  if (!texto) {
+    console.error('[ia] resposta sem texto:', data?.stop_reason);
+    throw new AppError('IA devolveu resposta vazia', 502);
+  }
   return texto;
 }
 
@@ -392,6 +409,195 @@ Responda APENAS com o texto da mensagem, sem aspas, sem markdown, sem introduç�
   return nova.trim();
 }
 
+// Jornada de referência pro custo/hora: 22 dias × 8h, com ~70% do tempo
+// realmente vendido (o resto é diagnóstico, espera de peça, limpeza…).
+const HORAS_MES_POR_MECANICO = 176;
+const EFICIENCIA_PADRAO = 0.7;
+
+/**
+ * Custo da hora da oficina, calculado no banco (não pela IA):
+ * média das despesas pagas da oficina nos 3 últimos meses fechados,
+ * dividida pelas horas produtivas do mês. Sem `horasProdutivasMes`,
+ * estima pelos funcionários ativos (mínimo 1).
+ */
+async function custoHoraOficina(horasProdutivasMes) {
+  const [despQ, funcQ] = await Promise.all([
+    db.query(
+      `SELECT COALESCE(sum(valor), 0)::numeric / 3 AS media_mensal
+         FROM vw_despesas
+        WHERE status = 'paga' AND escopo = 'oficina'
+          AND pago_em >= date_trunc('month', now()) - interval '3 months'
+          AND pago_em <  date_trunc('month', now())`,
+    ),
+    db.query('SELECT count(*)::int AS n FROM funcionarios WHERE ativo'),
+  ]);
+  const despesaMensal = Number(Number(despQ.rows[0].media_mensal || 0).toFixed(2));
+  const mecanicos = Math.max(1, funcQ.rows[0].n);
+  const horas = horasProdutivasMes
+    || Math.round(mecanicos * HORAS_MES_POR_MECANICO * EFICIENCIA_PADRAO);
+  return {
+    despesa_media_mensal: despesaMensal,
+    funcionarios_ativos: funcQ.rows[0].n,
+    horas_produtivas_mes: horas,
+    horas_estimadas: !horasProdutivasMes,
+    custo_hora: horas > 0 ? Number((despesaMensal / horas).toFixed(2)) : 0,
+  };
+}
+
+/**
+ * Sugere o preço de mão de obra de um serviço. Os números que dá pra
+ * calcular (custo/hora, custo mínimo, histórico cobrado) saem do banco;
+ * a IA só posiciona o preço em 3 faixas e explica. Peças ficam de fora:
+ * na OS elas são itens separados. Não grava nada.
+ */
+async function precificarServico({ servico_id, descricao, tempo_min, veiculo, observacao, horas_produtivas_mes }) {
+  let servico = null;
+  if (servico_id) {
+    const q = await db.query(
+      'SELECT id, nome, descricao, valor_padrao, tempo_estimado_min FROM servicos WHERE id = $1',
+      [servico_id],
+    );
+    if (!q.rows[0]) throw AppError.notFound('Serviço não encontrado');
+    servico = q.rows[0];
+  }
+  const nome = servico?.nome || String(descricao || '').trim();
+  if (!nome) throw new AppError('Informe o serviço ou uma descrição', 422);
+  const tempo = Number(tempo_min) || servico?.tempo_estimado_min || null;
+
+  // Histórico do que já foi cobrado nos últimos 12 meses (pelo id do
+  // catálogo ou, pra serviço avulso, pelo nome exato).
+  const [custo, histQ, of] = await Promise.all([
+    custoHoraOficina(horas_produtivas_mes),
+    db.query(
+      `SELECT count(*)::int AS vezes,
+              min(os.valor_unit)::numeric AS minimo,
+              round(percentile_cont(0.5) WITHIN GROUP (ORDER BY os.valor_unit)::numeric, 2) AS mediana,
+              max(os.valor_unit)::numeric AS maximo
+         FROM os_servicos os
+         JOIN ordens_servico o ON o.id = os.os_id
+        WHERE o.status IN ('paga','finalizada')
+          AND o.aberta_em >= now() - interval '12 months'
+          AND ($1::uuid IS NOT NULL AND os.servico_id = $1
+               OR lower(os.nome_servico) = lower($2))`,
+      [servico?.id || null, nome],
+    ),
+    perfilOficina(),
+  ]);
+  const historico = histQ.rows[0];
+  const custoMinimo = tempo ? Number((custo.custo_hora * tempo / 60).toFixed(2)) : null;
+
+  const prompt = `Você é consultor de precificação para oficinas mecânicas no Brasil. Ajude a oficina ${of.rotulo}${of.especialidades ? ` (especialidades: ${of.especialidades})` : ''} a definir o preço de MÃO DE OBRA de um serviço. Peças são cobradas à parte e não entram no preço.
+
+Serviço: ${nome}${servico?.descricao ? `\nDescrição: ${servico.descricao}` : ''}${veiculo ? `\nVeículo: ${veiculo}` : ''}${observacao ? `\nObservações: ${observacao}` : ''}
+
+Dados calculados da oficina:
+${JSON.stringify({
+    preco_atual_catalogo: servico ? Number(servico.valor_padrao) : null,
+    tempo_estimado_min: tempo,
+    custo_hora_oficina: custo.custo_hora,
+    custo_minimo_mao_de_obra: custoMinimo,
+    despesa_media_mensal: custo.despesa_media_mensal,
+    horas_produtivas_mes: custo.horas_produtivas_mes,
+    horas_produtivas_estimadas: custo.horas_estimadas,
+    historico_12_meses: {
+      vezes_cobrado: historico.vezes,
+      minimo: historico.minimo && Number(historico.minimo),
+      mediana: historico.mediana && Number(historico.mediana),
+      maximo: historico.maximo && Number(historico.maximo),
+    },
+  }, null, 2)}
+
+Defina 3 preços de mão de obra em reais:
+- preco_minimo: abaixo disso a oficina perde dinheiro (nunca abaixo do custo_minimo_mao_de_obra, quando houver).
+- preco_sugerido: preço justo de mercado pra uma oficina de bairro na região, com margem saudável.
+- preco_premium: pra quando houver garantia estendida, urgência ou complexidade maior.
+Se não houver tempo estimado, estime você e diga isso. Se a despesa mensal vier zerada, ignore o custo e use referência de mercado, avisando na justificativa.
+
+Responda APENAS com um objeto JSON válido, sem markdown:
+{
+  "preco_minimo": 0,
+  "preco_sugerido": 0,
+  "preco_premium": 0,
+  "tempo_estimado_min": 0,
+  "justificativa": "2-3 frases explicando os números",
+  "dicas": ["até 3 dicas curtas pra vender melhor esse serviço ou justificar o preço ao cliente"]
+}`;
+
+  const modelo = process.env.IA_MODELO_ANALISE || MODELO_ANALISE_DEFAULT;
+  const s = extrairJson(await chamarClaude(prompt, { maxTokens: 4000, modelo, esforco: 'low' }));
+
+  // Arredonda, garante a ordem mínimo ≤ sugerido ≤ premium e não deixa
+  // o mínimo ficar abaixo do custo calculado.
+  const num = (v) => Math.max(0, Math.round(Number(v) || 0));
+  let [min, sug, prem] = [num(s.preco_minimo), num(s.preco_sugerido), num(s.preco_premium)]
+    .sort((a, b) => a - b);
+  if (custoMinimo && min < custoMinimo) min = Math.ceil(custoMinimo);
+  sug = Math.max(sug, min);
+  prem = Math.max(prem, sug);
+
+  return {
+    servico: servico ? { id: servico.id, nome: servico.nome, valor_padrao: Number(servico.valor_padrao) } : { nome },
+    tempo_estimado_min: tempo || num(s.tempo_estimado_min) || null,
+    tempo_estimado_pela_ia: !tempo,
+    custo: { ...custo, custo_minimo_mao_de_obra: custoMinimo },
+    historico: {
+      vezes: historico.vezes,
+      minimo: historico.minimo && Number(historico.minimo),
+      mediana: historico.mediana && Number(historico.mediana),
+      maximo: historico.maximo && Number(historico.maximo),
+    },
+    preco_minimo: min,
+    preco_sugerido: sug,
+    preco_premium: prem,
+    justificativa: String(s.justificativa || '').trim(),
+    dicas: Array.isArray(s.dicas) ? s.dicas.slice(0, 3).map((d) => String(d).trim()).filter(Boolean) : [],
+  };
+}
+
+/**
+ * Consultor de gestão em formato de conversa. Sem estado no servidor:
+ * o frontend manda o histórico a cada pergunta. O retrato da oficina
+ * (números do mês + custo/hora) vai no system prompt, pra IA responder
+ * com base nos dados reais e não em conselho genérico.
+ */
+async function conversar({ mensagens }, painel) {
+  const [of, custo] = await Promise.all([perfilOficina(), custoHoraOficina()]);
+  const retrato = {
+    referencia: painel.referencia,
+    receita: painel.receita,
+    despesa: painel.despesa,
+    lucro: painel.lucro,
+    projecao_fechamento: painel.projecao_fechamento,
+    meta: painel.meta,
+    qtd_os: painel.qtd_os,
+    ticket_medio: painel.ticket_medio,
+    clientes_atendidos: painel.clientes_atendidos,
+    desconto_total_mes: painel.desconto_total_mes,
+    em_aberto: painel.em_aberto,
+    top_servicos: painel.top_servicos,
+    comparativo_mes_anterior: painel.comparativo,
+    custo_hora_oficina: custo,
+  };
+
+  const system = `Você é o consultor de gestão da oficina ${of.rotulo}${of.especialidades ? `, especialidades: ${of.especialidades}` : ''}. Quem conversa com você é o dono ou gerente.
+
+Ajude com administração de oficina mecânica: precificação, margem, fluxo de caixa, controle de despesas, produtividade da equipe, captação e retenção de clientes, atendimento, estoque de peças, garantia e organização do dia a dia.
+
+Números atuais da oficina (use quando forem relevantes pra pergunta):
+${JSON.stringify(retrato, null, 2)}
+
+Regras:
+- Português brasileiro, direto e prático, como um consultor experiente que conhece oficina de bairro.
+- Respostas curtas (até ~250 palavras), com passos concretos. Use listas quando ajudar.
+- Cite os números da oficina quando sustentarem o conselho; não invente dados que não estão aqui.
+- Pode usar markdown simples: ## títulos, **negrito** e listas com "- ".
+- Assuntos jurídicos, tributários ou trabalhistas: dê a orientação geral e recomende confirmar com contador ou advogado.
+- Se a pergunta fugir de gestão da oficina, responda em uma frase e traga a conversa de volta.`;
+
+  const modelo = process.env.IA_MODELO_ANALISE || MODELO_ANALISE_DEFAULT;
+  return chamarClaude(null, { system, messages: mensagens, maxTokens: 4000, modelo, esforco: 'low' });
+}
+
 async function status() {
   return {
     configurada: !!process.env.ANTHROPIC_API_KEY,
@@ -403,4 +609,5 @@ async function status() {
 module.exports = {
   redigirMensagem, gerarParecer, status,
   sugerirFollowup, sugerirRecorrencia, melhorarMensagem,
+  precificarServico, conversar,
 };
