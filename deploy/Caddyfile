@@ -1,27 +1,14 @@
 # Caddy fica na frente do sistema em produção. Serve:
-#   /api/*       → backend Node (container `api`, porta 3000)
-#   qualquer /   → frontend React (container `web`, nginx porta 80)
+#   {$DOMINIO}          sistema: /api/* → backend Node (container `api`, porta 3000)
+#                                qualquer / → frontend React (container `web`, nginx porta 80)
+#   {$LANDING_DOMINIO}  landing de vendas → container `web` (o nginx separa pelo Host)
+#   www.{$LANDING_DOMINIO} → redireciona pro domínio sem www
 #
-# {$DOMINIO} vem do .env (ex: autoeletricamaninho.com.br).
+# Ambos vêm do .env (ex: DOMINIO=app.oficinahub.com.br, LANDING_DOMINIO=oficinahub.com.br).
 # HTTPS grátis via Let's Encrypt, HTTP/3 ativo.
 
-{$DOMINIO} {
+(comum) {
 	encode gzip zstd
-
-	# Healthcheck (usado no smoke test do deploy)
-	handle /health {
-		reverse_proxy api:3000
-	}
-
-	# API do sistema (inclui webhook do WhatsApp, upload de fotos, tudo)
-	handle /api/* {
-		reverse_proxy api:3000
-	}
-
-	# Frontend estático (build do Vite servido pelo nginx do container web)
-	handle {
-		reverse_proxy web:80
-	}
 
 	# Cabeçalhos básicos de segurança
 	header {
@@ -37,4 +24,32 @@
 		output stdout
 		format console
 	}
+}
+
+{$DOMINIO} {
+	import comum
+
+	# Healthcheck (usado no smoke test do deploy)
+	handle /health {
+		reverse_proxy api:3000
+	}
+
+	# API do sistema (inclui webhook do WhatsApp, upload de fotos, tudo)
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Frontend estático (build do Vite servido pelo nginx do container web)
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+{$LANDING_DOMINIO} {
+	import comum
+	reverse_proxy web:80
+}
+
+www.{$LANDING_DOMINIO} {
+	redir https://{$LANDING_DOMINIO}{uri} permanent
 }

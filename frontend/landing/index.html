@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Oficina Hub — Sistema para oficina mecânica com WhatsApp automático</title>
+<meta name="description" content="Ordem de serviço, orçamento, Kanban, financeiro e lembrete de revisão automático no WhatsApp. Teste grátis por 14 dias, sem cartão e sem taxa de implantação." />
+<meta name="theme-color" content="#16121B" />
+<link rel="icon" type="image/svg+xml" href="favicon-vortice.svg" />
+<link rel="icon" type="image/x-icon" href="favicon.ico" sizes="any" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+<!-- Open Graph (preview no WhatsApp, Facebook, Instagram). Troque o domínio se mudar. -->
+<meta property="og:title" content="Oficina Hub — sua oficina no controle, o cliente voltando sozinho" />
+<meta property="og:description" content="OS, orçamento, financeiro e lembrete de revisão automático no WhatsApp. 14 dias grátis." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://oficinahub.com.br" />
+<meta property="og:image" content="https://oficinahub.com.br/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<!--
+  RASTREAMENTO DOS ANÚNCIOS — cole aqui os códigos oficiais quando tiver os IDs:
+  1) Meta Pixel (Facebook/Instagram): Gerenciador de Eventos > Pixel > "Instalar código manualmente".
+  2) Google tag (Google Ads / GA4): Google Ads > Metas > Conversões > "Instalar a tag".
+  Os botões de WhatsApp já disparam fbq('track','Lead') e gtag('event','generate_lead')
+  sozinhos assim que esses códigos estiverem na página.
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+
+<style>
+:root{
+  --grafite:#16121b;
+  --grafite-2:#1f1a24;
+  --grafite-3:#2a2331;
+  --linha:rgba(255,244,234,.09);
+  --linha-forte:rgba(255,244,234,.18);
+  --creme:#fff4ea;
+  --texto:#efe6dd;
+  --mudo:#a89cae;
+  --roxo:#6e44ff;
+  --roxo-claro:#8b68ff;
+  --coral:#ff5a36;
+  --coral-claro:#ff8068;
+  --zap:#25d366;
+  --zap-escuro:#128c4b;
+  --raio:18px;
+  --display:'Syne',sans-serif;
+  --corpo:'DM Sans',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--grafite);color:var(--texto);font-family:var(--corpo);
+  font-size:17px;line-height:1.6;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+img,svg{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* grão de fundo: dá textura de chão de oficina sem pesar */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:100;opacity:.07;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.wrap{width:min(1200px,100% - 32px);margin-inline:auto}
+.mono{font-family:var(--mono);letter-spacing:.02em}
+.kicker{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--coral-claro);
+  display:inline-flex;align-items:center;gap:10px;
+}
+.kicker::before{content:"";width:22px;height:2px;background:currentColor}
+h1,h2,h3{font-family:var(--display);color:var(--creme);line-height:1.02;letter-spacing:-.035em}
+h2{font-size:clamp(30px,5.2vw,64px);font-weight:800}
+h1,h2,h3{overflow-wrap:break-word}
+.lead{color:var(--mudo);font-size:clamp(17px,1.6vw,19px);max-width:56ch}
+
+/* ===== botões ===== */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  padding:16px 26px;border-radius:999px;font-weight:700;font-size:16.5px;
+  transition:transform .25s cubic-bezier(.2,.9,.3,1.4),box-shadow .25s,background .25s;
+  white-space:nowrap;
+}
+.btn svg{width:20px;height:20px;flex-shrink:0}
+.btn-zap{background:var(--zap);color:#062b15;box-shadow:0 10px 30px -8px rgba(37,211,102,.55),inset 0 -3px 0 rgba(0,0,0,.15)}
+.btn-zap:hover{transform:translateY(-3px);box-shadow:0 18px 40px -10px rgba(37,211,102,.7),inset 0 -3px 0 rgba(0,0,0,.15)}
+.btn-linha{border:1.5px solid var(--linha-forte);color:var(--creme)}
+.btn-linha:hover{border-color:var(--creme);transform:translateY(-3px)}
+.btn-coral{background:var(--coral);color:#fff;box-shadow:0 10px 30px -10px rgba(255,90,54,.7),inset 0 -3px 0 rgba(0,0,0,.15)}
+.btn-coral:hover{transform:translateY(-3px)}
+
+/* ===== navegação ===== */
+.nav{position:sticky;top:0;z-index:50;transition:background .3s,border-color .3s;border-bottom:1px solid transparent}
+.nav.rolou{background:rgba(22,18,27,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-color:var(--linha)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;height:72px;gap:20px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--display);font-size:23px;letter-spacing:-.055em;color:#fff}
+.logo svg{width:36px;height:36px}
+.logo b{font-weight:700}
+.logo em{font-style:normal;font-weight:800;color:var(--coral-claro)}
+.nav-links{display:flex;gap:30px;font-size:15px;color:var(--mudo)}
+.nav-links a:hover{color:var(--creme)}
+.nav-acoes{display:flex;align-items:center;gap:18px}
+.entrar{font-size:15px;font-weight:600;color:var(--mudo)}
+.entrar:hover{color:var(--creme)}
+.nav .btn{padding:11px 20px;font-size:14.5px}
+
+/* ===== hero ===== */
+.hero{position:relative;padding:56px 0 90px;isolation:isolate}
+main{overflow-x:clip}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;filter:blur(90px);z-index:-1;pointer-events:none}
+.hero::before{width:620px;height:620px;background:rgba(110,68,255,.30);top:-160px;right:-120px}
+.hero::after{width:420px;height:420px;background:rgba(255,90,54,.18);bottom:-60px;left:-160px}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:56px;align-items:center}
+.hero h1{font-size:clamp(40px,4.7vw,61px);font-weight:800;margin:22px 0 26px}
+.hero h1 .riscado{position:relative;color:var(--mudo);white-space:nowrap}
+.hero h1 .riscado::after{
+  content:"";position:absolute;left:-4%;right:-4%;top:54%;height:.13em;background:var(--coral);
+  transform:scaleX(0) rotate(-3deg);transform-origin:left;animation:risca .7s 1.1s cubic-bezier(.7,0,.2,1) forwards;border-radius:4px;
+}
+.hero h1 .destaque{
+  background:linear-gradient(100deg,var(--roxo-claro),var(--coral) 85%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+@keyframes risca{to{transform:scaleX(1) rotate(-3deg)}}
+.hero-ctas{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
+.garantias{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:26px;font-size:14.5px;color:var(--mudo)}
+.garantias span{display:inline-flex;align-items:center;gap:8px}
+.garantias svg{width:17px;height:17px;color:var(--zap)}
+
+/* entrada escalonada do hero */
+.sobe{opacity:0;transform:translateY(26px);animation:sobe .9s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes sobe{to{opacity:1;transform:none}}
+
+/* ===== mock do produto ===== */
+.palco{position:relative;perspective:1600px}
+.janela{
+  background:linear-gradient(180deg,#221c29,#1b1621);border:1px solid var(--linha-forte);border-radius:20px;
+  box-shadow:0 50px 100px -30px rgba(0,0,0,.8),0 0 0 1px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);
+  transform:rotateY(-9deg) rotateX(5deg);transform-style:preserve-3d;overflow:hidden;
+  transition:transform .6s cubic-bezier(.2,.8,.2,1);
+}
+.palco:hover .janela{transform:rotateY(-3deg) rotateX(2deg)}
+.janela-topo{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid var(--linha)}
+.janela-topo i{width:11px;height:11px;border-radius:50%;background:#3a3241}
+.janela-topo i:nth-child(1){background:#ff5f57}.janela-topo i:nth-child(2){background:#febc2e}.janela-topo i:nth-child(3){background:#28c840}
+.janela-topo .url{margin-left:14px;font-family:var(--mono);font-size:11.5px;color:var(--mudo);background:rgba(255,255,255,.04);padding:4px 12px;border-radius:7px}
+.painel{padding:16px}
+.painel-cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.painel-cab h4{font-family:var(--display);color:var(--creme);font-size:16px;letter-spacing:-.02em}
+.chip{font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:99px;background:rgba(110,68,255,.18);color:#cebdff}
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;position:relative}
+.coluna{background:rgba(255,255,255,.025);border:1px solid var(--linha);border-radius:12px;padding:8px;min-height:250px}
+.coluna h5{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mudo);margin:2px 2px 8px;display:flex;justify-content:space-between}
+.coluna h5 span{color:var(--creme)}
+.cartao{
+  background:#2b2433;border:1px solid var(--linha-forte);border-radius:9px;padding:8px 9px;margin-bottom:7px;
+  font-size:11px;line-height:1.35;color:var(--texto);position:relative;
+}
+.cartao b{display:block;font-family:var(--mono);font-size:9.5px;color:var(--coral-claro);font-weight:500;margin-bottom:2px}
+.cartao small{display:block;color:var(--mudo);font-size:10px;margin-top:3px}
+.cartao::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2.5px;border-radius:2px;background:var(--roxo)}
+.cartao.verde::before{background:var(--zap)}
+.cartao.coral::before{background:var(--coral)}
+.cartao.viajante{position:absolute;z-index:3;margin:0;box-shadow:0 14px 30px -8px rgba(0,0,0,.7),0 0 0 1.5px var(--roxo-claro);transition:left .9s cubic-bezier(.65,0,.25,1),top .9s cubic-bezier(.65,0,.25,1),transform .3s}
+.cartao.viajante.erguido{transform:rotate(-4deg) scale(1.06)}
+
+.flutua{position:absolute;z-index:4;border-radius:16px;border:1px solid var(--linha-forte);box-shadow:0 24px 50px -16px rgba(0,0,0,.75)}
+.notif-zap{
+  right:-28px;bottom:-34px;width:270px;background:#0f2a1c;padding:13px 14px;display:flex;gap:11px;align-items:flex-start;
+  opacity:0;transform:translateY(16px) scale(.96);transition:all .6s cubic-bezier(.2,.9,.3,1.3);
+}
+.notif-zap.on{opacity:1;transform:none}
+.notif-zap .ico{width:34px;height:34px;border-radius:10px;background:var(--zap);display:grid;place-items:center;flex-shrink:0}
+.notif-zap .ico svg{width:20px;height:20px;color:#fff}
+.notif-zap p{font-size:12.5px;line-height:1.4;color:#d8f5e3}
+.notif-zap p b{color:#fff;display:block;font-size:12px;margin-bottom:2px}
+.notif-zap .ticks{color:#53bdeb;font-size:11px;font-family:var(--mono)}
+.caixa{
+  left:-34px;top:86px;background:var(--creme);color:var(--grafite);padding:12px 16px;
+  transform:rotate(-5deg);animation:boia 6s ease-in-out infinite;
+}
+.caixa small{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#6b5f73;display:block}
+.caixa strong{font-family:var(--display);font-size:24px;letter-spacing:-.04em;display:block;line-height:1.1}
+.caixa em{font-style:normal;font-size:11.5px;color:#0d8a45;font-weight:700}
+@keyframes boia{0%,100%{transform:rotate(-5deg) translateY(0)}50%{transform:rotate(-5deg) translateY(-10px)}}
+
+/* ===== letreiro ===== */
+.letreiro{border-block:1px solid var(--linha);overflow:hidden;padding:18px 0;background:rgba(255,255,255,.015)}
+.letreiro-trilho{display:flex;gap:46px;width:max-content;animation:corre 38s linear infinite}
+.letreiro span{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:-.03em;color:var(--mudo);display:inline-flex;align-items:center;gap:46px;white-space:nowrap}
+.letreiro span::after{content:"";width:9px;height:9px;background:var(--coral);transform:rotate(45deg)}
+@keyframes corre{to{transform:translateX(-50%)}}
+
+/* ===== seções ===== */
+section{padding:120px 0;position:relative}
+.cab-secao{display:grid;gap:20px;margin-bottom:60px;max-width:820px}
+
+/* dores */
+.dores{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.dor{
+  border:1px solid var(--linha);border-radius:var(--raio);padding:30px 28px 32px;background:linear-gradient(180deg,rgba(255,255,255,.03),transparent);
+  position:relative;overflow:hidden;
+}
+.dor .num{font-family:var(--mono);font-size:12px;color:var(--coral-claro)}
+.dor h3{font-size:25px;font-weight:700;margin:18px 0 12px;letter-spacing:-.03em}
+.dor p{color:var(--mudo);font-size:15.5px}
+.dor .agora{margin-top:22px;padding-top:18px;border-top:1px dashed var(--linha-forte);font-size:15px;color:var(--creme);display:flex;gap:10px}
+.dor .agora svg{width:19px;height:19px;color:var(--zap);flex-shrink:0;margin-top:3px}
+
+/* bento de recursos */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+.bloco{
+  grid-column:span 2;border:1px solid var(--linha);border-radius:22px;padding:28px;background:var(--grafite-2);
+  position:relative;overflow:hidden;transition:border-color .3s,transform .4s cubic-bezier(.2,.8,.2,1);
+}
+.bloco:hover{border-color:var(--linha-forte);transform:translateY(-4px)}
+.bloco.largo{grid-column:span 4}
+.bloco.meio{grid-column:span 3}
+.bloco .ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:rgba(110,68,255,.16);color:#b197ff;margin-bottom:20px}
+.bloco .ico svg{width:24px;height:24px}
+.bloco h3{font-size:23px;font-weight:700;letter-spacing:-.03em;margin-bottom:9px}
+.bloco p{color:var(--mudo);font-size:15.5px;max-width:46ch}
+.bloco.roxo{background:linear-gradient(140deg,#4a2fc0,#6e44ff 55%,#8b68ff);border-color:transparent}
+.bloco.roxo p{color:#e5ddff}.bloco.roxo .ico{background:rgba(255,255,255,.16);color:#fff}
+.bloco.coral{background:var(--coral);border-color:transparent}
+.bloco.coral h3,.bloco.coral p{color:#fff}.bloco.coral .ico{background:rgba(255,255,255,.2);color:#fff}
+.mini-os{
+  margin-top:24px;background:var(--creme);color:var(--grafite);border-radius:12px;padding:16px 18px;font-size:13px;
+  font-family:var(--mono);transform:rotate(1.5deg);box-shadow:0 20px 40px -18px rgba(0,0,0,.6);max-width:420px
+}
+.mini-os .l{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #d9cbbd}
+.mini-os .l:last-child{border:0;font-weight:700;padding-top:9px}
+.mini-os .t{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:-.02em;margin-bottom:6px;display:flex;justify-content:space-between}
+.barras{display:flex;align-items:flex-end;gap:7px;height:90px;margin-top:22px}
+.barras i{flex:1;border-radius:6px 6px 2px 2px;background:rgba(255,255,255,.22);height:var(--h);transform-origin:bottom;transform:scaleY(0);transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.barras i:nth-child(odd){background:rgba(255,255,255,.5)}
+.visivel .barras i{transform:scaleY(1)}
+.visivel .barras i:nth-child(2){transition-delay:.06s}.visivel .barras i:nth-child(3){transition-delay:.12s}.visivel .barras i:nth-child(4){transition-delay:.18s}.visivel .barras i:nth-child(5){transition-delay:.24s}.visivel .barras i:nth-child(6){transition-delay:.3s}.visivel .barras i:nth-child(7){transition-delay:.36s}
+
+/* WhatsApp em destaque */
+.zap-secao{background:linear-gradient(180deg,transparent,rgba(37,211,102,.05) 30%,rgba(37,211,102,.05) 70%,transparent)}
+.zap-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center}
+.lista-check{list-style:none;display:grid;gap:16px;margin:34px 0 38px}
+.lista-check li{display:flex;gap:14px;font-size:16.5px}
+.lista-check li svg{width:24px;height:24px;flex-shrink:0;color:var(--zap);margin-top:1px}
+.lista-check li b{color:var(--creme)}
+.celular{
+  width:min(340px,100%);margin-inline:auto;aspect-ratio:9/18.5;border-radius:46px;padding:11px;
+  background:linear-gradient(145deg,#3a3241,#120f16);box-shadow:0 60px 100px -30px rgba(0,0,0,.85),inset 0 0 0 1.5px rgba(255,255,255,.1);
+  position:relative;transform:rotate(3deg);
+}
+.tela{height:100%;border-radius:36px;overflow:hidden;background:#0b141a;display:flex;flex-direction:column}
+.tela-cab{background:#1f2c34;padding:34px 16px 12px;display:flex;align-items:center;gap:11px}
+.tela-cab .av{width:36px;height:36px;border-radius:50%;background:var(--creme);display:grid;place-items:center}
+.tela-cab .av svg{width:24px;height:24px}
+.tela-cab b{font-size:14.5px;color:#e9edef;display:block;line-height:1.2}
+.tela-cab small{font-size:11.5px;color:#8696a0}
+.conversa{
+  flex:1;padding:16px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;
+  background-color:#0b141a;background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px);background-size:16px 16px;
+}
+.msg{
+  max-width:86%;padding:8px 11px 6px;border-radius:10px;font-size:13px;line-height:1.42;color:#e9edef;
+  opacity:0;transform:translateY(10px) scale(.97);transition:all .45s cubic-bezier(.2,.9,.3,1.3);
+}
+.msg.on{opacity:1;transform:none}
+.msg.sai{align-self:flex-end;background:#005c4b;border-top-right-radius:3px}
+.msg.chega{align-self:flex-start;background:#202c33;border-top-left-radius:3px}
+.msg small{display:block;text-align:right;font-size:10px;color:#8fb3a9;margin-top:2px}
+.msg small .azul{color:#53bdeb}
+.digitando{align-self:flex-start;background:#202c33;border-radius:10px;padding:10px 13px;display:none;gap:4px}
+.digitando.on{display:flex}
+.digitando i{width:6px;height:6px;border-radius:50%;background:#8696a0;animation:pula 1s infinite}
+.digitando i:nth-child(2){animation-delay:.15s}.digitando i:nth-child(3){animation-delay:.3s}
+@keyframes pula{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+.selo-auto{
+  position:absolute;left:-46px;top:22%;background:var(--grafite-2);border:1px solid var(--linha-forte);border-radius:14px;
+  padding:11px 15px;font-size:12.5px;transform:rotate(-6deg);box-shadow:0 20px 40px -14px rgba(0,0,0,.7);
+}
+.selo-auto b{font-family:var(--mono);font-size:10.5px;color:var(--zap);letter-spacing:.08em;text-transform:uppercase;display:block}
+
+/* passos */
+.passos{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--linha-forte)}
+.passo{padding:34px 34px 10px 0;position:relative}
+.passo+.passo{padding-left:34px;border-left:1px solid var(--linha)}
+.passo .n{font-family:var(--display);font-weight:800;font-size:86px;line-height:1;letter-spacing:-.06em;
+  -webkit-text-stroke:1.5px var(--linha-forte);color:transparent;transition:color .4s,-webkit-text-stroke-color .4s}
+.passo:hover .n{color:var(--coral);-webkit-text-stroke-color:var(--coral)}
+.passo h3{font-size:24px;font-weight:700;margin:16px 0 10px;letter-spacing:-.03em}
+.passo p{color:var(--mudo);font-size:15.5px}
+
+/* planos */
+.alterna{
+  display:inline-flex;padding:5px;border-radius:999px;background:var(--grafite-2);border:1px solid var(--linha);position:relative;margin-top:8px
+}
+.alterna button{position:relative;z-index:1;padding:10px 20px;border-radius:999px;font-weight:600;font-size:15px;color:var(--mudo);transition:color .3s}
+.alterna button[aria-pressed="true"]{color:var(--grafite)}
+.alterna .pilula{position:absolute;top:5px;bottom:5px;border-radius:999px;background:var(--creme);transition:all .4s cubic-bezier(.2,.9,.3,1.2)}
+.alterna .ganha{font-family:var(--mono);font-size:10.5px;background:var(--zap);color:#062b15;padding:2px 7px;border-radius:99px;margin-left:6px;font-weight:700}
+.planos{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch;margin-top:44px}
+.plano{
+  border:1px solid var(--linha);border-radius:24px;padding:32px 28px;background:var(--grafite-2);display:flex;flex-direction:column;position:relative
+}
+.plano.top{
+  background:linear-gradient(180deg,#2b1f52,#1f1a24 70%);border:1.5px solid var(--roxo);
+  box-shadow:0 40px 80px -30px rgba(110,68,255,.55);transform:translateY(-14px)
+}
+.plano .faixa{
+  position:absolute;top:-14px;left:28px;background:var(--coral);color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;padding:6px 12px;border-radius:99px
+}
+.plano h3{font-size:26px;font-weight:800}
+.plano .pra{color:var(--mudo);font-size:14.5px;margin-top:6px;min-height:44px}
+.preco{display:flex;align-items:baseline;gap:6px;margin:22px 0 4px;font-family:var(--display);color:var(--creme)}
+.preco .rs{font-size:20px;font-weight:700}
+.preco .valor{font-size:60px;font-weight:800;letter-spacing:-.05em;line-height:1;transition:opacity .2s}
+.preco .per{font-family:var(--corpo);color:var(--mudo);font-size:15px}
+.equiv{font-size:13.5px;color:var(--zap);min-height:21px;font-family:var(--mono)}
+.plano ul{list-style:none;display:grid;gap:11px;margin:26px 0 30px;font-size:15px;flex:1}
+.plano li{display:flex;gap:10px;align-items:flex-start}
+.plano li svg{width:19px;height:19px;flex-shrink:0;margin-top:2px;color:var(--zap)}
+.plano li.nao{color:#6c6273}
+.plano li.nao svg{color:#4d4453}
+.plano .btn{width:100%}
+.nota-fundador{
+  margin-top:40px;display:flex;gap:16px;align-items:center;border:1px dashed var(--linha-forte);border-radius:18px;padding:20px 24px;
+  font-size:15.5px;color:var(--mudo)
+}
+.nota-fundador b{color:var(--creme)}
+.nota-fundador .sel{font-family:var(--display);font-weight:800;color:var(--coral);font-size:30px;line-height:1}
+
+/* FAQ */
+.faq{max-width:860px}
+.faq details{border-bottom:1px solid var(--linha)}
+.faq summary{
+  list-style:none;cursor:pointer;padding:26px 0;display:flex;justify-content:space-between;gap:20px;align-items:center;
+  font-family:var(--display);font-size:clamp(19px,2.2vw,23px);font-weight:700;color:var(--creme);letter-spacing:-.025em
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary .mais{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--linha-forte);display:grid;place-items:center;flex-shrink:0;transition:transform .35s,background .3s}
+.faq summary .mais::before{content:"+";font-family:var(--corpo);font-size:20px;font-weight:500;line-height:1}
+.faq details[open] summary .mais{transform:rotate(45deg);background:var(--coral);border-color:var(--coral)}
+.faq details p{color:var(--mudo);padding:0 50px 26px 0;font-size:16px}
+
+/* CTA final */
+.final{padding:40px 0 120px}
+.final-caixa{
+  border-radius:32px;padding:clamp(44px,7vw,90px) clamp(24px,6vw,80px);position:relative;overflow:hidden;isolation:isolate;
+  background:var(--roxo);
+}
+.final-caixa::before{content:"";position:absolute;inset:0;z-index:-1;
+  background:radial-gradient(circle at 85% 20%,rgba(255,90,54,.85),transparent 45%),radial-gradient(circle at 10% 110%,#2a1a7a,transparent 55%)}
+.final-caixa .vortice{position:absolute;right:-90px;bottom:-110px;width:440px;opacity:.16;z-index:-1;animation:gira 40s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+.final-caixa h2{font-size:clamp(38px,6.4vw,82px);max-width:13ch;color:#fff}
+.final-caixa p{color:#ece6ff;font-size:19px;margin:22px 0 36px;max-width:50ch}
+
+footer{border-top:1px solid var(--linha);padding:40px 0 120px;color:var(--mudo);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+
+/* revelação ao rolar */
+.revela{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.8,.2,1),transform .9s cubic-bezier(.2,.8,.2,1)}
+.revela.visivel{opacity:1;transform:none}
+.revela.d1{transition-delay:.1s}.revela.d2{transition-delay:.2s}.revela.d3{transition-delay:.3s}
+
+/* ===== botão flutuante do WhatsApp (canto direito, sempre visível) ===== */
+.zap-fixo{position:fixed;right:22px;bottom:22px;z-index:90;display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.balao{
+  background:#fff;color:#1b1621;border-radius:18px 18px 4px 18px;padding:14px 38px 14px 16px;max-width:260px;font-size:14.5px;line-height:1.4;
+  box-shadow:0 20px 50px -12px rgba(0,0,0,.55);position:relative;
+  opacity:0;transform:translateY(12px) scale(.9);transform-origin:bottom right;pointer-events:none;transition:all .45s cubic-bezier(.2,.9,.3,1.3)
+}
+.balao.on{opacity:1;transform:none;pointer-events:auto}
+.balao b{display:block;font-family:var(--display);font-size:15px;letter-spacing:-.02em;margin-bottom:2px}
+.balao .fecha{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;color:#8a7f91;font-size:18px;line-height:1;display:grid;place-items:center}
+.balao .fecha:hover{background:#f1ebf4}
+.zap-botao{
+  display:flex;align-items:center;gap:0;background:var(--zap);color:#fff;border-radius:999px;height:66px;padding:0 9px;
+  box-shadow:0 14px 34px -6px rgba(37,211,102,.6),0 4px 12px rgba(0,0,0,.35);position:relative;
+  transition:transform .3s cubic-bezier(.2,.9,.3,1.4),gap .35s
+}
+.zap-botao:hover{transform:scale(1.05)}
+.zap-botao .rosto{width:48px;height:48px;display:grid;place-items:center;flex-shrink:0}
+.zap-botao .rosto svg{width:34px;height:34px}
+.zap-botao .rotulo{max-width:0;overflow:hidden;white-space:nowrap;font-weight:700;font-size:16px;color:#062b15;transition:max-width .45s cubic-bezier(.2,.8,.2,1),padding .45s}
+.zap-botao.aberto .rotulo,.zap-botao:hover .rotulo{max-width:220px;padding-right:14px}
+.zap-botao::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;border:2px solid var(--zap);animation:onda 2.2s ease-out infinite;pointer-events:none
+}
+@keyframes onda{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.45);opacity:0}}
+.zap-botao .ponto{position:absolute;top:2px;right:4px;width:16px;height:16px;border-radius:50%;background:var(--coral);border:2.5px solid var(--grafite);font-size:9px;font-weight:700;display:grid;place-items:center;color:#fff}
+
+/* ===== responsivo ===== */
+@media (max-width:1020px){
+  .hero-grid,.zap-grid{grid-template-columns:1fr}
+  .hero-grid{gap:70px}
+  .palco{max-width:640px;margin-inline:auto;width:100%}
+  .janela{transform:none}
+  .bento{grid-template-columns:repeat(2,1fr)}
+  .bloco,.bloco.largo,.bloco.meio{grid-column:span 2}
+  .planos{grid-template-columns:1fr;max-width:520px;margin-inline:auto}
+  .plano.top{transform:none;order:-1}
+  .nav-links{display:none}
+  .celular{margin-top:20px}
+}
+@media (max-width:760px){
+  body{font-size:16px}
+  h2{font-size:clamp(28px,8.4vw,44px)}
+  section{padding:84px 0}
+  .hero{padding:28px 0 70px}
+  .hero h1{font-size:clamp(30px,9.2vw,56px)}
+  .dores{grid-template-columns:1fr}
+  .passos{grid-template-columns:1fr}
+  .passo,.passo+.passo{padding:28px 0 18px;border-left:0;border-bottom:1px solid var(--linha)}
+  .passo .n{font-size:64px}
+  .kanban{grid-template-columns:repeat(3,1fr)}
+  .coluna:nth-child(4){display:none}
+  .coluna{min-height:220px}
+  .notif-zap{right:-6px;bottom:-46px;width:240px}
+  .caixa{left:-8px;top:-34px}
+  .hero-ctas .btn{width:100%}
+  .nav .btn span.longo{display:none}
+  .selo-auto{left:-6px}
+  .celular{transform:none}
+  .faq details p{padding-right:0}
+  .zap-fixo{right:14px;bottom:14px}
+  .zap-botao{height:60px}
+  .nota-fundador{flex-direction:column;align-items:flex-start}
+  .alterna button{padding:9px 13px;font-size:14px}
+  .alterna .ganha{font-size:9.5px;padding:2px 6px}
+  .final .btn{width:100%;white-space:normal;padding:17px 20px!important;font-size:16.5px!important}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .sobe,.revela{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- símbolo vórtice reaproveitado em toda a página -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="vortice" viewBox="0 0 120 120">
+      <path d="M60 10c27.6 0 50 22.4 50 50H82c0-12.2-9.8-22-22-22V10Z" fill="#ff5a36"/>
+      <path d="M110 60c0 27.6-22.4 50-50 50V82c12.2 0 22-9.8 22-22h28Z" fill="#6e44ff"/>
+      <path d="M60 110c-27.6 0-50-22.4-50-50h28c0 12.2 9.8 22 22 22v28Z" fill="currentColor"/>
+      <circle cx="60" cy="60" r="10" fill="#fff4ea"/>
+    </symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path fill="currentColor" d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.75-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35ZM12.04 21.5h-.01a9.43 9.43 0 0 1-4.8-1.32l-.35-.2-3.57.93.95-3.48-.22-.36a9.4 9.4 0 0 1-1.45-5.02c0-5.2 4.24-9.44 9.46-9.44 2.52 0 4.9.99 6.68 2.77a9.37 9.37 0 0 1 2.77 6.68c0 5.21-4.24 9.44-9.46 9.44Zm8.04-17.48A11.3 11.3 0 0 0 12.04.7C5.77.7.66 5.8.66 12.07c0 2 .52 3.96 1.52 5.69L.57 23.3l5.67-1.49a11.33 11.33 0 0 0 5.8 1.48c6.27 0 11.38-5.1 11.38-11.37 0-3.04-1.18-5.9-3.34-8.05Z"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.2 4.2L19 7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7 7l10 10M17 7 7 17"/></symbol>
+  </defs>
+</svg>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a href="#topo" class="logo" aria-label="Oficina Hub — início">
+      <svg style="color:#fff"><use href="#vortice"/></svg>
+      <span><b>Oficina</b> <em>Hub</em></span>
+    </a>
+    <nav class="nav-links" aria-label="Seções">
+      <a href="#recursos">Recursos</a>
+      <a href="#whatsapp">WhatsApp automático</a>
+      <a href="#planos">Planos</a>
+      <a href="#duvidas">Dúvidas</a>
+    </nav>
+    <div class="nav-acoes">
+      <a class="entrar" href="https://app.oficinahub.com.br/login">Entrar</a>
+      <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Oficina Hub grátis por 14 dias." href="#">
+        <svg><use href="#i-zap"/></svg><span>Testar <span class="longo">grátis</span></span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="topo">
+  <!-- ===== HERO ===== -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="kicker sobe" style="animation-delay:.05s">Sistema para oficina mecânica</span>
+        <h1 class="sobe" style="animation-delay:.15s">
+          A oficina cheia.<br>
+          O <span class="riscado">caderno</span><br>
+          <span class="destaque">aposentado.</span>
+        </h1>
+        <p class="lead sobe" style="animation-delay:.3s">
+          Ordem de serviço, orçamento, agenda e financeiro num lugar só — e o cliente
+          <strong style="color:var(--creme)">recebendo lembrete de revisão no WhatsApp sozinho</strong>.
+          Você cuida do carro, o Oficina Hub cuida do resto.
+        </p>
+        <div class="hero-ctas sobe" style="animation-delay:.45s">
+          <a class="btn btn-zap" data-zap="Oi! Vi o anúncio e quero testar o Oficina Hub grátis por 14 dias." href="#">
+            <svg><use href="#i-zap"/></svg>Quero testar 14 dias grátis
+          </a>
+          <a class="btn btn-linha" href="#planos">Ver planos a partir de R$ 59</a>
+        </div>
+        <div class="garantias sobe" style="animation-delay:.6s">
+          <span><svg><use href="#i-ok"/></svg>Sem cartão de crédito</span>
+          <span><svg><use href="#i-ok"/></svg>Sem taxa de implantação</span>
+          <span><svg><use href="#i-ok"/></svg>Cancela quando quiser</span>
+        </div>
+      </div>
+
+      <div class="palco sobe" style="animation-delay:.35s" aria-label="Prévia do sistema: quadro de ordens de serviço">
+        <div class="janela">
+          <div class="janela-topo"><i></i><i></i><i></i><span class="url">app.oficinahub.com.br/kanban</span></div>
+          <div class="painel">
+            <div class="painel-cab"><h4>Pátio de hoje</h4><span class="chip">7 carros</span></div>
+            <div class="kanban" id="kanban">
+              <div class="coluna"><h5>Orçamento <span>2</span></h5>
+                <div class="cartao"><b>OS #1042</b>Gol 1.6 · freios<small>Carlos M.</small></div>
+                <div class="cartao coral"><b>OS #1045</b>HB20 · barulho susp.<small>Ana P.</small></div>
+              </div>
+              <div class="coluna"><h5>Aprovado <span>1</span></h5>
+                <div class="cartao"><b>OS #1039</b>Strada · embreagem<small>Rafael S.</small></div>
+              </div>
+              <div class="coluna"><h5>Em serviço <span>2</span></h5>
+                <div class="cartao"><b>OS #1036</b>Corolla · revisão 60 mil<small>Júlia R.</small></div>
+                <div class="cartao coral"><b>OS #1037</b>Onix · injeção<small>Marcos T.</small></div>
+              </div>
+              <div class="coluna"><h5>Pronto <span>1</span></h5>
+                <div class="cartao verde"><b>OS #1031</b>Saveiro · alinhamento<small>Paulo V.</small></div>
+              </div>
+              <div class="cartao viajante" id="viajante"><b>OS #1048</b>Kwid · troca de óleo<small>Fernanda L.</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="flutua caixa"><small>Caixa de hoje</small><strong>R$ 3.480</strong><em>▲ 6 OS fechadas</em></div>
+        <div class="flutua notif-zap" id="notif">
+          <span class="ico"><svg><use href="#i-zap"/></svg></span>
+          <p><b>Lembrete enviado · Fernanda</b>Oi Fernanda! Seu Kwid está pronto, pode buscar quando quiser. <span class="ticks">✓✓</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="letreiro" aria-hidden="true">
+    <div class="letreiro-trilho">
+      <span>Mecânica geral</span><span>Auto elétrica</span><span>Injeção eletrônica</span><span>Suspensão</span><span>Freios</span><span>Ar-condicionado</span><span>Troca de óleo</span><span>Alinhamento</span><span>Funilaria</span>
+      <span>Mecânica geral</span><span>Auto elétrica</span><span>Injeção eletrônica</span><span>Suspensão</span><span>Freios</span><span>Ar-condicionado</span><span>Troca de óleo</span><span>Alinhamento</span><span>Funilaria</span>
+    </div>
+  </div>
+
+  <!-- ===== DORES ===== -->
+  <section>
+    <div class="wrap">
+      <div class="cab-secao revela">
+        <span class="kicker">Soa familiar?</span>
+        <h2>Oficina boa perde dinheiro nos detalhes.</h2>
+      </div>
+      <div class="dores">
+        <article class="dor revela">
+          <span class="num">01 / papel</span>
+          <h3>A OS sumiu e ninguém sabe o que foi feito.</h3>
+          <p>Orçamento no caderno, peça anotada no papel de pão, cliente perguntando o preço de novo.</p>
+          <div class="agora"><svg><use href="#i-ok"/></svg>OS e orçamento digitais, impressos com a cara da sua oficina.</div>
+        </article>
+        <article class="dor revela d1">
+          <span class="num">02 / cliente</span>
+          <h3>O cliente fez a revisão… no concorrente.</h3>
+          <p>Ele não lembrou da troca de óleo. Você também não lembrou de avisar. O carro foi pra outro lugar.</p>
+          <div class="agora"><svg><use href="#i-ok"/></svg>Lembrete de revisão automático no WhatsApp da sua oficina.</div>
+        </article>
+        <article class="dor revela d2">
+          <span class="num">03 / caixa</span>
+          <h3>Trabalhou o mês inteiro e não sabe se lucrou.</h3>
+          <p>Dinheiro entra, peça sai, conta vence. No fim do mês, a conta não fecha e ninguém sabe por quê.</p>
+          <div class="agora"><svg><use href="#i-ok"/></svg>Caixa, contas a pagar e receber e DRE claros, sem planilha.</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== RECURSOS ===== -->
+  <section id="recursos" style="padding-top:20px">
+    <div class="wrap">
+      <div class="cab-secao revela">
+        <span class="kicker">Tudo que a oficina usa</span>
+        <h2>Do orçamento à entrega, num sistema feito pra oficina.</h2>
+        <p class="lead">Nada de sistema genérico adaptado. Funciona no computador do balcão e no celular do mecânico.</p>
+      </div>
+      <div class="bento">
+        <article class="bloco largo revela">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h4"/></svg></div>
+          <h3>Ordem de serviço e orçamento em minutos</h3>
+          <p>Cliente, veículo, peças e mão de obra. Aprovou? Vira OS com um clique. Imprime OS e checklist de entrada com a sua logo.</p>
+          <div class="mini-os">
+            <div class="t"><span>OS #1048</span><span>Kwid 1.0</span></div>
+            <div class="l"><span>Óleo 5W30 (4L)</span><span>R$ 189,00</span></div>
+            <div class="l"><span>Filtro de óleo</span><span>R$ 38,00</span></div>
+            <div class="l"><span>Mão de obra</span><span>R$ 60,00</span></div>
+            <div class="l"><span>Total</span><span>R$ 287,00</span></div>
+          </div>
+        </article>
+        <article class="bloco roxo revela d1">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg></div>
+          <h3>Kanban do pátio</h3>
+          <p>Veja cada carro em que etapa está. Arrasta o cartão e todo mundo sabe o que fazer. Etapas do seu jeito.</p>
+        </article>
+        <article class="bloco revela">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+          <h3>Agenda</h3>
+          <p>Horários marcados sem conflito e sem o caderno da recepção.</p>
+        </article>
+        <article class="bloco coral revela d1">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+          <h3>Financeiro e DRE</h3>
+          <p>Caixa do dia, contas, despesas recorrentes e lucro do mês.</p>
+          <div class="barras"><i style="--h:40%"></i><i style="--h:62%"></i><i style="--h:48%"></i><i style="--h:75%"></i><i style="--h:66%"></i><i style="--h:88%"></i><i style="--h:100%"></i></div>
+        </article>
+        <article class="bloco revela d2">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .7 3.2 2.5 3.6 5.2"/></svg></div>
+          <h3>Equipe e funcionários</h3>
+          <p>Cada um com seu login e só o acesso que precisa.</p>
+        </article>
+        <article class="bloco meio revela">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 17h14l-1.5-6.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5Z"/><circle cx="8" cy="17.5" r="2"/><circle cx="16" cy="17.5" r="2"/></svg></div>
+          <h3>Histórico de cada carro</h3>
+          <p>Placa digitada, tudo na tela: o que já foi trocado, quando e quanto custou. O cliente percebe que você conhece o carro dele.</p>
+        </article>
+        <article class="bloco meio revela d1">
+          <div class="ico" style="background:rgba(37,211,102,.15);color:var(--zap)"><svg><use href="#i-zap"/></svg></div>
+          <h3>WhatsApp da própria oficina</h3>
+          <p>Mensagens saem do <strong style="color:var(--creme)">seu número</strong>, não de um número estranho. O cliente reconhece e responde.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== WHATSAPP ===== -->
+  <section id="whatsapp" class="zap-secao">
+    <div class="wrap zap-grid">
+      <div class="revela">
+        <span class="kicker" style="color:var(--zap)">O recurso que paga o sistema</span>
+        <h2 style="margin-top:20px">O cliente volta<br>sem você ligar.</h2>
+        <p class="lead" style="margin-top:22px">Todo dia o Oficina Hub monta a lista de quem está perto da revisão. Você confere e a mensagem sai pelo WhatsApp da oficina. Um carro que volta por mês já paga a mensalidade.</p>
+        <ul class="lista-check">
+          <li><svg><use href="#i-ok"/></svg><span><b>Lembrete de revisão</b> calculado pela última visita de cada cliente.</span></li>
+          <li><svg><use href="#i-ok"/></svg><span><b>Retorno e pós-serviço</b>: pergunta se ficou tudo certo e puxa a avaliação.</span></li>
+          <li><svg><use href="#i-ok"/></svg><span><b>Aviso de carro pronto</b> sem ninguém precisar parar o serviço pra digitar.</span></li>
+        </ul>
+        <a class="btn btn-zap" data-zap="Oi! Quero ver como funciona o lembrete de revisão automático no WhatsApp." href="#">
+          <svg><use href="#i-zap"/></svg>Quero ver funcionando
+        </a>
+      </div>
+      <div class="revela d2" style="position:relative">
+        <div class="celular">
+          <div class="tela">
+            <div class="tela-cab">
+              <span class="av"><svg style="color:#1f1a24"><use href="#vortice"/></svg></span>
+              <span><b>Sua Oficina</b><small>conta comercial</small></span>
+            </div>
+            <div class="conversa" id="conversa">
+              <div class="msg sai">Oi Carlos, tudo bem? 👋 Já faz 6 meses da última troca de óleo do seu <b>Gol</b>. Quer agendar a revisão esta semana?<small>09:02 <span class="azul">✓✓</span></small></div>
+              <div class="digitando" id="digitando"><i></i><i></i><i></i></div>
+              <div class="msg chega">Opa! Tinha esquecido total 😅 Quinta de manhã dá?<small>09:14</small></div>
+              <div class="msg sai">Fechado! Quinta às 8h30 tá reservado pra você. 🔧<small>09:15 <span class="azul">✓✓</span></small></div>
+              <div class="msg chega">Valeu, até quinta!<small>09:15</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="selo-auto"><b>● automático</b>Fila de revisão gerada todo dia</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COMO FUNCIONA ===== -->
+  <section>
+    <div class="wrap">
+      <div class="cab-secao revela">
+        <span class="kicker">Começar é simples</span>
+        <h2>Funcionando na sua oficina ainda esta semana.</h2>
+      </div>
+      <div class="passos">
+        <div class="passo revela"><div class="n">01</div><h3>Chama no WhatsApp</h3><p>A gente libera seu acesso de teste e tira as dúvidas na hora, com gente de verdade.</p></div>
+        <div class="passo revela d1"><div class="n">02</div><h3>A gente te ajuda a configurar</h3><p>Dados da oficina, equipe, serviços e o WhatsApp conectado com um QR Code. Sem taxa de implantação.</p></div>
+        <div class="passo revela d2"><div class="n">03</div><h3>Usa 14 dias grátis</h3><p>Abre OS, manda lembrete, fecha o caixa. Gostou, escolhe o plano. Não gostou, não paga nada.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PLANOS ===== -->
+  <section id="planos" style="padding-top:40px">
+    <div class="wrap">
+      <div class="cab-secao revela" style="margin-bottom:0">
+        <span class="kicker">Planos</span>
+        <h2>Preço de oficina, não de multinacional.</h2>
+        <div>
+          <div class="alterna" id="alterna" role="group" aria-label="Período de cobrança">
+            <span class="pilula" id="pilula"></span>
+            <button type="button" aria-pressed="true" data-periodo="mensal">Mensal</button>
+            <button type="button" aria-pressed="false" data-periodo="anual">Anual <span class="ganha">2 meses grátis</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="planos">
+        <article class="plano revela">
+          <h3>Essencial</h3>
+          <p class="pra">Pra oficina pequena sair do papel.</p>
+          <div class="preco"><span class="rs">R$</span><span class="valor" data-mensal="59" data-anual="590">59</span><span class="per" data-per>/mês</span></div>
+          <div class="equiv" data-equiv="49"></div>
+          <ul>
+            <li><svg><use href="#i-ok"/></svg>Até 2 usuários</li>
+            <li><svg><use href="#i-ok"/></svg>OS, orçamentos, clientes e veículos</li>
+            <li><svg><use href="#i-ok"/></svg>Agenda e Kanban do pátio</li>
+            <li><svg><use href="#i-ok"/></svg>Impressão de OS e checklist</li>
+            <li><svg><use href="#i-ok"/></svg>Financeiro: contas e caixa</li>
+            <li class="nao"><svg><use href="#i-x"/></svg>WhatsApp automático</li>
+            <li class="nao"><svg><use href="#i-x"/></svg>DRE e despesas recorrentes</li>
+          </ul>
+          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Essencial do Oficina Hub." href="#">Começar no Essencial</a>
+        </article>
+
+        <article class="plano top revela d1">
+          <span class="faixa">Recomendado</span>
+          <h3>Profissional</h3>
+          <p class="pra">Pra oficina que quer o cliente voltando sozinho.</p>
+          <div class="preco"><span class="rs">R$</span><span class="valor" data-mensal="119" data-anual="1.190">119</span><span class="per" data-per>/mês</span></div>
+          <div class="equiv" data-equiv="99"></div>
+          <ul>
+            <li><svg><use href="#i-ok"/></svg>Até 5 usuários</li>
+            <li><svg><use href="#i-ok"/></svg>Tudo do Essencial</li>
+            <li><svg><use href="#i-ok"/></svg><strong style="color:var(--creme)">WhatsApp próprio da oficina</strong></li>
+            <li><svg><use href="#i-ok"/></svg>Lembrete de revisão, retornos e follow-up</li>
+            <li><svg><use href="#i-ok"/></svg>Despesas recorrentes, fornecedores e DRE</li>
+            <li><svg><use href="#i-ok"/></svg>Funcionários e equipe</li>
+          </ul>
+          <a class="btn btn-zap" data-zap="Oi! Quero testar o plano Profissional do Oficina Hub (com WhatsApp automático)." href="#"><svg><use href="#i-zap"/></svg>Testar 14 dias grátis</a>
+        </article>
+
+        <article class="plano revela d2">
+          <h3>Completo</h3>
+          <p class="pra">Pra oficina grande, com equipe e volume.</p>
+          <div class="preco"><span class="rs">R$</span><span class="valor" data-mensal="199" data-anual="1.990">199</span><span class="per" data-per>/mês</span></div>
+          <div class="equiv" data-equiv="165"></div>
+          <ul>
+            <li><svg><use href="#i-ok"/></svg>Usuários ilimitados</li>
+            <li><svg><use href="#i-ok"/></svg>Tudo do Profissional</li>
+            <li><svg><use href="#i-ok"/></svg>Recursos de inteligência artificial</li>
+            <li><svg><use href="#i-ok"/></svg>Suporte prioritário</li>
+          </ul>
+          <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Completo do Oficina Hub." href="#">Falar sobre o Completo</a>
+        </article>
+      </div>
+
+      <div class="nota-fundador revela">
+        <span class="sel">★</span>
+        <p><b>Preço de fundador.</b> As primeiras oficinas que entrarem agora mantêm esse valor, mesmo quando o preço subir pra quem chegar depois. Sem taxa de implantação, sem fidelidade.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FAQ ===== -->
+  <section id="duvidas" style="padding-top:40px">
+    <div class="wrap">
+      <div class="cab-secao revela">
+        <span class="kicker">Dúvidas</span>
+        <h2>Perguntas de quem é do ramo.</h2>
+      </div>
+      <div class="faq revela">
+        <details><summary>Preciso instalar alguma coisa?<span class="mais"></span></summary>
+          <p>Não. O Oficina Hub roda no navegador: computador do balcão, notebook, tablet ou celular. Seus dados ficam na nuvem, com backup.</p></details>
+        <details><summary>O WhatsApp é o número da minha oficina mesmo?<span class="mais"></span></summary>
+          <p>Sim. Nos planos Profissional e Completo você conecta o WhatsApp da oficina lendo um QR Code, igual ao WhatsApp Web. O cliente recebe a mensagem do número que ele já conhece.</p></details>
+        <details><summary>O teste grátis pede cartão?<span class="mais"></span></summary>
+          <p>Não. São 14 dias com tudo liberado do plano Profissional, sem cartão e sem compromisso. No fim, você escolhe se quer continuar e em qual plano.</p></details>
+        <details><summary>Tenho fidelidade ou multa pra cancelar?<span class="mais"></span></summary>
+          <p>Nenhuma. No plano mensal você cancela quando quiser. O anual é pago à vista e sai com 2 meses de graça.</p></details>
+        <details><summary>Meus funcionários vão conseguir usar?<span class="mais"></span></summary>
+          <p>Foi pensado pra isso: telas simples, letra grande, o Kanban do pátio é arrastar e soltar. E a gente ajuda na configuração inicial pelo WhatsApp.</p></details>
+        <details><summary>Serve pra auto elétrica, funilaria, centro automotivo?<span class="mais"></span></summary>
+          <p>Serve. O sistema nasceu dentro de uma auto elétrica de verdade e as etapas do Kanban e os serviços são personalizáveis pro jeito da sua oficina.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA FINAL ===== -->
+  <section class="final">
+    <div class="wrap">
+      <div class="final-caixa revela">
+        <svg class="vortice" style="color:#fff"><use href="#vortice"/></svg>
+        <h2>Bora organizar essa oficina?</h2>
+        <p>Chama no WhatsApp, a gente libera seu teste de 14 dias e te ajuda a deixar tudo pronto. Sem cartão, sem taxa, sem enrolação.</p>
+        <a class="btn btn-zap" style="font-size:18px;padding:19px 32px" data-zap="Oi! Quero organizar minha oficina com o Oficina Hub. Como começo o teste grátis?" href="#">
+          <svg><use href="#i-zap"/></svg>Chamar no WhatsApp agora
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="#topo" class="logo" style="font-size:19px"><svg style="color:#fff;width:28px;height:28px"><use href="#vortice"/></svg><span><b>Oficina</b> <em>Hub</em></span></a>
+    <span>© <span id="ano">2026</span> Oficina Hub · Sistema de gestão para oficinas mecânicas</span>
+    <a href="#" data-zap="Oi! Tenho uma dúvida sobre o Oficina Hub." class="mono" style="color:var(--creme)">(51) 98037-9695</a>
+  </div>
+</footer>
+
+<!-- ===== WhatsApp flutuante, sempre no canto direito ===== -->
+<div class="zap-fixo">
+  <div class="balao" id="balao" role="status">
+    <button class="fecha" id="fechaBalao" aria-label="Fechar">×</button>
+    <b>Quer ver o sistema rodando? 👋</b>
+    Chama aqui que a gente te mostra em 5 minutos e libera seu teste grátis.
+  </div>
+  <a class="zap-botao" id="zapBotao" data-zap="Oi! Vi o site do Oficina Hub e quero saber mais." href="#" aria-label="Falar no WhatsApp">
+    <span class="rosto"><svg><use href="#i-zap"/></svg></span>
+    <span class="rotulo">Fale com a gente</span>
+    <span class="ponto">1</span>
+  </a>
+</div>
+
+<script>
+(function () {
+  var FONE = '5551980379695';
+
+  // Todos os botões [data-zap] abrem o WhatsApp com a mensagem do botão.
+  // A origem do anúncio (utm_source) vai junto no fim da mensagem pra saber de onde veio o lead.
+  var p = new URLSearchParams(location.search);
+  var origem = p.get('utm_source') || (p.get('gclid') ? 'google' : p.get('fbclid') ? 'facebook' : '');
+  document.querySelectorAll('[data-zap]').forEach(function (el) {
+    var txt = el.getAttribute('data-zap') + (origem ? ' (via ' + origem + ')' : '');
+    el.href = 'https://wa.me/' + FONE + '?text=' + encodeURIComponent(txt);
+    el.target = '_blank';
+    el.rel = 'noopener';
+    el.addEventListener('click', function () {
+      try { if (window.fbq) fbq('track', 'Lead'); } catch (e) {}
+      try { if (window.gtag) gtag('event', 'generate_lead', { method: 'whatsapp' }); } catch (e) {}
+    });
+  });
+
+  document.getElementById('ano').textContent = new Date().getFullYear();
+
+  // Nav ganha fundo depois de rolar
+  var nav = document.getElementById('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('rolou', scrollY > 20); }, { passive: true });
+
+  // Revela ao rolar
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('visivel'); io.unobserve(e.target); } });
+  }, { threshold: .15, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.revela').forEach(function (el) { io.observe(el); });
+
+  var calmo = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Cartão do Kanban atravessando as colunas, em loop
+  var kanban = document.getElementById('kanban');
+  var vi = document.getElementById('viajante');
+  var notif = document.getElementById('notif');
+  var etapa = 0;
+  function posiciona() {
+    var cols = Array.prototype.filter.call(kanban.querySelectorAll('.coluna'), function (c) { return c.offsetParent; });
+    var i = Math.min(etapa, cols.length - 1);
+    var c = cols[i], ultimo = c.lastElementChild;
+    vi.style.width = (c.clientWidth - 16) + 'px';
+    vi.style.left = (c.offsetLeft + 8) + 'px';
+    vi.style.top = (ultimo.offsetTop + ultimo.offsetHeight + 7) + 'px';
+    return i === cols.length - 1;
+  }
+  posiciona();
+  addEventListener('resize', posiciona);
+  if (!calmo) {
+    setInterval(function () {
+      vi.classList.add('erguido');
+      etapa = etapa >= 3 ? 0 : etapa + 1;
+      if (etapa === 0) notif.classList.remove('on');
+      setTimeout(function () {
+        var fim = posiciona();
+        setTimeout(function () {
+          vi.classList.remove('erguido');
+          if (fim) notif.classList.add('on');
+        }, 900);
+      }, 250);
+    }, 2600);
+  }
+
+  // Conversa do WhatsApp aparecendo mensagem por mensagem
+  var conversa = document.getElementById('conversa');
+  var msgs = conversa.querySelectorAll('.msg');
+  var dig = document.getElementById('digitando');
+  var tocou = false;
+  new IntersectionObserver(function (es, o) {
+    if (!es[0].isIntersecting || tocou) return;
+    tocou = true; o.disconnect();
+    if (calmo) { msgs.forEach(function (m) { m.classList.add('on'); }); return; }
+    var t = 300;
+    msgs.forEach(function (m, i) {
+      if (m.classList.contains('chega')) {
+        setTimeout(function () { dig.classList.add('on'); conversa.insertBefore(dig, m); }, t);
+        t += 1300;
+        setTimeout(function () { dig.classList.remove('on'); }, t);
+      }
+      setTimeout(function () { m.classList.add('on'); }, t);
+      t += 1100;
+    });
+  }, { threshold: .4 }).observe(conversa);
+
+  // Alternador mensal / anual
+  var alt = document.getElementById('alterna'), pil = document.getElementById('pilula');
+  function marca(btn) {
+    pil.style.left = btn.offsetLeft + 'px';
+    pil.style.width = btn.offsetWidth + 'px';
+  }
+  function escolhe(btn) {
+    var anual = btn.dataset.periodo === 'anual';
+    alt.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b === btn); });
+    marca(btn);
+    document.querySelectorAll('.valor').forEach(function (v) {
+      v.style.opacity = 0;
+      setTimeout(function () { v.textContent = anual ? v.dataset.anual : v.dataset.mensal; v.style.opacity = 1; }, 180);
+    });
+    document.querySelectorAll('[data-per]').forEach(function (s) { s.textContent = anual ? '/ano' : '/mês'; });
+    document.querySelectorAll('[data-equiv]').forEach(function (e) {
+      e.textContent = anual ? '≈ R$ ' + e.dataset.equiv + '/mês · 2 meses grátis' : '';
+    });
+  }
+  alt.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { escolhe(b); }); });
+  document.fonts.ready.then(function () { marca(alt.querySelector('[aria-pressed="true"]')); });
+  addEventListener('resize', function () { marca(alt.querySelector('[aria-pressed="true"]')); });
+
+  // Botão flutuante: abre o rótulo e mostra o balão depois de alguns segundos
+  var balao = document.getElementById('balao'), bot = document.getElementById('zapBotao'), fechado = false;
+  setTimeout(function () { bot.classList.add('aberto'); }, 1500);
+  setTimeout(function () { bot.classList.remove('aberto'); }, 6000);
+  setTimeout(function () { if (!fechado) balao.classList.add('on'); }, 7000);
+  document.getElementById('fechaBalao').addEventListener('click', function () { fechado = true; balao.classList.remove('on'); });
+  bot.addEventListener('click', function () { balao.classList.remove('on'); });
+})();
+</script>
+</body>
+</html>
