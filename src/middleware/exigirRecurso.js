@@ -9,7 +9,8 @@ const AppError = require('../utils/AppError');
  * Use DEPOIS de auth + oficinaContext.
  *
  * Nega com 403 e `details.recurso`/`details.plano_minimo` — o frontend usa
- * pra mostrar "disponível no plano X".
+ * pra mostrar "disponível no plano X". Recurso de adicional (ex: fiscal)
+ * nega com `details.adicional` + `details.planos` compatíveis.
  */
 module.exports = function exigirRecurso(recurso) {
   return async function (req, _res, next) {
@@ -17,7 +18,16 @@ module.exports = function exigirRecurso(recurso) {
       if (!req.user?.id) return next(AppError.unauthorized());
       const info = await assinatura.avaliarParaUsuario(req.user.id);
       if (!info) return next(AppError.unauthorized('Sessão inválida'));
-      if (info.super_admin || planos.temRecurso(info.oficina.plano, recurso)) return next();
+      const { plano, adicionais } = info.oficina;
+      if (info.super_admin || planos.temRecurso(plano, recurso, adicionais)) return next();
+      const adicional = planos.ADICIONAIS[recurso];
+      if (adicional) {
+        return next(new AppError(
+          `Recurso disponível no adicional ${adicional.nome}`,
+          403,
+          { recurso, adicional: recurso, planos: adicional.planos },
+        ));
+      }
       const minimo = planos.planoMinimo(recurso);
       return next(new AppError(
         `Recurso disponível a partir do plano ${planos.doPlano(minimo).nome}`,

@@ -127,7 +127,7 @@ async function criarOficina({ slug, nome, admin }) {
 async function listarOficinas() {
   const { rows } = await db.pool.query(
     `SELECT o.id, o.slug, o.nome, o.ativo, o.criado_em,
-            o.assinatura_status, o.plano, o.ciclo,
+            o.assinatura_status, o.plano, o.adicionais, o.ciclo,
             o.trial_fim::text          AS trial_fim,
             o.proximo_vencimento::text AS proximo_vencimento,
             o.graca_dias,
@@ -142,13 +142,13 @@ async function listarOficinas() {
       ORDER BY o.criado_em DESC`,
   );
   return rows.map((o) => {
-    const p = planos.doPlano(o.plano);
+    const valor = planos.valorAssinatura(o.plano, o.adicionais, o.ciclo);
     const { hoje, ...resto } = o;
     return {
       ...resto,
-      valor: o.ciclo === 'anual' ? p.anual : p.mensal,
+      valor,
       // Quanto a oficina vale por mês, pra somar a receita recorrente.
-      valor_mensal: o.ciclo === 'anual' ? Math.round((p.anual / 12) * 100) / 100 : p.mensal,
+      valor_mensal: o.ciclo === 'anual' ? Math.round((valor / 12) * 100) / 100 : valor,
       avaliacao: assinatura.avaliar(o),
     };
   });

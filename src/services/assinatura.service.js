@@ -86,7 +86,7 @@ function avaliar(o) {
 
 // Campos de assinatura + datas como texto + CURRENT_DATE, de uma oficina.
 const SELECT_ASSINATURA = `
-  SELECT o.id, o.slug, o.nome, o.ativo, o.assinatura_status, o.plano,
+  SELECT o.id, o.slug, o.nome, o.ativo, o.assinatura_status, o.plano, o.adicionais,
          o.trial_fim::text          AS trial_fim,
          o.proximo_vencimento::text AS proximo_vencimento,
          o.graca_dias,
@@ -104,7 +104,7 @@ async function daOficina(oficinaId) {
 async function avaliarParaUsuario(userId) {
   const { rows } = await db.pool.query(
     `SELECT u.super_admin,
-            o.id, o.slug, o.nome, o.ativo, o.assinatura_status, o.plano,
+            o.id, o.slug, o.nome, o.ativo, o.assinatura_status, o.plano, o.adicionais,
             o.trial_fim::text          AS trial_fim,
             o.proximo_vencimento::text AS proximo_vencimento,
             o.graca_dias,
@@ -119,7 +119,7 @@ async function avaliarParaUsuario(userId) {
     super_admin: o.super_admin === true,
     oficina: {
       id: o.id, slug: o.slug, nome: o.nome,
-      status: o.assinatura_status, plano: o.plano,
+      status: o.assinatura_status, plano: o.plano, adicionais: o.adicionais,
       trial_fim: o.trial_fim, proximo_vencimento: o.proximo_vencimento,
     },
     avaliacao: avaliar(o),
@@ -127,19 +127,20 @@ async function avaliarParaUsuario(userId) {
 }
 
 /**
- * O plano da oficina do contexto atual (runComOficina) inclui o recurso?
+ * O plano (ou um adicional) da oficina do contexto atual (runComOficina)
+ * inclui o recurso?
  * Usado por jobs e serviços que rodam sem req.user. Fora de contexto
  * (scripts CLI) não restringe.
  */
 async function recursoNaOficinaAtual(recurso) {
   const slug = db.slugAtual();
   if (!slug) return true;
-  const { rows } = await db.pool.query('SELECT plano FROM oficinas WHERE slug = $1', [slug]);
-  return planos.temRecurso(rows[0]?.plano, recurso);
+  const { rows } = await db.pool.query('SELECT plano, adicionais FROM oficinas WHERE slug = $1', [slug]);
+  return planos.temRecurso(rows[0]?.plano, recurso, rows[0]?.adicionais);
 }
 
 async function atualizar(oficinaId, campos) {
-  const permit = ['assinatura_status', 'plano', 'ciclo', 'trial_fim', 'proximo_vencimento', 'graca_dias'];
+  const permit = ['assinatura_status', 'plano', 'adicionais', 'ciclo', 'trial_fim', 'proximo_vencimento', 'graca_dias'];
   const sets = []; const params = [];
   for (const [k, v] of Object.entries(campos)) {
     if (!permit.includes(k) || v === undefined) continue;

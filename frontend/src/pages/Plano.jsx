@@ -89,6 +89,55 @@ export default function Plano() {
           })}
         </div>
       )}
+
+      {atual?.adicionais?.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-maninho-800">
+            Adicionais
+          </h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            {atual.adicionais.map((a) => (
+              <CardAdicional key={a.chave} adicional={a} planos={planos} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Adicional contratado à parte (soma na mensalidade). Contratação pelo suporte. */
+function CardAdicional({ adicional: a, planos }) {
+  const nomesPlanos = a.planos
+    .map((k) => planos?.find((p) => p.chave === k)?.nome || k)
+    .join(' e ');
+
+  let situacao;
+  if (a.ativo) situacao = 'Contratado';
+  else if (a.contratado) situacao = `Inativo: disponível só nos planos ${nomesPlanos}`;
+  else situacao = `Disponível nos planos ${nomesPlanos}. Para contratar, fale com o suporte.`;
+
+  return (
+    <div className={`card flex flex-col p-5 ${a.ativo ? 'ring-2 ring-maninho-600' : ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-display text-base font-semibold uppercase tracking-wide text-maninho-800">
+          {a.nome}
+        </h3>
+        {a.ativo && (
+          <span className="rounded bg-maninho-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+            Ativo
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-sm text-slate-600">{a.descricao}</p>
+      <p className="mt-3">
+        <span className="text-2xl font-bold text-slate-800">+ {real(a.mensal)}</span>
+        <span className="text-sm text-slate-500">/mês</span>
+      </p>
+      <p className="text-xs text-slate-500">ou + {real(a.anual)} no anual</p>
+      <p className={`mt-3 text-sm ${a.ativo ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>
+        {situacao}
+      </p>
     </div>
   );
 }

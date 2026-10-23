@@ -16,8 +16,16 @@ router.get('/minha', h(async (req, res) => {
   res.json({
     status: info.oficina.status,
     plano: info.oficina.plano,
-    // Super-admin enxerga tudo: recursos do plano completo.
-    recursos: planos.doPlano(info.super_admin ? 'completo' : info.oficina.plano).recursos,
+    // Super-admin enxerga tudo: recursos do plano completo + todos os adicionais.
+    recursos: info.super_admin
+      ? planos.recursosDe('completo', Object.keys(planos.ADICIONAIS))
+      : planos.recursosDe(info.oficina.plano, info.oficina.adicionais),
+    // Catálogo de adicionais com a situação desta oficina, pra tela de plano.
+    adicionais: Object.entries(planos.ADICIONAIS).map(([chave, a]) => ({
+      chave, ...a,
+      contratado: info.oficina.adicionais.includes(chave),
+      ativo: planos.adicionaisAtivos(info.oficina.plano, info.oficina.adicionais).includes(chave),
+    })),
     trial_fim: info.oficina.trial_fim,
     proximo_vencimento: info.oficina.proximo_vencimento,
     super_admin: info.super_admin,

@@ -102,6 +102,10 @@ const ASSIN_LABEL = {
 const PLANO_LABEL = {
   essencial: 'Essencial', profissional: 'Profissional', completo: 'Completo',
 };
+// Mesmas chaves de ADICIONAIS em src/config/planos.js.
+const ADICIONAIS = {
+  fiscal: { nome: 'Nota fiscal', mensal: 39, planos: ['profissional', 'completo'] },
+};
 
 function AssinaturaBadge({ status }) {
   return (
@@ -119,10 +123,17 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
     trial_fim: oficina.trial_fim || '',
     proximo_vencimento: oficina.proximo_vencimento || '',
     graca_dias: oficina.graca_dias ?? 5,
+    adicionais: oficina.adicionais || [],
   });
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const alternarAdicional = (chave) => setForm((f) => ({
+    ...f,
+    adicionais: f.adicionais.includes(chave)
+      ? f.adicionais.filter((a) => a !== chave)
+      : [...f.adicionais, chave],
+  }));
 
   async function salvar(e) {
     e.preventDefault();
@@ -135,6 +146,7 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
         trial_fim: form.trial_fim || null,
         proximo_vencimento: form.proximo_vencimento || null,
         graca_dias: Number(form.graca_dias),
+        adicionais: form.adicionais,
       });
     } catch (err) { setErro(err.message); }
     finally { setSalvando(false); }
@@ -165,6 +177,23 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
             </select>
           </Campo>
         </div>
+        <Campo label="Adicionais" ajuda="Somam na mensalidade; com assinatura no Asaas, o valor lá é atualizado">
+          <div className="space-y-1.5">
+            {Object.entries(ADICIONAIS).map(([k, a]) => {
+              const compativel = a.planos.includes(form.plano);
+              return (
+                <label key={k} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={form.adicionais.includes(k)}
+                    onChange={() => alternarAdicional(k)} />
+                  <span>{a.nome} (+ {brl(a.mensal)}/mês)</span>
+                  {!compativel && (
+                    <span className="text-xs text-amber-700">inativo neste plano</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </Campo>
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Fim do trial" ajuda="Usado quando status = trial">
             <input type="date" className="input" value={form.trial_fim} onChange={set('trial_fim')} />
@@ -410,7 +439,14 @@ export default function PlataformaOficinas() {
                     <p className="font-semibold text-slate-800">{o.nome}</p>
                     <p className="font-mono text-[11px] text-slate-500">{o.slug} · desde {dataBR(o.criado_em)}</p>
                   </td>
-                  <td className="px-4 py-2.5 text-slate-700">{PLANO_LABEL[o.plano] || '—'}</td>
+                  <td className="px-4 py-2.5 text-slate-700">
+                    {PLANO_LABEL[o.plano] || '—'}
+                    {o.adicionais?.map((k) => (
+                      <span key={k} className="block text-[11px] text-slate-500">
+                        + {ADICIONAIS[k]?.nome || k}
+                      </span>
+                    ))}
+                  </td>
                   <td className="px-4 py-2.5 text-right tnum">
                     <span className="font-semibold text-slate-800">{brl(o.valor)}</span>
                     <span className="text-xs text-slate-500">/{o.ciclo === 'anual' ? 'ano' : 'mês'}</span>

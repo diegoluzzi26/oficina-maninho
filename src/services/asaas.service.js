@@ -68,9 +68,8 @@ async function criarCliente({ nome, email, cpfCnpj }) {
  * — normalmente o fim do trial). billingType UNDEFINED = cliente escolhe
  * PIX/boleto/cartão no checkout do Asaas.
  */
-async function criarClienteEAssinatura({ oficinaId, nome, email, cpfCnpj, plano, ciclo = 'MONTHLY', proximoVencimento }) {
-  const p = planos.doPlano(plano);
-  const valor = ciclo === 'YEARLY' ? p.anual : p.mensal;
+async function criarClienteEAssinatura({ oficinaId, nome, email, cpfCnpj, plano, adicionais, ciclo = 'MONTHLY', proximoVencimento }) {
+  const cicloLocal = ciclo === 'YEARLY' ? 'anual' : 'mensal';
 
   const customerId = await criarCliente({ nome, email, cpfCnpj });
   const sub = await req('/subscriptions', {
@@ -78,10 +77,10 @@ async function criarClienteEAssinatura({ oficinaId, nome, email, cpfCnpj, plano,
     body: {
       customer: customerId,
       billingType: 'UNDEFINED',
-      value: valor,
+      value: planos.valorAssinatura(plano, adicionais, cicloLocal),
       cycle: ciclo,
       nextDueDate: proximoVencimento,
-      description: `Gestão Torque — plano ${p.nome} (${ciclo === 'YEARLY' ? 'anual' : 'mensal'})`,
+      description: descricaoAssinatura(plano, adicionais, cicloLocal),
     },
   });
 
@@ -90,6 +89,48 @@ async function criarClienteEAssinatura({ oficinaId, nome, email, cpfCnpj, plano,
     [customerId, sub.id, oficinaId],
   );
   return { customerId, subscriptionId: sub.id };
+}
+
+/** "Gestão Torque — plano Profissional + Nota fiscal (mensal)". */
+function descricaoAssinatura(plano, adicionais, ciclo) {
+  const extras = planos.adicionaisAtivos(plano, adicionais).map((a) => ` + ${planos.ADICIONAIS[a].nome}`);
+  return `Gestão Torque — plano ${planos.doPlano(plano).nome}${extras.join('')} (${ciclo})`;
+}
+
+/**
+ * Leva pro Asaas uma mudança de plano, ciclo ou adicionais feita pelo
+ * super-admin. Chamar ANTES de gravar no banco: se o Asaas recusar, nada
+ * muda e o valor cobrado não fica diferente do contratado.
+ * Oficina sem assinatura no Asaas (Fase A, cobrança manual) é ignorada.
+ * `updatePendingPayments` reajusta também a cobrança já gerada e não paga.
+ */
+async function sincronizarAssinatura(oficinaId, mudancas) {
+  if (!['plano', 'ciclo', 'adicionais'].some((k) => mudancas[k] !== undefined)) return null;
+
+  const { rows } = await db.pool.query(
+    'SELECT plano, ciclo, adicionais, asaas_subscription_id FROM oficinas WHERE id = $1', [oficinaId]);
+  const atual = rows[0];
+  if (!atual) throw AppError.notFound('Oficina não encontrada');
+  if (!atual.asaas_subscription_id) return null;
+
+  const plano = mudancas.plano ?? atual.plano;
+  const ciclo = mudancas.ciclo ?? atual.ciclo;
+  const adicionais = mudancas.adicionais ?? atual.adicionais;
+
+  const valorAntes = planos.valorAssinatura(atual.plano, atual.adicionais, atual.ciclo);
+  const valor = planos.valorAssinatura(plano, adicionais, ciclo);
+  if (valor === valorAntes && ciclo === atual.ciclo) return null;
+
+  await req(`/subscriptions/${atual.asaas_subscription_id}`, {
+    method: 'POST',
+    body: {
+      value: valor,
+      cycle: ciclo === 'anual' ? 'YEARLY' : 'MONTHLY',
+      description: descricaoAssinatura(plano, adicionais, ciclo),
+      updatePendingPayments: true,
+    },
+  });
+  return { valor, ciclo };
 }
 
 // ---------------------------------------------------------------- Webhook
@@ -138,5 +179,6 @@ async function processarWebhook(body) {
 }
 
 module.exports = {
-  configurado, webhookValido, criarCliente, criarClienteEAssinatura, processarWebhook,
+  configurado, webhookValido, criarCliente, criarClienteEAssinatura, sincronizarAssinatura,
+  processarWebhook,
 };

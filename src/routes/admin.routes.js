@@ -42,9 +42,13 @@ router.post('/oficinas', validate({ body: criarBody }), h(async (req, res) => {
 }));
 
 // Gestão manual da assinatura (Fase A). Só os campos enviados mudam.
+// Mudança de plano/ciclo/adicionais vai primeiro pro Asaas, se a oficina
+// já tiver assinatura lá; recusa do Asaas aborta sem gravar.
 const assinaturaBody = z.object({
   assinatura_status: z.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
   plano: z.enum(planos.ORDEM).optional(),
+  adicionais: z.array(z.enum(Object.keys(planos.ADICIONAIS)))
+    .transform((a) => [...new Set(a)]).optional(),
   ciclo: z.enum(['mensal', 'anual']).optional(),
   trial_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   proximo_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
@@ -54,6 +58,7 @@ const assinaturaBody = z.object({
 router.patch('/oficinas/:id/assinatura',
   validate({ body: assinaturaBody }),
   h(async (req, res) => {
+    await asaas.sincronizarAssinatura(req.params.id, req.body);
     res.json(await assinatura.atualizar(req.params.id, req.body));
   }));
 
@@ -85,7 +90,7 @@ router.post('/oficinas/:id/cobranca', validate({ body: cobrancaBody }), h(async 
     throw new AppError('Asaas não configurado — defina ASAAS_API_KEY no .env', 503);
   }
   const of = (await db.pool.query(
-    `SELECT o.id, o.nome, o.plano, o.trial_fim::text AS trial_fim,
+    `SELECT o.id, o.nome, o.plano, o.adicionais, o.trial_fim::text AS trial_fim,
             (SELECT u.email FROM users u
               WHERE u.oficina_id = o.id AND u.role = 'admin' AND u.ativo
               ORDER BY u.criado_em LIMIT 1) AS email
@@ -96,7 +101,7 @@ router.post('/oficinas/:id/cobranca', validate({ body: cobrancaBody }), h(async 
   const prox = of.trial_fim || new Date().toISOString().slice(0, 10);
   const r = await asaas.criarClienteEAssinatura({
     oficinaId: of.id, nome: of.nome, email: of.email, cpfCnpj: req.body.cpf_cnpj,
-    plano: of.plano, ciclo: req.body.ciclo, proximoVencimento: prox,
+    plano: of.plano, adicionais: of.adicionais, ciclo: req.body.ciclo, proximoVencimento: prox,
   });
   res.status(201).json(r);
 }));
