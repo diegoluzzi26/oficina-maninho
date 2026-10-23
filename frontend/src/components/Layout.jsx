@@ -3,16 +3,17 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
-  Wrench, Settings, Menu, X, FileText, Building2, UserCog,
+  Wrench, Settings, Menu, X, FileText, Building2, UserCog, BadgeCheck,
 } from 'lucide-react';
 import { api, getUser, clearSession } from '../lib/api';
-import { Marca, MarcaCompacta } from './Marca';
+import { Marca, MarcaCompacta, Arco } from './Marca';
 import ResumoDiario from './ResumoDiario';
 import { useTema, ToggleTema } from '../lib/tema';
 import { VERSAO_ROTULO, VERSAO_DETALHE } from '../lib/versao';
 
 // paraBasico = itens que o papel 'basico' também vê. Sem esse flag,
 // só admin/atendente enxergam. somenteAdmin restringe ainda mais.
+// recurso = só aparece se o plano da oficina inclui (src/config/planos.js).
 const MENU = [
   { para: '/', texto: 'Painel', exato: true, Icone: LayoutDashboard },
   { para: '/agenda', texto: 'Agenda', paraBasico: true, Icone: Calendar },
@@ -21,14 +22,15 @@ const MENU = [
   { para: '/despesas', texto: 'Despesas', badge: true, Icone: Receipt },
   { para: '/fornecedores', texto: 'Fornecedores', Icone: Truck },
   { para: '/financeiro', texto: 'Financeiro', Icone: TrendingUp },
-  { para: '/dre', texto: 'DRE', somenteAdmin: true, Icone: FileText },
+  { para: '/dre', texto: 'DRE', somenteAdmin: true, recurso: 'gestao', Icone: FileText },
   { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true, Icone: Wallet },
-  { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, Icone: HardHat },
-  { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, Icone: RefreshCw },
-  { para: '/retornos', texto: 'Retornos', Icone: PhoneCall },
-  { para: '/followup', texto: 'Follow-up', Icone: MessageCircle },
+  { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, recurso: 'funcionarios', Icone: HardHat },
+  { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, recurso: 'gestao', Icone: RefreshCw },
+  { para: '/retornos', texto: 'Retornos', recurso: 'followup', Icone: PhoneCall },
+  { para: '/followup', texto: 'Follow-up', recurso: 'followup', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
   { para: '/equipe', texto: 'Equipe', somenteAdmin: true, Icone: UserCog },
+  { para: '/plano', texto: 'Plano', somenteAdmin: true, Icone: BadgeCheck },
   { para: '/configuracoes', texto: 'Config', somenteAdmin: true, Icone: Settings },
   { para: '/plataforma', texto: 'Plataforma', somenteSuperAdmin: true, Icone: Building2 },
 ];
@@ -67,6 +69,7 @@ export default function Layout() {
   const pendencias = (alertas?.atrasadas.length || 0) + (alertas?.vence_hoje.length || 0);
   const ehBasico = usuario?.role === 'basico';
   const itens = MENU.filter((m) => {
+    if (m.recurso && assin?.recursos && !assin.recursos.includes(m.recurso)) return false;
     if (ehBasico) return m.paraBasico === true;
     if (m.somenteSuperAdmin) return usuario?.super_admin === true;
     if (m.somenteAdmin) return usuario?.role === 'admin';
@@ -109,12 +112,8 @@ export default function Layout() {
       <aside className="relative hidden lg:flex sticky top-0 h-screen w-[232px] shrink-0
                         flex-col overflow-hidden bg-gradient-to-b from-maninho-800 via-painel-900 to-painel-950
                         shadow-painel">
-        {/* Arco gigante como marca d'água, cortando o rodapé da barra. */}
-        <svg viewBox="0 0 64 30" aria-hidden="true" fill="none"
-          className="pointer-events-none absolute -left-6 bottom-8 h-40 w-auto opacity-[.06]">
-          <path d="M2 27C10 9 26 2 44 2" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
-          <path d="M20 27C26 15 36 9 48 8" stroke="#D4A843" strokeWidth="3.2" strokeLinecap="round" />
-        </svg>
+        {/* Engrenagem gigante como marca d'água no rodapé da barra. */}
+        <Arco claro className="pointer-events-none absolute -left-10 -bottom-8 h-56 w-auto opacity-[.05]" />
         {/* Fio dourado no topo, como a borda do painel da fachada. */}
         <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-ouro-500 to-transparent" />
         <div className="relative border-b border-white/10 px-5 pb-4 pt-5">
@@ -233,7 +232,7 @@ export default function Layout() {
         <footer className="mx-auto w-full max-w-[1400px] px-4 pb-6 sm:px-8">
           <p className="border-t border-slate-200 pt-4 text-center font-display text-[10.5px]
                         uppercase tracking-[.2em] text-slate-500">
-            Auto Elétrica Maninho · RS-020, 1055 · Gravataí/RS
+            Gestão Torque · sua oficina, organizada
           </p>
         </footer>
       </div>

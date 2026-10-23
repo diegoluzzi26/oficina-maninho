@@ -2,7 +2,48 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setSession } from '../lib/api';
 import { Alerta, Spinner, Campo } from '../components/ui';
-import { Marca, Selo } from '../components/Marca';
+import { Marca, Engrenagem } from '../components/Marca';
+
+/** Iniciais a partir do nome da oficina (até 2 letras). */
+function iniciais(nome = '') {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  return ((partes[0]?.[0] || '') + (partes[1]?.[0] || '')).toUpperCase() || 'OF';
+}
+
+/**
+ * Slot da logo da oficina. Se a oficina tem `logo_url`, mostra a imagem;
+ * senão cai num selo com as iniciais + nome. Sem oficina, placeholder.
+ */
+function LogoOficina({ oficina }) {
+  if (oficina?.logo_url) {
+    return (
+      <div className="flex h-24 items-center justify-center">
+        <img src={oficina.logo_url} alt={oficina.nome}
+          className="max-h-20 w-auto max-w-[260px] object-contain" />
+      </div>
+    );
+  }
+  if (oficina) {
+    return (
+      <div className="flex items-center justify-center gap-3">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-maninho-600
+                        font-display text-xl font-extrabold text-white">
+          {iniciais(oficina.nome)}
+        </div>
+        <div className="font-display text-lg font-extrabold leading-tight text-maninho-800">
+          {oficina.nome}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-24 w-full max-w-[300px] flex-col items-center justify-center gap-1
+                    rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-center">
+      <span className="text-sm font-semibold text-slate-600">Logo da oficina</span>
+      <span className="text-xs text-slate-400">definida em Configurações</span>
+    </div>
+  );
+}
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -39,59 +80,61 @@ export default function Login() {
   }
 
   const mostrarDropdown = (oficinas?.length || 0) > 1;
+  const oficinaSel = oficinas?.find((o) => o.slug === oficinaSlug) || null;
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      {/* Lado esquerdo: o letreiro da fachada */}
-      <div className="relative hidden overflow-hidden bg-painel-900 lg:block">
-        {/* Arco gigante como marca d'água, cortando a diagonal */}
-        <svg viewBox="0 0 64 30" className="absolute -left-[12%] top-[6%] h-[105%] w-auto opacity-[.07]"
-          fill="none" aria-hidden="true">
-          <path d="M2 27C10 9 26 2 44 2" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
-          <path d="M20 27C26 15 36 9 48 8" stroke="#D4A843" strokeWidth="3.2" strokeLinecap="round" />
-        </svg>
-
-        {/* Halo azul, como a iluminação da vitrine à noite */}
-        <div className="absolute -bottom-24 -left-16 h-80 w-80 rounded-full bg-maninho-600 blur-[110px] opacity-45" />
+      {/* ---------- Painel da plataforma (Gestão Torque) ---------- */}
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-maninho-700 via-maninho-800 to-painel-950 lg:block">
+        {/* Engrenagem gigante como marca d'água */}
+        <Engrenagem
+          className="pointer-events-none absolute -right-20 top-1/2 h-[520px] w-[520px] -translate-y-1/2 opacity-[.05]"
+          engrenagem="#ffffff" h="#ffffff" />
+        {/* Halo laranja, luz da vitrine */}
+        <div className="absolute -bottom-24 -left-16 h-80 w-80 rounded-full bg-ouro-500 opacity-25 blur-[120px]" />
+        {/* Fio laranja no topo */}
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-transparent via-ouro-500 to-transparent" />
 
         <div className="relative flex h-full flex-col justify-between p-11">
-          <Marca variante="claro" tamanho="lg" />
+          <Marca variante="claro" tamanho="md" />
 
           <div>
-            <p className="max-w-md font-marca text-[38px] leading-[1.15] text-white/90">
-              Cuidando do seu carro<br />desde 1997.
+            <p className="max-w-md font-display text-[40px] font-extrabold leading-[1.1] tracking-[-.02em] text-white">
+              Gestão completa<br />da sua oficina,<br />
+              <span className="text-ouro-500">num lugar só.</span>
             </p>
             <div className="mt-7 flex flex-wrap gap-2.5">
-              {['Elétrica', 'Mecânica', 'Injeção eletrônica', 'Ar-condicionado'].map((s) => (
+              {['Ordens de serviço', 'Financeiro', 'Revisão no WhatsApp', 'Kanban do pátio'].map((s) => (
                 <span key={s}
                   className="rounded-full border border-white/15 px-3.5 py-1.5 font-display
-                             text-[11px] uppercase tracking-[.14em] text-white/70">
+                             text-[11px] uppercase tracking-[.12em] text-white/70">
                   {s}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="flex items-end justify-between">
-            <p className="font-display text-[10.5px] uppercase tracking-[.2em] text-white/35">
-              RS-020, 1055 · Gravataí/RS
-            </p>
-            <Selo className="h-16 w-16 opacity-30" claro />
-          </div>
+          <p className="font-display text-[10.5px] uppercase tracking-[.2em] text-white/35">
+            Gestão Torque · plataforma de gestão para oficinas
+          </p>
         </div>
       </div>
 
-      {/* Lado direito: formulário */}
+      {/* ---------- Formulário ---------- */}
       <div className="flex items-center justify-center px-5 py-12">
         <div className="w-full max-w-sm">
+          {/* Marca da plataforma no mobile (o painel esquerdo some) */}
           <div className="anima mb-8 lg:hidden">
-            <Marca variante="escuro" tamanho="md" />
+            <Marca variante="escuro" tamanho="sm" />
           </div>
 
-          <div className="anima mb-7 hidden lg:block">
-            <h1 className="font-display text-2xl font-semibold uppercase tracking-wide text-maninho-800">
-              Sistema de gestão
-            </h1>
+          {/* Slot da logo da oficina */}
+          <div className="anima mb-6 flex justify-center">
+            <LogoOficina oficina={oficinaSel} />
+          </div>
+
+          <div className="anima mb-6 text-center" style={{ animationDelay: '40ms' }}>
+            <h1 className="font-display text-xl font-bold text-maninho-800">Bem-vindo de volta</h1>
             <p className="mt-1 text-sm text-slate-500">Entre com seu usuário para continuar.</p>
           </div>
 
@@ -113,7 +156,7 @@ export default function Login() {
             <Campo label="E-mail" obrigatorio>
               <input type="email" className="input" value={email} autoComplete="username"
                 onChange={(e) => setEmail(e.target.value)} required autoFocus
-                placeholder="voce@maninho.com.br" />
+                placeholder="voce@oficina.com.br" />
             </Campo>
 
             <Campo label="Senha" obrigatorio>
@@ -129,6 +172,10 @@ export default function Login() {
           <p className="mt-5 text-center text-xs text-slate-400">
             Esqueceu a senha? Peça ao administrador para redefinir.
           </p>
+
+          <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+            <Engrenagem className="h-4 w-4" /> por <span className="font-semibold text-slate-500">Gestão Torque</span>
+          </div>
         </div>
       </div>
     </div>
