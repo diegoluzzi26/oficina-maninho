@@ -280,6 +280,7 @@ export const api = {
 
   // --- assinatura da própria oficina ---
   assinaturaMinha: () => request('/assinatura/minha'),
+  planos: () => request('/assinatura/planos'),
 
   // --- contrato / termos de uso ---
   contratoStatus: () => request('/contrato/status'),

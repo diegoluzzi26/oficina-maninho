@@ -4,6 +4,7 @@ const { z } = require('zod');
 const svc = require('../services/provisionamento.service');
 const assinatura = require('../services/assinatura.service');
 const contrato = require('../services/contrato.service');
+const planos = require('../config/planos');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
 
@@ -35,7 +36,7 @@ router.post('/oficinas', validate({ body: criarBody }), h(async (req, res) => {
 // Gestão manual da assinatura (Fase A). Só os campos enviados mudam.
 const assinaturaBody = z.object({
   assinatura_status: z.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
-  plano: z.string().max(60).nullable().optional(),
+  plano: z.enum(planos.ORDEM).optional(),
   trial_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   proximo_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   graca_dias: z.coerce.number().int().min(0).max(90).optional(),

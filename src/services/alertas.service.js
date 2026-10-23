@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const { paraCadaOficinaAtiva } = require('../config/db');
+const assinatura = require('./assinatura.service');
 const wa = require('./whatsapp.service');
 const despesas = require('./despesas.service');
 const agendamentos = require('./agendamentos.service');
@@ -187,18 +188,23 @@ function agendar() {
       if (agora.getHours() !== horaAlvo || ultimoDiaPorOficina.get(slug) === hoje) return;
       ultimoDiaPorOficina.set(slug, hoje);
 
-      try {
-        const g = await recorrentes.gerarPendentes();
-        if (g.gerados > 0) console.log(`[recorrentes] gerou ${g.gerados} despesa(s)`);
-      } catch (err) {
-        console.error('[alertas] falha em recorrentes.gerarPendentes:', err.message);
+      // Cada etapa só roda se o plano da oficina inclui o recurso.
+      if (await assinatura.recursoNaOficinaAtual('gestao')) {
+        try {
+          const g = await recorrentes.gerarPendentes();
+          if (g.gerados > 0) console.log(`[recorrentes] gerou ${g.gerados} despesa(s)`);
+        } catch (err) {
+          console.error('[alertas] falha em recorrentes.gerarPendentes:', err.message);
+        }
       }
 
-      try {
-        const r = await verificarEEnviar();
-        console.log(`[alertas] contas: ${JSON.stringify(r)}`);
-      } catch (err) {
-        console.error('[alertas] falha em verificarEEnviar:', err.message);
+      if (await assinatura.recursoNaOficinaAtual('whatsapp')) {
+        try {
+          const r = await verificarEEnviar();
+          console.log(`[alertas] contas: ${JSON.stringify(r)}`);
+        } catch (err) {
+          console.error('[alertas] falha em verificarEEnviar:', err.message);
+        }
       }
 
       // NÃO enviamos lembrete de agendamento pro cliente automaticamente.

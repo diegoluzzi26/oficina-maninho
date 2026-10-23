@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const planos = require('../config/planos');
 
 /**
  * Assinatura por oficina (Fase A — sem provedor de pagamento).
@@ -125,6 +126,18 @@ async function avaliarParaUsuario(userId) {
   };
 }
 
+/**
+ * O plano da oficina do contexto atual (runComOficina) inclui o recurso?
+ * Usado por jobs e serviços que rodam sem req.user. Fora de contexto
+ * (scripts CLI) não restringe.
+ */
+async function recursoNaOficinaAtual(recurso) {
+  const slug = db.slugAtual();
+  if (!slug) return true;
+  const { rows } = await db.pool.query('SELECT plano FROM oficinas WHERE slug = $1', [slug]);
+  return planos.temRecurso(rows[0]?.plano, recurso);
+}
+
 async function atualizar(oficinaId, campos) {
   const permit = ['assinatura_status', 'plano', 'trial_fim', 'proximo_vencimento', 'graca_dias'];
   const sets = []; const params = [];
@@ -144,4 +157,5 @@ async function atualizar(oficinaId, campos) {
 
 module.exports = {
   TRIAL_DIAS_PADRAO, avaliar, daOficina, avaliarParaUsuario, atualizar,
+  recursoNaOficinaAtual,
 };

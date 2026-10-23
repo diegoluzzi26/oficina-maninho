@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const config = require('./config.service');
 const AppError = require('../utils/AppError');
+const assinatura = require('./assinatura.service');
 
 /**
  * Provider: Evolution API (self-hosted, WhatsApp Web via Baileys).
@@ -115,6 +116,10 @@ function digitos(telefone) {
  * `mensagem` é texto puro — Evolution suporta \n e emoji nativos.
  */
 async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
+  // Toda saída passa aqui (rotas, OS, follow-up, relatórios, jobs).
+  if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) {
+    throw new AppError('WhatsApp disponível a partir do plano Profissional', 403);
+  }
   const e = ensureEnabled();
   const numero = digitos(telefone);
 

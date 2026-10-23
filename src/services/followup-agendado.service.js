@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const { paraCadaOficinaAtiva } = require('../config/db');
+const assinatura = require('./assinatura.service');
 const followup = require('./followup.service');
 
 /**
@@ -36,6 +37,7 @@ async function habilitado() {
  * Respeita o toggle. Retorna { pulado } ou { gerados }.
  */
 async function gerarParaOficinaAtual() {
+  if (!(await assinatura.recursoNaOficinaAtual('followup'))) return { pulado: 'plano' };
   if (!(await habilitado())) return { pulado: 'desligado' };
   return followup.gerarFila({}, null);
 }

@@ -66,23 +66,25 @@ app.use('/api/contrato',   auth, oficinaContext, require('./routes/contrato.rout
 const exigirAssinatura = require('./middleware/exigirAssinatura');
 const exigirContrato = require('./middleware/exigirContrato');
 const protegido = [auth, oficinaContext, exigirAssinatura, exigirContrato, bloquearBasico];
+// Recursos fora do núcleo só no plano que os inclui (src/config/planos.js).
+const exigirRecurso = require('./middleware/exigirRecurso');
 
 app.use('/api/clientes',   ...protegido, require('./routes/clientes.routes'));
 app.use('/api/carros',     ...protegido, require('./routes/carros.routes'));
 app.use('/api/servicos',   ...protegido, require('./routes/servicos.routes'));
 app.use('/api/pecas',      ...protegido, require('./routes/pecas.routes'));
-app.use('/api/funcionarios', ...protegido, require('./routes/funcionarios.routes'));
-app.use('/api/despesas-recorrentes', ...protegido, require('./routes/despesas-recorrentes.routes'));
+app.use('/api/funcionarios', ...protegido, exigirRecurso('funcionarios'), require('./routes/funcionarios.routes'));
+app.use('/api/despesas-recorrentes', ...protegido, exigirRecurso('gestao'), require('./routes/despesas-recorrentes.routes'));
 app.use('/api/os',         ...protegido, require('./routes/os.routes'));
 app.use('/api/etapas',     ...protegido, require('./routes/etapas.routes'));
 app.use('/api/relatorios', ...protegido, require('./routes/relatorios.routes'));
 app.use('/api/despesas',     ...protegido, require('./routes/despesas.routes'));
 app.use('/api/fornecedores', ...protegido, require('./routes/fornecedores.routes'));
 app.use('/api/financeiro',   ...protegido, require('./routes/financeiro.routes'));
-app.use('/api/retornos',     ...protegido, require('./routes/retornos.routes'));
+app.use('/api/retornos',     ...protegido, exigirRecurso('followup'), require('./routes/retornos.routes'));
 app.use('/api/agendamentos', ...protegido, require('./routes/agendamentos.routes'));
-app.use('/api/followup',     ...protegido, require('./routes/followup.routes'));
-app.use('/api/ia',           ...protegido, require('./routes/ia.routes'));
+app.use('/api/followup',     ...protegido, exigirRecurso('followup'), require('./routes/followup.routes'));
+app.use('/api/ia',           ...protegido, exigirRecurso('ia'), require('./routes/ia.routes'));
 app.use('/api/config',       ...protegido, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
 app.use('/api',              ...protegido, require('./routes/anexos.routes'));

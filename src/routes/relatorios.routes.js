@@ -7,6 +7,7 @@ const requireRole = require('../middleware/requireRole');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const h = require('../utils/asyncHandler');
+const exigirRecurso = require('../middleware/exigirRecurso');
 
 router.get('/painel-mes',
   validate({ query: z.object({
@@ -43,7 +44,7 @@ router.get('/comparativo-mensal',
   h(async (_req, res) => res.json(await svc.comparativoMensal())));
 
 // DRE (Demonstração do Resultado do Exercício), regime de caixa.
-router.get('/dre', validate({ query: v.periodo }),
+router.get('/dre', exigirRecurso('gestao'), validate({ query: v.periodo }),
   h(async (req, res) => res.json(await svc.dre(req.query))));
 
 /** Payload único para o dashboard: evita 5 chamadas do frontend no load. */
@@ -84,7 +85,7 @@ router.get('/exportar-mes',
   }));
 
 // Exporta o DRE do período em Excel (mesma régua da tela /dre).
-router.get('/dre/exportar', validate({ query: v.periodo }),
+router.get('/dre/exportar', exigirRecurso('gestao'), validate({ query: v.periodo }),
   h(async (req, res) => {
     const { buffer, nomeArquivo } = await exportar.gerarDRE(req.query);
     res.setHeader('Content-Type',

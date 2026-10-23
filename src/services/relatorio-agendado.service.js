@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const { paraCadaOficinaAtiva } = require('../config/db');
+const assinatura = require('./assinatura.service');
 const wa = require('./whatsapp.service');
 const config = require('./config.service');
 
@@ -197,6 +198,7 @@ function agendar() {
       if (ultimaCheckPorOficina.get(slug) === chaveCheck) return;
       ultimaCheckPorOficina.set(slug, chaveCheck);
       await config.carregar(); // config desta oficina (destino do relatório etc)
+      if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) return; // plano sem WhatsApp
 
     // Mensal: se hoje é dia 1, envia relatório do mês passado
     if (agora.getDate() === 1) {

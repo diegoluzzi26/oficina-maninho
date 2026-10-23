@@ -16,6 +16,10 @@ const ASSIN_BADGE = {
 const ASSIN_LABEL = {
   ativa: 'Ativa', trial: 'Trial', inadimplente: 'Inadimplente', cancelada: 'Cancelada',
 };
+// Mesmas chaves de src/config/planos.js.
+const PLANO_LABEL = {
+  essencial: 'Essencial', profissional: 'Profissional', completo: 'Completo',
+};
 
 function AssinaturaBadge({ status }) {
   return (
@@ -28,6 +32,7 @@ function AssinaturaBadge({ status }) {
 function FormAssinatura({ oficina, onFechar, onSalvo }) {
   const [form, setForm] = useState({
     assinatura_status: oficina.assinatura_status || 'trial',
+    plano: oficina.plano || 'profissional',
     trial_fim: oficina.trial_fim || '',
     proximo_vencimento: oficina.proximo_vencimento || '',
     graca_dias: oficina.graca_dias ?? 5,
@@ -42,6 +47,7 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
     try {
       await onSalvo({
         assinatura_status: form.assinatura_status,
+        plano: form.plano,
         trial_fim: form.trial_fim || null,
         proximo_vencimento: form.proximo_vencimento || null,
         graca_dias: Number(form.graca_dias),
@@ -60,6 +66,11 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
             <option value="ativa">Ativa (pagando)</option>
             <option value="inadimplente">Inadimplente (pagamento pendente)</option>
             <option value="cancelada">Cancelada</option>
+          </select>
+        </Campo>
+        <Campo label="Plano" obrigatorio>
+          <select className="input" value={form.plano} onChange={set('plano')}>
+            {Object.entries(PLANO_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Campo>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -289,6 +300,7 @@ export default function PlataformaOficinas() {
                 <th className="px-4 py-2">Slug</th>
                 <th className="px-4 py-2">Usuários</th>
                 <th className="px-4 py-2">Criada em</th>
+                <th className="px-4 py-2">Plano</th>
                 <th className="px-4 py-2">Assinatura</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -300,6 +312,7 @@ export default function PlataformaOficinas() {
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">{o.slug}</td>
                   <td className="px-4 py-2 tnum">{o.usuarios}</td>
                   <td className="px-4 py-2 text-slate-600">{dataBR(o.criado_em)}</td>
+                  <td className="px-4 py-2 text-slate-700">{PLANO_LABEL[o.plano] || '—'}</td>
                   <td className="px-4 py-2"><AssinaturaBadge status={o.assinatura_status} /></td>
                   <td className="px-4 py-2 text-right">
                     <button onClick={() => { setOk(''); setEditandoAssin(o); }}

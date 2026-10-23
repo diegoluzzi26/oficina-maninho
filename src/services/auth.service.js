@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 const env = require('../config/env');
 const AppError = require('../utils/AppError');
+const planos = require('../config/planos');
 
 /**
  * Login multi-oficina. O usuário informa email + senha e (opcionalmente)
@@ -72,8 +73,31 @@ async function login(email, senha, oficinaSlug) {
  * Cria usuário SEMPRE dentro da oficina do criador. `oficina_id` do body é
  * ignorado de propósito — um admin não pode criar usuário em outra oficina.
  */
+/**
+ * Barra criar/reativar usuário além do limite do plano da oficina.
+ * `ignorarId` exclui da contagem o próprio usuário sendo reativado.
+ */
+async function checarLimiteUsuarios(oficinaId, ignorarId = null) {
+  const { rows } = await db.pool.query(
+    `SELECT o.plano,
+            (SELECT count(*)::int FROM users u
+              WHERE u.oficina_id = o.id AND u.ativo
+                AND u.id IS DISTINCT FROM $2) AS ativos
+       FROM oficinas o WHERE o.id = $1`, [oficinaId, ignorarId],
+  );
+  if (!rows[0]) return;
+  const plano = planos.doPlano(rows[0].plano);
+  if (plano.usuarios !== null && rows[0].ativos >= plano.usuarios) {
+    throw new AppError(
+      `O plano ${plano.nome} permite até ${plano.usuarios} usuários ativos`, 403,
+      { limite: plano.usuarios },
+    );
+  }
+}
+
 async function criarUsuario({ nome, email, senha, role }, oficinaId) {
   if (!oficinaId) throw new AppError('Oficina do criador ausente', 400);
+  await checarLimiteUsuarios(oficinaId);
   const hash = await bcrypt.hash(senha, 10);
   try {
     const { rows } = await db.query(
@@ -102,6 +126,7 @@ async function atualizarUsuario(id, { nome, role, ativo, senha }, oficinaId) {
   if (ativo !== undefined) { params.push(ativo); sets.push(`ativo = $${params.length}`); }
   if (senha) { params.push(await bcrypt.hash(senha, 10)); sets.push(`senha_hash = $${params.length}`); }
   if (!sets.length) throw new AppError('Nada para atualizar', 422);
+  if (ativo === true) await checarLimiteUsuarios(oficinaId, id);
 
   params.push(id, oficinaId);
   const { rows } = await db.query(
