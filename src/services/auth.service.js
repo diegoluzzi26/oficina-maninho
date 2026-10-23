@@ -145,21 +145,30 @@ const COLUNAS_IDENTIDADE = `id, slug, nome, cor_primaria, cor_secundaria,
   CASE WHEN logo IS NULL THEN NULL
        ELSE (extract(epoch FROM logo_atualizada_em) * 1000)::bigint::text END AS logo_versao`;
 
-/** Identidade visual (nome, cores, versão da logo) da própria oficina. */
+// Identidade + dados de contato da impressão. Só pra usuário logado — a
+// lista pública do login (oficinas.routes) segue com o mínimo.
+const COLUNAS_OFICINA = `${COLUNAS_IDENTIDADE},
+  endereco, cidade, uf, telefone, especialidades`;
+
+/** Identidade visual e dados da impressão da própria oficina. */
 async function identidadeOficina(oficinaId) {
   const { rows } = await db.pool.query(
-    `SELECT ${COLUNAS_IDENTIDADE} FROM oficinas WHERE id = $1`, [oficinaId],
+    `SELECT ${COLUNAS_OFICINA} FROM oficinas WHERE id = $1`, [oficinaId],
   );
   if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
   return rows[0];
 }
 
+// Dados de contato da impressão: texto livre; vazio grava NULL (linha some).
+const CAMPOS_IMPRESSAO = ['endereco', 'cidade', 'uf', 'telefone', 'especialidades'];
+
 /**
- * Edita dados da PRÓPRIA oficina: nome e cores (o slug é o schema e não
- * muda). Só os campos enviados mudam; cor `null` volta pro padrão.
- * Escopado pelo oficina_id do admin logado.
+ * Edita dados da PRÓPRIA oficina: nome, cores e dados da impressão (o slug
+ * é o schema e não muda). Só os campos enviados mudam; cor `null` volta pro
+ * padrão. Escopado pelo oficina_id do admin logado.
  */
-async function atualizarMinhaOficina(oficinaId, { nome, cor_primaria, cor_secundaria }) {
+async function atualizarMinhaOficina(oficinaId, dados) {
+  const { nome, cor_primaria, cor_secundaria } = dados;
   const sets = []; const params = [];
   if (nome !== undefined) {
     const n = String(nome || '').trim();
@@ -174,12 +183,18 @@ async function atualizarMinhaOficina(oficinaId, { nome, cor_primaria, cor_secund
     params.push(cor_secundaria && cor_secundaria.toLowerCase());
     sets.push(`cor_secundaria = $${params.length}`);
   }
+  for (const campo of CAMPOS_IMPRESSAO) {
+    if (dados[campo] === undefined) continue;
+    let v = String(dados[campo] || '').trim() || null;
+    if (v && campo === 'uf') v = v.toUpperCase();
+    params.push(v); sets.push(`${campo} = $${params.length}`);
+  }
   if (!sets.length) throw new AppError('Nada para atualizar', 422);
 
   params.push(oficinaId);
   const { rows } = await db.pool.query(
     `UPDATE oficinas SET ${sets.join(', ')} WHERE id = $${params.length}
-      RETURNING ${COLUNAS_IDENTIDADE}`,
+      RETURNING ${COLUNAS_OFICINA}`,
     params,
   );
   if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
@@ -190,7 +205,7 @@ async function atualizarMinhaOficina(oficinaId, { nome, cor_primaria, cor_secund
 async function salvarLogoOficina(oficinaId, { buffer, mimetype }) {
   const { rows } = await db.pool.query(
     `UPDATE oficinas SET logo = $1, logo_mime = $2, logo_atualizada_em = now()
-      WHERE id = $3 RETURNING ${COLUNAS_IDENTIDADE}`,
+      WHERE id = $3 RETURNING ${COLUNAS_OFICINA}`,
     [buffer, mimetype, oficinaId],
   );
   if (!rows[0]) throw AppError.notFound('Oficina não encontrada');
@@ -200,7 +215,7 @@ async function salvarLogoOficina(oficinaId, { buffer, mimetype }) {
 async function removerLogoOficina(oficinaId) {
   const { rows } = await db.pool.query(
     `UPDATE oficinas SET logo = NULL, logo_mime = NULL, logo_atualizada_em = NULL
-      WHERE id = $1 RETURNING ${COLUNAS_IDENTIDADE}`,
+      WHERE id = $1 RETURNING ${COLUNAS_OFICINA}`,
     [oficinaId],
   );
   if (!rows[0]) throw AppError.notFound('Oficina não encontrada');

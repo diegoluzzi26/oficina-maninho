@@ -52,13 +52,20 @@ router.patch('/usuarios/:id', auth, requireRole('admin'),
 router.get('/oficina', auth,
   h(async (req, res) => res.json(await svc.identidadeOficina(req.user.oficina_id))));
 
-// Editar dados da própria oficina: nome e cores. Cor null = volta ao padrão.
+// Editar dados da própria oficina: nome, cores e dados da impressão.
+// Cor null = volta ao padrão; texto vazio/null = apaga (linha some na OS).
 const corHex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida (use #rrggbb)').nullable();
+const textoOpc = (max) => z.string().max(max).nullable().optional();
 router.patch('/oficina', auth, requireRole('admin'),
   validate({ body: z.object({
     nome: z.string().min(1).max(120).optional(),
     cor_primaria: corHex.optional(),
     cor_secundaria: corHex.optional(),
+    endereco: textoOpc(160),
+    cidade: textoOpc(80),
+    uf: z.string().regex(/^([a-zA-Z]{2})?$/, 'UF inválida (2 letras)').nullable().optional(),
+    telefone: textoOpc(40),
+    especialidades: textoOpc(120),
   }) }),
   h(async (req, res) => {
     res.json(await svc.atualizarMinhaOficina(req.user.oficina_id, req.body));

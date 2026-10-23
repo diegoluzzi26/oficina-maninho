@@ -3,10 +3,14 @@ import { useIdentidadeOficina } from '../lib/oficina';
 /**
  * Cabeçalho das telas "papel" (OS e checklist): logo e nome da oficina
  * logada, com a cor secundária no fio de baixo. Sem logo, o nome vai em
- * destaque na cor principal.
+ * destaque na cor principal. Endereço, telefone e especialidades vêm do
+ * cadastro da oficina; linha sem dado não aparece.
  */
 export default function CabecalhoImpressao() {
   const oficina = useIdentidadeOficina();
+  // "RS-020, 1055 · Gravataí/RS" — junta só as partes preenchidas.
+  const cidadeUf = [oficina?.cidade, oficina?.uf].filter(Boolean).join('/');
+  const endereco = [oficina?.endereco, cidadeUf].filter(Boolean).join(' · ');
   return (
     <header className="mb-6 flex items-center justify-between gap-6 border-b-2 pb-4"
       style={{ borderColor: oficina?.cor_secundaria ? oficina.secundaria : '#cbd5e1' }}>
@@ -22,8 +26,9 @@ export default function CabecalhoImpressao() {
             {oficina.nome}
           </p>
         )}
-        <p>RS-020, 1055 · Gravataí/RS</p>
-        <p>Elétrica · Injeção · Ar-condicionado</p>
+        {endereco && <p>{endereco}</p>}
+        {oficina?.telefone && <p>{oficina.telefone}</p>}
+        {oficina?.especialidades && <p>{oficina.especialidades}</p>}
       </div>
     </header>
   );

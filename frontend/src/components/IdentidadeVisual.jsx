@@ -46,9 +46,73 @@ function SeletorCor({ label, ajuda, valor, onChange }) {
   );
 }
 
+const CAMPOS_IMPRESSAO = ['endereco', 'cidade', 'uf', 'telefone', 'especialidades'];
+const dadosDe = (o) => Object.fromEntries(CAMPOS_IMPRESSAO.map((c) => [c, o?.[c] || '']));
+
 /**
- * Aba "Identidade visual": logo e as 2 cores da oficina. Aparecem na tela
- * de login, na barra lateral e na impressão da OS.
+ * Endereço, telefone e especialidades que saem no cabeçalho da OS e do
+ * checklist impressos. Campo vazio some da impressão.
+ */
+function DadosImpressao({ ident, onErro, onOk }) {
+  const [dados, setDados] = useState(() => dadosDe(ident));
+  const [salvando, setSalvando] = useState(false);
+  const original = dadosDe(ident);
+  useEffect(() => setDados(dadosDe(ident)), CAMPOS_IMPRESSAO.map((c) => ident[c])); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mudou = CAMPOS_IMPRESSAO.some((c) => dados[c] !== original[c]);
+  const set = (campo) => (e) => setDados((d) => ({ ...d, [campo]: e.target.value }));
+
+  async function salvar(e) {
+    e.preventDefault();
+    onErro(''); onOk(''); setSalvando(true);
+    try {
+      publicarIdentidade(await api.atualizarMinhaOficina(dados));
+      onOk('Dados da impressão salvos.');
+    } catch (err) { onErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <form onSubmit={salvar} className="card p-5">
+      <h2 className="titulo-secao">Dados da impressão</h2>
+      <p className="mb-4 text-xs text-slate-500">
+        Saem no cabeçalho da OS e do checklist impressos. O que ficar em branco não aparece.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-[1fr_88px]">
+        <Campo label="Endereço">
+          <input className="input" value={dados.endereco} onChange={set('endereco')}
+            maxLength={160} placeholder="Rua, número, bairro" />
+        </Campo>
+        <div className="hidden sm:block" />
+        <Campo label="Cidade">
+          <input className="input" value={dados.cidade} onChange={set('cidade')} maxLength={80} />
+        </Campo>
+        <Campo label="UF">
+          <input className="input uppercase" value={dados.uf} maxLength={2} placeholder="RS"
+            onChange={(e) => setDados((d) => ({ ...d, uf: e.target.value.replace(/[^a-z]/gi, '').toUpperCase() }))} />
+        </Campo>
+        <Campo label="Telefone / WhatsApp">
+          <input className="input" value={dados.telefone} onChange={set('telefone')}
+            maxLength={40} placeholder="(51) 99999-9999" />
+        </Campo>
+        <div className="hidden sm:block" />
+        <Campo label="Especialidades" ajuda="Uma linha curta, ex.: Elétrica · Injeção · Ar-condicionado">
+          <input className="input" value={dados.especialidades} onChange={set('especialidades')}
+            maxLength={120} />
+        </Campo>
+      </div>
+      <div className="mt-5 flex justify-end border-t border-slate-200 pt-4">
+        <button type="submit" className="btn-primary" disabled={salvando || !mudou}>
+          {salvando ? <><Spinner className="h-4 w-4" /> Salvando…</> : 'Salvar dados'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Aba "Identidade visual": logo e as 2 cores da oficina (login, barra
+ * lateral e impressão da OS) e os dados de contato da impressão.
  */
 export default function IdentidadeVisual() {
   const ident = useIdentidadeOficina();
@@ -182,6 +246,8 @@ export default function IdentidadeVisual() {
               </button>
             </div>
           </form>
+
+          <DadosImpressao ident={ident} onErro={setErro} onOk={setOk} />
         </div>
 
         {/* Prévia */}
