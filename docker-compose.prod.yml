@@ -21,7 +21,9 @@ services:
     # Continua acessível na rede interna do compose (http://evolution:8080)
     # mas não expõe pro mundo — quem precisar acessar o painel dele
     # usa SSH tunnel: ssh -L 8081:localhost:8081 user@servidor
-    ports:
+    # !override: sem ele o compose soma a porta do base (0.0.0.0:8081) com
+    # esta e o Docker tenta abrir a 8081 duas vezes → "address already in use".
+    ports: !override
       - "127.0.0.1:8081:8080"
 
   caddy:
