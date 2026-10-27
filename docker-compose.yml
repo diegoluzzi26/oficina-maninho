@@ -54,6 +54,13 @@ services:
       ASAAS_API_KEY: ${ASAAS_API_KEY:-}
       ASAAS_BASE_URL: ${ASAAS_BASE_URL:-}
       ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      # Nota fiscal (Focus NFe, conta única da plataforma). Sem o token
+      # master, a oficina preenche os dados mas não conecta/emite.
+      # FISCAL_ENC_KEY: 32 bytes (hex) que criptografam os tokens por oficina.
+      FOCUS_TOKEN_MASTER: ${FOCUS_TOKEN_MASTER:-}
+      FOCUS_URL_PRODUCAO: ${FOCUS_URL_PRODUCAO:-}
+      FOCUS_URL_HOMOLOGACAO: ${FOCUS_URL_HOMOLOGACAO:-}
+      FISCAL_ENC_KEY: ${FISCAL_ENC_KEY:-}
       # Origens permitidas pelo CORS. Vazio em dev = aceita qualquer.
       # Em prod, listar frontend Vercel + custom domain, ex:
       # "https://oficina-maninho.vercel.app,*.vercel.app,https://sistema.dominio.com.br"

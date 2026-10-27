@@ -313,6 +313,30 @@ export const api = {
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),
 
+  // --- nota fiscal: configuração da oficina (só admin, adicional Nota fiscal) ---
+  fiscalConfig: () => request('/fiscal/config'),
+  salvarFiscalConfig: (body) => request('/fiscal/config', { method: 'PUT', body }),
+  // Multipart: certificado A1 + senha (não passa pelo `request`).
+  async enviarCertificadoFiscal(arquivo, senha) {
+    const fd = new FormData();
+    fd.append('senha', senha);
+    fd.append('arquivo', arquivo);
+    const token = getToken();
+    const res = await fetch(`${BASE}/fiscal/certificado`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.detalhes?.length
+        ? `${data.erro}: ${data.detalhes.map((d) => `${d.campo} — ${d.erro}`).join('; ')}`
+        : data.erro || `Erro ${res.status}`;
+      throw new ApiError(msg, res.status, data.detalhes);
+    }
+    return data;
+  },
+
   // --- Evolution: conexão do WhatsApp ---
   waConexao: () => request('/whatsapp/conexao'),
   waQrCode: () => request('/whatsapp/conexao/qrcode', { method: 'POST', body: {} }),

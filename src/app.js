@@ -96,6 +96,7 @@ app.use('/api/retornos',     ...protegido, exigirRecurso('followup'), require('.
 app.use('/api/agendamentos', ...protegido, pode('agenda'), require('./routes/agendamentos.routes'));
 app.use('/api/followup',     ...protegido, pode('followup'), exigirRecurso('followup'), require('./routes/followup.routes'));
 app.use('/api/ia',           ...protegido, exigirRecurso('ia'), require('./routes/ia.routes'));
+app.use('/api/fiscal',       ...protegido, exigirRecurso('fiscal'), require('./routes/fiscal.routes'));
 app.use('/api/config',       ...protegido, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
 app.use('/api',              ...protegido, require('./routes/anexos.routes'));

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { api, getUser, getToken, setSession } from '../lib/api';
 import { Alerta, Campo, Modal, Skeleton, Spinner, Vazio } from '../components/ui';
 import IdentidadeVisual from '../components/IdentidadeVisual';
+import ConfigFiscal from '../components/ConfigFiscal';
 import { publicarIdentidade } from '../lib/oficina';
 
 const ABAS = [
   { id: 'geral', texto: 'Geral' },
   { id: 'identidade', texto: 'Identidade visual' },
+  { id: 'fiscal', texto: 'Fiscal' },
 ];
 
 /** Barra de abas da página. */
@@ -845,9 +847,10 @@ export default function Configuracoes() {
           Configurações
         </h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          {aba === 'identidade'
-            ? 'Logo e cores da oficina, usadas no login, na barra lateral e na impressão da OS.'
-            : 'Ajuste WhatsApp (Evolution API), meta mensal e alertas internos.'}
+          {{
+            identidade: 'Logo e cores da oficina, usadas no login, na barra lateral e na impressão da OS.',
+            fiscal: 'Dados do emitente, parâmetros da NFS-e e NF-e e certificado digital.',
+          }[aba] || 'Ajuste WhatsApp (Evolution API), meta mensal e alertas internos.'}
         </p>
       </div>
       <Abas ativa={aba} onChange={setAba} />
@@ -859,6 +862,15 @@ export default function Configuracoes() {
       <div className="space-y-5">
         {cabecalho}
         <IdentidadeVisual />
+      </div>
+    );
+  }
+
+  if (aba === 'fiscal') {
+    return (
+      <div className="space-y-5">
+        {cabecalho}
+        <ConfigFiscal />
       </div>
     );
   }
