@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS oficina_fiscal (
   oficina_id                  UUID PRIMARY KEY REFERENCES oficinas(id) ON DELETE CASCADE,
 
   -- Emitente
-  cnpj                        TEXT UNIQUE CHECK (cnpj ~ '^[0-9]{14}$'),
+  -- numérico ou alfanumérico (Receita, jul/2026): 12 [0-9A-Z] + 2 DV
+  cnpj                        TEXT UNIQUE CHECK (cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$'),
   razao_social                TEXT,
   nome_fantasia               TEXT,
   inscricao_municipal         TEXT,
