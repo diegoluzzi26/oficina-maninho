@@ -48,6 +48,9 @@ app.use('/api/whatsapp', require('./routes/whatsapp.routes'));
 // Webhook de cobrança do Asaas — sem JWT (autenticado por token do Asaas).
 app.use('/api/webhooks/asaas', require('./routes/asaas.routes'));
 
+// Webhook da Focus NFe (status das notas) — sem JWT, token no header.
+app.use('/api/webhooks/focus', require('./routes/focus.routes'));
+
 // Login é público
 app.use('/api/auth', require('./routes/auth.routes'));
 
@@ -97,6 +100,7 @@ app.use('/api/agendamentos', ...protegido, pode('agenda'), require('./routes/age
 app.use('/api/followup',     ...protegido, pode('followup'), exigirRecurso('followup'), require('./routes/followup.routes'));
 app.use('/api/ia',           ...protegido, exigirRecurso('ia'), require('./routes/ia.routes'));
 app.use('/api/fiscal',       ...protegido, exigirRecurso('fiscal'), require('./routes/fiscal.routes'));
+app.use('/api/notas-fiscais', ...protegido, exigirRecurso('fiscal'), require('./routes/notas.routes'));
 app.use('/api/config',       ...protegido, require('./routes/config.routes'));
 // anexos.routes expõe /os/:id/anexos E /anexos/:id no mesmo router
 app.use('/api',              ...protegido, require('./routes/anexos.routes'));

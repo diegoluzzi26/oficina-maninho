@@ -49,8 +49,11 @@ const configBody = z.object({
   municipio: texto(80),
   uf: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF inválida').nullable().optional(),
   nfse_padrao: z.enum(['nacional', 'municipal']).optional(),
+  // Código de tributação nacional do ISS: item.subitem.desdobramento da
+  // LC 116, 6 dígitos. Aceita com ou sem pontos; grava só os dígitos.
   codigo_servico: z.string().trim()
-    .refine((v) => v === '' || /^\d{2}\.\d{2}$/.test(v), 'Código do serviço no formato 14.01')
+    .transform((v) => v.replace(/\D/g, ''))
+    .refine((v) => v === '' || v.length === 6, 'Código do serviço com 6 dígitos, ex. 14.01.01')
     .transform((v) => (v === '' ? null : v)).nullable().optional(),
   codigo_tributacao_municipal: texto(30),
   aliquota_iss: z.coerce.number().min(0).max(5).nullable().optional(),

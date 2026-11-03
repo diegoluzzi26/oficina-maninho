@@ -21,6 +21,7 @@ const MODULOS = [
   { chave: 'retornos',   nome: 'Retornos',             descricao: 'Clientes pra chamar de volta' },
   { chave: 'followup',   nome: 'Follow-up',            descricao: 'Lembretes de revisão no WhatsApp' },
   { chave: 'catalogo',   nome: 'Catálogo',             descricao: 'Serviços e peças' },
+  { chave: 'fiscal',     nome: 'Notas fiscais',        descricao: 'Emitir nota fiscal da OS (adicional Nota fiscal)' },
   { chave: 'excluir',    nome: 'Excluir e cancelar',   descricao: 'Apagar registros e cancelar agendamentos' },
 ];
 

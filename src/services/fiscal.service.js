@@ -1,7 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const focus = require('./focus.service');
-const { cifrar } = require('../utils/cripto');
+const { cifrar, decifrar } = require('../utils/cripto');
 const AppError = require('../utils/AppError');
 
 /**
@@ -41,7 +41,7 @@ const OBRIGATORIOS = {
   bairro: 'Bairro',
   municipio: 'Município',
   uf: 'UF',
-  codigo_servico: 'Código do serviço (LC 116)',
+  codigo_servico: 'Código de tributação do serviço',
   aliquota_iss: 'Alíquota de ISS',
 };
 
@@ -230,7 +230,77 @@ async function conectar(oficinaId, { arquivo, senha }) {
     : await focus.criarEmpresa(corpo);
 
   await db.withTransaction((client) => gravarRespostaFocus(client, oficinaId, emp));
+  await garantirGatilhos(oficinaId).catch((err) => {
+    // Sem gatilho a nota ainda atualiza pela reconsulta periódica; não
+    // vale falhar a conexão por isso.
+    console.error(`[fiscal] gatilhos da oficina ${oficinaId}: ${err.message}`);
+  });
   return obter(oficinaId);
 }
 
-module.exports = { CAMPOS, OBRIGATORIOS, obter, salvar, conectar, payloadEmpresa, pendencias };
+// Eventos que avisam mudança de status das notas que a oficina emite.
+const EVENTOS_GATILHO = ['nfsen', 'nfse', 'nfe'];
+
+/**
+ * Cadastra na Focus (nos dois ambientes) os gatilhos que chamam nosso
+ * webhook. Idempotente: pula o que já existe com a mesma URL e evento.
+ * Config no .env: FOCUS_WEBHOOK_URL (URL pública de /api/webhooks/focus) e
+ * FOCUS_WEBHOOK_TOKEN (enviado pela Focus no header X-Webhook-Token).
+ * Sem FOCUS_WEBHOOK_URL (ambiente local), não faz nada.
+ */
+async function garantirGatilhos(oficinaId) {
+  const url = process.env.FOCUS_WEBHOOK_URL;
+  if (!url) return [];
+  const f = await linha(oficinaId);
+  const criados = [];
+  for (const ambiente of ['homologacao', 'producao']) {
+    const enc = ambiente === 'producao' ? f.focus_token_producao_enc : f.focus_token_homologacao_enc;
+    if (!enc) continue;
+    const token = decifrar(enc);
+    const existentes = await focus.listarGatilhos({ token, ambiente });
+    for (const event of EVENTOS_GATILHO) {
+      const ja = (Array.isArray(existentes) ? existentes : [])
+        .some((g) => g.url === url && g.event === event && (!g.cnpj || g.cnpj === f.cnpj));
+      if (ja) continue;
+      await focus.criarGatilho({
+        cnpj: f.cnpj, event, url,
+        authorization: process.env.FOCUS_WEBHOOK_TOKEN || null,
+        authorization_header: process.env.FOCUS_WEBHOOK_TOKEN ? 'X-Webhook-Token' : null,
+      }, { token, ambiente });
+      criados.push(`${ambiente}:${event}`);
+    }
+  }
+  return criados;
+}
+
+/**
+ * Tudo que a emissão precisa da oficina: os dados fiscais e o token
+ * (decifrado) do ambiente atual. Recusa com o motivo se não estiver pronta.
+ */
+async function credenciais(oficinaId) {
+  const f = await linha(oficinaId);
+  const v = visao(f);
+  if (!v.pronta) {
+    const motivo = v.pendencias.length
+      ? `faltam dados fiscais (${v.pendencias.map((p) => p.rotulo).join(', ')})`
+      : !v.conectada ? 'o certificado digital não foi enviado'
+        : v.certificado_vencido ? 'o certificado digital venceu' : 'a conexão com o emissor está incompleta';
+    throw new AppError(`Emissão indisponível: ${motivo}. Veja Configurações > Fiscal.`, 422);
+  }
+  const ambiente = v.ambiente;
+  const token = decifrar(ambiente === 'producao' ? f.focus_token_producao_enc : f.focus_token_homologacao_enc);
+  return { fiscal: { ...f, ...v }, ambiente, token };
+}
+
+/** Token de um ambiente específico (a nota é consultada no ambiente em que foi emitida). */
+async function tokenDoAmbiente(oficinaId, ambiente) {
+  const f = await linha(oficinaId);
+  const enc = ambiente === 'producao' ? f.focus_token_producao_enc : f.focus_token_homologacao_enc;
+  if (!enc) throw new AppError(`Oficina sem token da Focus em ${ambiente}`, 422);
+  return decifrar(enc);
+}
+
+module.exports = {
+  CAMPOS, OBRIGATORIOS, obter, salvar, conectar, payloadEmpresa, pendencias,
+  garantirGatilhos, credenciais, tokenDoAmbiente,
+};

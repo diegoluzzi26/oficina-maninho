@@ -45,7 +45,7 @@ const base = {
   inscricao_municipal: '12.345', inscricao_estadual: '0123456789', regime_tributario: 'simples_nacional',
   email: 'fiscal@exemplo.com', oficina_telefone: '+5551999998888',
   cep: '94000000', logradouro: 'RS-020', numero: '1055', complemento: null, bairro: 'Centro',
-  municipio: 'Gravataí', uf: 'RS', codigo_servico: '14.01', aliquota_iss: '3.00',
+  municipio: 'Gravataí', uf: 'RS', codigo_servico: '140101', aliquota_iss: '3.00',
   nfse_padrao: 'nacional', serie_nfe: 1, ambiente: 'homologacao',
 };
 
@@ -79,4 +79,54 @@ test('pendências listam o que falta', () => {
   assert.deepEqual(fiscal.pendencias(base), []);
   const p = fiscal.pendencias({ ...base, cnpj: null, aliquota_iss: null });
   assert.deepEqual(p.map((x) => x.campo), ['cnpj', 'aliquota_iss']);
+});
+
+// ---------------------------------------------------------------- NFS-e
+const notas = require('../src/services/notas.service');
+
+const osBase = {
+  numero_os: 42, marca: 'Fiat', modelo: 'Uno', placa: 'ABC1D23', desconto: '30.00',
+  fechada_em: '2026-11-02T22:30:00Z',
+  servicos: [
+    { nome_servico: 'Troca de óleo', quantidade: 1, valor_total: '100.00' },
+    { nome_servico: 'Alinhamento', quantidade: 2, valor_total: '200.00' },
+  ],
+  pecas: [{ valor_total: '300.00' }],
+};
+const fiscalBase = { ...base, codigo_municipio: '4309209', iss_retido: false };
+
+test('NFS-e: desconto proporcional à mão de obra', () => {
+  assert.deepEqual(notas.valoresServico(osBase), { servicos: 300, desconto: 15 });
+  assert.deepEqual(notas.valoresServico({ ...osBase, pecas: [], desconto: 0 }), { servicos: 300, desconto: 0 });
+});
+
+test('NFS-e: corpo com prestador, tomador CPF, serviço e ISS', () => {
+  const cliente = { nome: 'João', cpf_cnpj: '123.456.789-09', telefone: '+5551988887777', email: 'j@x.com' };
+  const c = notas.montarNfse(osBase, cliente, fiscalBase, new Date('2026-11-03T13:00:00Z'));
+  assert.equal(c.data_emissao, '2026-11-03T10:00:00-03:00');
+  assert.equal(c.data_competencia, '2026-11-02'); // fechada 19h30 em Brasília
+  assert.equal(c.cnpj_prestador, '02130104000146');
+  assert.equal(c.inscricao_municipal_prestador, '12345');
+  assert.equal(c.codigo_opcao_simples_nacional, 3);
+  assert.equal(c.regime_tributario_simples_nacional, 1);
+  assert.equal(c.cpf_tomador, '12345678909');
+  assert.equal(c.cnpj_tomador, undefined);
+  assert.equal(c.telefone_tomador, '51988887777');
+  assert.equal(c.codigo_municipio_prestacao, '4309209');
+  assert.equal(c.codigo_tributacao_nacional_iss, '140101');
+  assert.equal(c.valor_servico, 300);
+  assert.equal(c.desconto_incondicionado, 15);
+  assert.equal(c.tipo_retencao_iss, 1);
+  assert.equal(c.percentual_aliquota_relativa_municipio, 3);
+  assert.match(c.descricao_servico, /^Serviços da OS nº 42 — Fiat Uno ABC1D23: Troca de óleo; Alinhamento \(2x\)$/);
+  assert.equal(c.cep_tomador, undefined); // sem endereço completo, não manda
+});
+
+test('NFS-e: tomador CNPJ, sem documento, e ISS retido', () => {
+  const comCnpj = notas.montarNfse(osBase, { nome: 'Empresa', cpf_cnpj: '02.130.104/0001-46' }, fiscalBase);
+  assert.equal(comCnpj.cnpj_tomador, '02130104000146');
+  const semDoc = notas.montarNfse(osBase, { nome: 'Consumidor', cpf_cnpj: null }, { ...fiscalBase, iss_retido: true });
+  assert.equal(semDoc.cpf_tomador, undefined);
+  assert.equal(semDoc.cnpj_tomador, undefined);
+  assert.equal(semDoc.tipo_retencao_iss, 2);
 });

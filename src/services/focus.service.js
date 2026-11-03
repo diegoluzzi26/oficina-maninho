@@ -101,6 +101,39 @@ function consultarEmpresa(id) {
   return req(`/v2/empresas/${encodeURIComponent(id)}`);
 }
 
+// ---------------------------------------------------------------- Gatilhos
+
+/** Gatilhos (webhooks) da empresa no ambiente. Usa o token DA EMPRESA. */
+function listarGatilhos({ token, ambiente }) {
+  return req('/v2/hooks', { token, ambiente });
+}
+
+function criarGatilho(dados, { token, ambiente }) {
+  return req('/v2/hooks', { method: 'POST', body: dados, token, ambiente });
+}
+
+// ---------------------------------------------------------------- NFS-e Nacional
+
+/**
+ * POST /v2/nfsen?ref= — a Focus pré-valida na hora (400/422) e, se passar,
+ * responde 202 com status processando_autorizacao. A autorização chega
+ * depois, por webhook ou consulta.
+ */
+function emitirNfsen(ref, dados, { token, ambiente }) {
+  return req('/v2/nfsen', { method: 'POST', body: dados, query: { ref }, token, ambiente });
+}
+
+function consultarNfsen(ref, { token, ambiente }) {
+  return req(`/v2/nfsen/${encodeURIComponent(ref)}`, { token, ambiente });
+}
+
+/** A Focus devolve o XML como caminho relativo; vira URL completa do ambiente. */
+function urlArquivo(caminho, ambiente) {
+  if (!caminho) return null;
+  return /^https?:\/\//.test(caminho) ? caminho : `${URLS[ambiente]}${caminho}`;
+}
+
 module.exports = {
   URLS, configurado, req, criarEmpresa, atualizarEmpresa, consultarEmpresa,
+  listarGatilhos, criarGatilho, emitirNfsen, consultarNfsen, urlArquivo,
 };

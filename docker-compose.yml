@@ -61,6 +61,10 @@ services:
       FOCUS_URL_PRODUCAO: ${FOCUS_URL_PRODUCAO:-}
       FOCUS_URL_HOMOLOGACAO: ${FOCUS_URL_HOMOLOGACAO:-}
       FISCAL_ENC_KEY: ${FISCAL_ENC_KEY:-}
+      # URL pública do webhook (ex. https://gestaotorque.com.br/api/webhooks/focus)
+      # e o token que a Focus manda no header X-Webhook-Token.
+      FOCUS_WEBHOOK_URL: ${FOCUS_WEBHOOK_URL:-}
+      FOCUS_WEBHOOK_TOKEN: ${FOCUS_WEBHOOK_TOKEN:-}
       # Origens permitidas pelo CORS. Vazio em dev = aceita qualquer.
       # Em prod, listar frontend Vercel + custom domain, ex:
       # "https://oficina-maninho.vercel.app,*.vercel.app,https://sistema.dominio.com.br"

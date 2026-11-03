@@ -43,6 +43,12 @@ function corpoDe(form) {
   return b;
 }
 
+// 140101 -> 14.01.01 (só exibição; o servidor guarda os dígitos).
+const codigoServicoBR = (v) => {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 6 ? `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}` : v;
+};
+
 const dataBR = (iso) => (iso ? iso.split('-').reverse().join('/') : '—');
 
 /** Situação no topo: o que falta pra emitir. */
@@ -324,9 +330,11 @@ export default function ConfigFiscal() {
                 <option value="municipal">Sistema da prefeitura</option>
               </select>
             </Campo>
-            <Campo label="Código do serviço (LC 116)" obrigatorio ajuda="Oficina mecânica costuma ser 14.01">
-              <input className={`input font-mono ${marcar('codigo_servico')}`} value={form.codigo_servico}
-                onChange={set('codigo_servico')} placeholder="14.01" maxLength={5} />
+            <Campo label="Código de tributação do serviço" obrigatorio
+              ajuda="Código nacional com 6 dígitos (LC 116). Conserto de veículos costuma ser 14.01.01">
+              <input className={`input font-mono ${marcar('codigo_servico')}`}
+                value={codigoServicoBR(form.codigo_servico)}
+                onChange={set('codigo_servico')} placeholder="14.01.01" maxLength={8} />
             </Campo>
             <Campo label="Código de tributação municipal" ajuda="Se a prefeitura usar">
               <input className="input font-mono" value={form.codigo_tributacao_municipal}
