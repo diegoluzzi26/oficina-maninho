@@ -114,6 +114,13 @@ percorre `pg_namespace`, porque o runner roda o SQL uma vez só. Tem rollback.
   notas `processando` há mais de 10 min, como rede de segurança.
 - Cadastrar o gatilho da Focus pela API na primeira configuração.
 
+### 4b. Catálogo de peças pronto pra NF-e (feito)
+- Tabela NCM oficial do Siscomex em `public.ncm`, com busca e sugestão pelo
+  nome da peça. NCM e CEST por peça, validados contra a tabela vigente.
+- "Juntar peças parecidas" no catálogo e aviso de peça parecida na OS.
+- Decisão: o NCM padrão da oficina NÃO vale como NCM automático na NF-e.
+  Peça sem NCM próprio bloqueia a NF-e daquela OS.
+
 ### 5. Emissão de NF-e das peças
 - `fiscal.service.montarNfe(os)`: emitente, destinatário (endereço do
   cliente), itens de `os_pecas` com NCM, CFOP e unidade, tributação conforme
