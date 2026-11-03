@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const regrasEtapa = require('./etapa-regras.service');
+const { chave: chaveNome } = require('../utils/semelhanca');
 
 /**
  * Se o item veio como `servico_id`, apenas retorna esse id.
@@ -35,6 +36,9 @@ async function garantirServicoNoCatalogo(client, item) {
 /**
  * Mesmo padrão pra peças. Como o backend antigo só tinha `descricao`
  * texto livre nas OS, aqui é onde o catálogo de peças ganha vida.
+ * Reaproveita a peça com o mesmo nome normalizado (acento, caixa, plural,
+ * "de/do"): "Lâmpadas" cai na "Lampada" já cadastrada em vez de virar
+ * outra peça sem NCM.
  */
 async function garantirPecaNoCatalogo(client, item) {
   if (item.peca_id) return item.peca_id;
@@ -42,11 +46,10 @@ async function garantirPecaNoCatalogo(client, item) {
   const nome = (item.descricao || '').trim();
   if (!nome) return null;
 
-  const existe = await client.query(
-    'SELECT id FROM pecas WHERE lower(nome) = lower($1) AND ativo',
-    [nome],
-  );
-  if (existe.rows[0]) return existe.rows[0].id;
+  const alvo = chaveNome(nome);
+  const ativas = await client.query('SELECT id, nome FROM pecas WHERE ativo');
+  const mesma = ativas.rows.find((p) => chaveNome(p.nome) === alvo);
+  if (mesma) return mesma.id;
 
   const criado = await client.query(
     `INSERT INTO pecas (nome, valor_padrao)

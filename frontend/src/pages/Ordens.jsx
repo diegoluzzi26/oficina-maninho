@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api, getToken } from '../lib/api';
+import { DicaPecaParecida } from '../components/CatalogoPecas';
 import { brl, data, dataHora, telefone, STATUS, nomeMes,
   FORMAS_PAGAMENTO, rotuloForma, hojeISO } from '../lib/format';
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
@@ -431,6 +432,11 @@ function NovaOS({ aberto, onFechar, onCriada }) {
                     onChange={(e) => setPecas((v) => v.map((x, i) => (i === idx ? { ...x, valor_unit: e.target.value } : x)))} />
                   <button type="button" onClick={() => setPecas((v) => v.filter((_, i) => i !== idx))}
                     className="px-1.5 text-slate-400 transition hover:text-rose-600" title="Remover">✕</button>
+                  <DicaPecaParecida nome={p.descricao} catalogo={pecasCatalogo}
+                    onUsar={(hit) => setPecas((v) => v.map((x, i) => (i === idx
+                      ? { ...x, descricao: hit.nome,
+                          valor_unit: x.valor_unit === '' || x.valor_unit == null ? Number(hit.valor_padrao) : x.valor_unit }
+                      : x)))} />
                 </div>
               ))}
               <p className="text-[11px] text-slate-500">
@@ -1628,6 +1634,11 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                 disabled={!novaPeca.descricao || !novaPeca.valor_unit || carregando}
                 className="btn-primary px-3 py-1 text-xs">Adicionar</button>
               <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
+              <DicaPecaParecida nome={novaPeca.descricao} catalogo={pecasCatalogo}
+                onUsar={(hit) => setNovaPeca((v) => ({
+                  ...v, descricao: hit.nome,
+                  valor_unit: v.valor_unit === '' || v.valor_unit == null ? String(hit.valor_padrao) : v.valor_unit,
+                }))} />
             </div>
           )}
         </div>

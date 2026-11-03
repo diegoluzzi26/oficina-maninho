@@ -111,9 +111,13 @@ export const api = {
   criarServico: (body) => request('/servicos', { method: 'POST', body }),
   desativarServico: (id) => request(`/servicos/${id}`, { method: 'DELETE' }),
 
-  pecas: () => request('/pecas'),
+  pecas: (params) => request('/pecas', { params }),
   atualizarPeca: (id, body) => request(`/pecas/${id}`, { method: 'PUT', body }),
   desativarPeca: (id) => request(`/pecas/${id}`, { method: 'DELETE' }),
+  pecasParecidas: () => request('/pecas/parecidas'),
+  unificarPecas: (id, outras) => request(`/pecas/${id}/unificar`, { method: 'POST', body: { outras } }),
+  sugestoesNcm: (id) => request(`/pecas/${id}/sugestoes-ncm`),
+  buscarNcm: (busca) => request('/ncm', { params: { busca } }),
 
   ordens: (params) => request('/os', { params }),
   ordensKanban: (params) => request('/os/kanban', { params }),

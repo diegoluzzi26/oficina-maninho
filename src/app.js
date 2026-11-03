@@ -87,6 +87,7 @@ app.use('/api/clientes',   ...protegido, require('./routes/clientes.routes'));
 app.use('/api/carros',     ...protegido, require('./routes/carros.routes'));
 app.use('/api/servicos',   ...protegido, require('./routes/servicos.routes'));
 app.use('/api/pecas',      ...protegido, require('./routes/pecas.routes'));
+app.use('/api/ncm',        ...protegido, require('./routes/ncm.routes'));
 app.use('/api/funcionarios', ...protegido, exigirRecurso('funcionarios'), require('./routes/funcionarios.routes'));
 app.use('/api/despesas-recorrentes', ...protegido, exigirRecurso('gestao'), require('./routes/despesas-recorrentes.routes'));
 app.use('/api/os',         ...protegido, require('./routes/os.routes'));

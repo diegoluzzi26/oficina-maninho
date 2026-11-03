@@ -18,6 +18,7 @@ const server = app.listen(env.port, async () => {
   require('./services/relatorio-agendado.service').agendar();
   require('./services/followup-agendado.service').agendar();
   require('./services/notas-agendado.service').agendar();
+  require('./services/ncm.service').atualizarSeVelha();
 });
 
 // Encerra conexões abertas antes de morrer — evita erro no cliente durante deploy

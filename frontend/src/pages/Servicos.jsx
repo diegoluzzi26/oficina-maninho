@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api, getUser } from '../lib/api';
 import { brl } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
+import { ModalPeca, ModalParecidas, ncmBR } from '../components/CatalogoPecas';
 
 /**
  * Catálogo (serviços + peças) numa mesma página, alternada por aba.
@@ -193,34 +194,9 @@ function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido }) {
 }
 
 // ------------------ Linha de peça ------------------
-function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
-  const [modo, setModo] = useState('ver');
-  const [nome, setNome] = useState(peca.nome);
-  const [valor, setValor] = useState(String(peca.valor_padrao ?? ''));
-  const [ret, setRet]   = useState(String(peca.intervalo_retorno_meses ?? ''));
+// Edição abre o modal (tem os dados fiscais: NCM, CEST, unidade).
+function LinhaPeca({ peca, ehAdmin, onEditar, onExcluido }) {
   const [erro, setErro] = useState('');
-  const [salvando, setSalvando] = useState(false);
-
-  async function salvar() {
-    setErro(''); setSalvando(true);
-    try {
-      const atualizado = await api.atualizarPeca(peca.id, {
-        nome: nome.trim(),
-        valor_padrao: Number(valor || 0),
-        intervalo_retorno_meses: ret ? Number(ret) : null,
-      });
-      setModo('ver');
-      onSalvo(atualizado);
-    } catch (e) { setErro(e.message); }
-    finally { setSalvando(false); }
-  }
-
-  function cancelar() {
-    setNome(peca.nome);
-    setValor(String(peca.valor_padrao ?? ''));
-    setRet(String(peca.intervalo_retorno_meses ?? ''));
-    setErro(''); setModo('ver');
-  }
 
   async function excluir() {
     if (!confirm(`Excluir a peça "${peca.nome}"?`)) return;
@@ -234,57 +210,37 @@ function LinhaPeca({ peca, ehAdmin, onSalvo, onExcluido }) {
   return (
     <li className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 hover:bg-slate-50/60">
       <div className="min-w-0 flex-1">
-        {modo === 'ver' ? (
-          <p className="truncate text-sm font-semibold text-slate-800">{peca.nome}</p>
-        ) : (
-          <input className="input py-1 text-sm" value={nome}
-            onChange={(e) => setNome(e.target.value)} />
-        )}
+        <p className="truncate text-sm font-semibold text-slate-800">{peca.nome}</p>
         {erro && <p className="text-[11px] font-semibold text-rose-600">{erro}</p>}
       </div>
-
-      {modo === 'ver' ? (
-        <>
-          <div className="w-24 text-right">
-            <p className="tnum font-semibold text-maninho-700">{brl(peca.valor_padrao)}</p>
-          </div>
-          <div className="hidden w-24 text-right sm:block">
-            {peca.intervalo_retorno_meses ? (
-              <span className="rounded bg-ouro-100 px-1.5 py-0.5 text-[10px] font-semibold text-ouro-700">
-                {peca.intervalo_retorno_meses}m retorno
-              </span>
-            ) : (
-              <span className="text-[10px] text-slate-400">—</span>
-            )}
-          </div>
-          {ehAdmin && (
-            <div className="flex gap-1">
-              <button onClick={() => setModo('editar')}
-                className="rounded px-2 py-1 text-[11px] font-semibold text-maninho-600 hover:bg-maninho-50">
-                Editar
-              </button>
-              <button onClick={excluir}
-                className="rounded px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">
-                Excluir
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="flex items-center gap-2">
-          <input type="number" step="0.01" min="0" placeholder="Valor"
-            className="input w-24 py-1 text-xs tnum"
-            value={valor} onChange={(e) => setValor(e.target.value)} />
-          <input type="number" min="1" max="120" placeholder="Ret m"
-            className="input w-20 py-1 text-xs"
-            value={ret} onChange={(e) => setRet(e.target.value)} />
-          <button onClick={salvar} disabled={salvando}
-            className="btn-primary px-2 py-1 text-xs">
-            {salvando ? '…' : 'Salvar'}
+      <div className="w-24 text-right">
+        <p className="tnum font-semibold text-maninho-700">{brl(peca.valor_padrao)}</p>
+      </div>
+      <div className="w-24 text-right">
+        {peca.ncm ? (
+          <span className="font-mono text-[11px] text-slate-600">{ncmBR(peca.ncm)}</span>
+        ) : (
+          <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">sem NCM</span>
+        )}
+      </div>
+      <div className="hidden w-24 text-right sm:block">
+        {peca.intervalo_retorno_meses ? (
+          <span className="rounded bg-ouro-100 px-1.5 py-0.5 text-[10px] font-semibold text-ouro-700">
+            {peca.intervalo_retorno_meses}m retorno
+          </span>
+        ) : (
+          <span className="text-[10px] text-slate-400">—</span>
+        )}
+      </div>
+      {ehAdmin && (
+        <div className="flex gap-1">
+          <button onClick={() => onEditar(peca)}
+            className="rounded px-2 py-1 text-[11px] font-semibold text-maninho-600 hover:bg-maninho-50">
+            Editar
           </button>
-          <button onClick={cancelar} disabled={salvando}
-            className="btn-ghost px-2 py-1 text-xs">
-            Cancelar
+          <button onClick={excluir}
+            className="rounded px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">
+            Excluir
           </button>
         </div>
       )}
@@ -300,6 +256,9 @@ export default function Servicos() {
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
   const [aberto, setAberto] = useState(false);
+  const [semNcm, setSemNcm] = useState(false);
+  const [editandoPeca, setEditandoPeca] = useState(null);
+  const [parecidasAberto, setParecidasAberto] = useState(false);
 
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
@@ -314,10 +273,12 @@ export default function Servicos() {
   useEffect(() => { carregar(); }, [carregar]);
 
   const lista = aba === 'servicos' ? servicos : pecas;
+  const qtdSemNcm = (pecas || []).filter((p) => !p.ncm).length;
   const filtrada = (lista || []).filter((x) =>
-    !busca
-    || (x.nome || '').toLowerCase().includes(busca.toLowerCase())
-    || (x.descricao || '').toLowerCase().includes(busca.toLowerCase()));
+    (aba !== 'pecas' || !semNcm || !x.ncm)
+    && (!busca
+      || (x.nome || '').toLowerCase().includes(busca.toLowerCase())
+      || (x.descricao || '').toLowerCase().includes(busca.toLowerCase())));
 
   return (
     <div className="space-y-5">
@@ -352,7 +313,27 @@ export default function Servicos() {
         </div>
         <input className="input max-w-sm" placeholder={`Buscar ${aba === 'servicos' ? 'serviço' : 'peça'}…`}
           value={busca} onChange={(e) => setBusca(e.target.value)} />
+        {aba === 'pecas' && pecas && (
+          <>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+              <input type="checkbox" checked={semNcm} onChange={(e) => setSemNcm(e.target.checked)} />
+              Só sem NCM <span className="tnum text-rose-600">({qtdSemNcm})</span>
+            </label>
+            {ehAdmin && (
+              <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setParecidasAberto(true)}>
+                Juntar peças parecidas
+              </button>
+            )}
+          </>
+        )}
       </div>
+
+      {aba === 'pecas' && pecas && qtdSemNcm > 0 && (
+        <Alerta tipo="aviso">
+          {qtdSemNcm === 1 ? '1 peça está' : `${qtdSemNcm} peças estão`} sem NCM. Para emitir NF-e das peças,
+          cada uma precisa do próprio NCM: use <b>Editar</b> para escolher na tabela oficial.
+        </Alerta>
+      )}
 
       {!ehAdmin && (
         <Alerta tipo="aviso">
@@ -393,7 +374,10 @@ export default function Servicos() {
                 </>
               )}
               {aba === 'pecas' && (
-                <span className="hidden w-24 text-right sm:inline">Retorno</span>
+                <>
+                  <span className="w-24 text-right">NCM</span>
+                  <span className="hidden w-24 text-right sm:inline">Retorno</span>
+                </>
               )}
               {ehAdmin && <span className="w-[110px]">&nbsp;</span>}
             </div>
@@ -405,7 +389,7 @@ export default function Servicos() {
                 onExcluido={(id) => setServicos((l) => l.filter((x) => x.id !== id))} />
             ) : (
               <LinhaPeca key={item.id} peca={item} ehAdmin={ehAdmin}
-                onSalvo={(a) => setPecas((l) => l.map((x) => x.id === a.id ? a : x))}
+                onEditar={setEditandoPeca}
                 onExcluido={(id) => setPecas((l) => l.filter((x) => x.id !== id))} />
             ))}
           </ul>
@@ -414,6 +398,15 @@ export default function Servicos() {
 
       <FormServico aberto={aberto} onFechar={() => setAberto(false)}
         onSalvo={() => { setAberto(false); carregar(); }} />
+
+      {editandoPeca && (
+        <ModalPeca peca={editandoPeca} onFechar={() => setEditandoPeca(null)}
+          onSalvo={(a) => { setPecas((l) => l.map((x) => (x.id === a.id ? a : x))); setEditandoPeca(null); }} />
+      )}
+      {parecidasAberto && (
+        <ModalParecidas onFechar={() => { setParecidasAberto(false); carregar(); }}
+          onAlterado={(_, outras) => setPecas((l) => l.filter((x) => !outras.includes(x.id)))} />
+      )}
     </div>
   );
 }
