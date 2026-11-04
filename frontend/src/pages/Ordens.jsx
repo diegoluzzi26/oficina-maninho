@@ -10,7 +10,9 @@ import { CampoPlaca, mesclarDadosPlaca } from '../components/CampoPlaca';
 import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
 import { FormCliente, FormCarro } from './Clientes';
-import { podeExcluir } from '../lib/permissoes';
+import { podeExcluir, temPermissao } from '../lib/permissoes';
+import { useSearchParams } from 'react-router-dom';
+import { NotasDaOS } from '../components/NotasFiscais';
 import Paginacao from '../components/Paginacao';
 
 /**
@@ -1642,6 +1644,8 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
           )}
         </div>
 
+        <NotasDaOS os={os} podeEmitir={temPermissao('fiscal')} />
+
         <div className="space-y-1 rounded-md bg-maninho-50 px-4 py-3 text-sm">
           <div className="flex justify-between text-slate-600">
             <span>Serviços</span><span className="tnum">{brl(os.valor_servicos)}</span>
@@ -2016,6 +2020,15 @@ export default function Ordens() {
   const [novaAberta, setNovaAberta] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
   const [pagando, setPagando] = useState(null);
+  const [sp, setSp] = useSearchParams();
+
+  // ?os=<id> abre o detalhe direto (link vindo da aba Notas Fiscais).
+  useEffect(() => {
+    const id = sp.get('os');
+    if (!id) return;
+    api.ordem(id).then(setDetalhe).catch(() => {});
+    setSp((prev) => { const n = new URLSearchParams(prev); n.delete('os'); return n; }, { replace: true });
+  }, [sp, setSp]);
   const [expandidaId, setExpandidaId] = useState(null);
   const [expandida, setExpandida] = useState(null); // OS completa (com peças/serviços)
   const [carregandoExpansao, setCarregandoExpansao] = useState(false);

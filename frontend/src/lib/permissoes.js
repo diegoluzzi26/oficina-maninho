@@ -35,6 +35,7 @@ export const MODULO_DA_ROTA = {
   '/followup': 'followup',
   '/followup/regras': 'followup',
   '/servicos': 'catalogo',
+  '/notas-fiscais': 'fiscal',
 };
 
 /** Primeira tela que o usuário pode abrir (pra quem não tem o Painel). */

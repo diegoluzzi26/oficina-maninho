@@ -13,8 +13,22 @@ const h = require('../utils/asyncHandler');
  * permissão 'fiscal' (Equipe).
  */
 
-router.get('/', validate({ query: z.object({ os_id: z.string().uuid() }) }), h(async (req, res) => {
-  res.json(await notas.listarDaOS(req.query.os_id));
+// Notas de uma OS (bloco na OS).
+router.get('/da-os/:id', validate({ params: v.idParam }), h(async (req, res) => {
+  res.json(await notas.listarDaOS(req.params.id));
+}));
+
+// Lista paginada (aba Notas Fiscais).
+const listaQuery = v.paginacao.extend({
+  por_pagina: z.coerce.number().int().positive().max(100).default(20),
+  tipo: z.enum(['nfse', 'nfe']).optional(),
+  status: z.enum(['processando', 'autorizada', 'erro', 'cancelada']).optional(),
+  de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+router.get('/', validate({ query: listaQuery }), h(async (req, res) => {
+  res.json(await notas.listar(req.query));
 }));
 
 const emitirBody = z.object({

@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
   TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
   Wrench, Settings, Menu, X, FileText, Building2, UserCog, BadgeCheck, Sparkles,
+  FileCheck,
 } from 'lucide-react';
 import { api, getUser, getToken, setSession, clearSession } from '../lib/api';
 import { temPermissao, MODULO_DA_ROTA } from '../lib/permissoes';
@@ -58,6 +59,7 @@ const MENU = [
   { para: '/retornos', texto: 'Retornos', recurso: 'followup', Icone: PhoneCall },
   { para: '/followup', texto: 'Follow-up', recurso: 'followup', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
+  { para: '/notas-fiscais', texto: 'Notas fiscais', recurso: 'fiscal', Icone: FileCheck },
   { para: '/assistente', texto: 'Assistente IA', somenteAdmin: true, recurso: 'ia', Icone: Sparkles },
   { para: '/equipe', texto: 'Equipe', somenteAdmin: true, Icone: UserCog },
   { para: '/plano', texto: 'Plano', somenteAdmin: true, Icone: BadgeCheck },

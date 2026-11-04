@@ -144,6 +144,54 @@ async function listarDaOS(osId) {
   return rows.map(visao);
 }
 
+/**
+ * Lista paginada da aba Notas Fiscais (contrato padrão: pagina/por_pagina,
+ * ordem estável criado_em DESC, id DESC). Filtros: tipo, status, período
+ * (data de emissão), busca por cliente, nº da nota ou nº da OS.
+ * `total_valor` soma só as autorizadas do filtro inteiro.
+ */
+async function listar(f = {}) {
+  const where = []; const params = [];
+  const add = (sql, v) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
+  if (f.tipo) add('n.tipo = ?', f.tipo);
+  if (f.status) add('n.status = ?', f.status);
+  if (f.de) add('n.criado_em >= ?::date', f.de);
+  if (f.ate) add("n.criado_em < (?::date + interval '1 day')", f.ate);
+  if (f.busca) {
+    const b = f.busca.trim();
+    params.push(`%${b}%`);
+    const i = params.length;
+    where.push(`(c.nome ILIKE $${i} OR n.numero = $${i + 1} OR o.numero_os::text = $${i + 1})`);
+    params.push(b.replace(/^#/, ''));
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const base = `FROM notas_fiscais n
+    JOIN ordens_servico o ON o.id = n.os_id
+    JOIN clientes c ON c.id = o.cliente_id ${clause}`;
+
+  const pagina = f.pagina || 1;
+  const porPagina = f.por_pagina || 20;
+  const { rows: [agg] } = await db.query(
+    `SELECT count(*)::int AS total,
+            COALESCE(sum(n.valor) FILTER (WHERE n.status = 'autorizada'), 0)::numeric AS total_valor
+       ${base}`, params);
+  params.push(porPagina, (pagina - 1) * porPagina);
+  const { rows } = await db.query(
+    `SELECT ${COLUNAS_NOTA.split(',').map((c) => `n.${c.trim()}`).join(', ')},
+            o.numero_os, c.nome AS cliente_nome
+       ${base}
+      ORDER BY n.criado_em DESC, n.id DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+  return {
+    dados: rows.map(visao),
+    paginacao: {
+      pagina, por_pagina: porPagina, total: agg.total,
+      paginas: Math.ceil(agg.total / porPagina),
+      total_valor: Number(agg.total_valor),
+    },
+  };
+}
+
 // ---------------------------------------------------------------- NF-e (peças)
 
 // Forma de pagamento da OS -> código tPag da NF-e.
@@ -505,6 +553,6 @@ async function reconsultarPendentes(oficinaId, { limite = 20 } = {}) {
 }
 
 module.exports = {
-  emitir, atualizar, cancelar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS,
+  emitir, atualizar, cancelar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS, listar,
   montarNfse, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
 };

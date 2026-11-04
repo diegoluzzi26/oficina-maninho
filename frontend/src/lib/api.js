@@ -319,6 +319,13 @@ export const api = {
   configWhatsApp: () => request('/config/whatsapp'),
   salvarConfigWhatsApp: (body) => request('/config/whatsapp', { method: 'PUT', body }),
 
+  // --- notas fiscais (adicional Nota fiscal) ---
+  notasFiscais: (params) => request('/notas-fiscais', { params }),
+  notasDaOS: (osId) => request(`/notas-fiscais/da-os/${osId}`),
+  emitirNota: (osId, tipo) => request('/notas-fiscais', { method: 'POST', body: { os_id: osId, tipo } }),
+  atualizarNota: (id) => request(`/notas-fiscais/${id}/atualizar`, { method: 'POST', body: {} }),
+  cancelarNota: (id, justificativa) => request(`/notas-fiscais/${id}/cancelar`, { method: 'POST', body: { justificativa } }),
+
   // --- nota fiscal: configuração da oficina (só admin, adicional Nota fiscal) ---
   fiscalConfig: () => request('/fiscal/config'),
   salvarFiscalConfig: (body) => request('/fiscal/config', { method: 'PUT', body }),

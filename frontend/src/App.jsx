@@ -25,6 +25,7 @@ import FollowupRegras from './pages/FollowupRegras';
 import PlataformaOficinas from './pages/PlataformaOficinas';
 import Usuarios from './pages/Usuarios';
 import Plano from './pages/Plano';
+import NotasFiscais from './pages/NotasFiscais';
 
 function Protegida({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="equipe" element={<Usuarios />} />
           <Route path="plano" element={<Plano />} />
+          <Route path="notas-fiscais" element={<NotasFiscais />} />
           <Route path="plataforma" element={<PlataformaOficinas />} />
           <Route path="sem-acesso" element={<SemAcesso />} />
         </Route>
