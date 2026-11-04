@@ -43,12 +43,17 @@ const OPCAO_SIMPLES = {
 // Como o ISS é apurado: 1 = tudo pelo SN; 2 = ISS fora do SN (excesso de sublimite).
 const APURACAO_SIMPLES = { simples_nacional: 1, simples_excesso_sublimite: 2 };
 
-/** Tomador a partir do cadastro do cliente. Sem CPF/CNPJ válido, sai sem documento. */
+/**
+ * Tomador a partir do cadastro do cliente. Sem CPF/CNPJ válido o tomador
+ * não vai: a NFS-e Nacional não aceita tomador só com nome (o schema exige
+ * CPF/CNPJ/NIF antes de xNome), então a nota sai sem tomador identificado.
+ */
 function tomador(cliente) {
   const doc = cnpj.limpar(cliente.cpf_cnpj);
   const t = {};
   if (/^\d{11}$/.test(doc)) t.cpf_tomador = doc;
   else if (cnpj.valido(doc)) t.cnpj_tomador = doc;
+  else return t;
   t.razao_social_tomador = String(cliente.nome || '').slice(0, 150);
   if (cliente.email) t.email_tomador = String(cliente.email).slice(0, 80);
   const tel = digitos(cliente.telefone).replace(/^55(?=\d{10,11}$)/, '');
@@ -110,6 +115,9 @@ function montarNfse(os, cliente, f, agora = new Date()) {
     tributacao_iss: 1,
     tipo_retencao_iss: f.iss_retido ? 2 : 1,
     percentual_aliquota_relativa_municipio: f.aliquota_iss === null ? undefined : Number(f.aliquota_iss),
+    // Grupo de tributos aproximados (totTrib) é obrigatório; 0 = não informar
+    // valores estimados (Decreto 8.264/2014).
+    indicador_total_tributacao: 0,
   };
 }
 
@@ -232,13 +240,13 @@ function montarNfe(os, cliente, f, catalogo, agora = new Date()) {
   const dest = { nome_destinatario: String(cliente.nome || '').slice(0, 60) };
   if (/^\d{11}$/.test(doc)) dest.cpf_destinatario = doc;
   else if (cnpj.valido(doc)) dest.cnpj_destinatario = doc;
-  else problemas.push({ campo: 'cliente.cpf_cnpj', erro: 'Cliente sem CPF/CNPJ válido' });
+  else problemas.push({ campo: 'Cliente', erro: 'sem CPF/CNPJ válido no cadastro' });
 
   const faltaEndereco = [['cep', 'CEP'], ['logradouro', 'logradouro'], ['numero', 'número'],
     ['bairro', 'bairro'], ['municipio', 'município'], ['uf', 'UF']]
     .filter(([c]) => !cliente[c]).map(([, r]) => r);
   if (faltaEndereco.length) {
-    problemas.push({ campo: 'cliente.endereco', erro: `Endereço do cliente incompleto: falta ${faltaEndereco.join(', ')}` });
+    problemas.push({ campo: 'Endereço do cliente', erro: `falta ${faltaEndereco.join(', ')}` });
   }
   Object.assign(dest, {
     logradouro_destinatario: cliente.logradouro,
@@ -303,12 +311,13 @@ function montarNfe(os, cliente, f, catalogo, agora = new Date()) {
       cofins_situacao_tributaria: pis,
     };
   });
-  if (semNcm.length) problemas.push({ campo: 'pecas.ncm', erro: `Peça sem NCM no catálogo: ${semNcm.join(', ')}` });
+  if (semNcm.length) problemas.push({ campo: 'Peças sem NCM no catálogo', erro: semNcm.join(', ') });
   if (semCfop.length) {
-    problemas.push({ campo: 'pecas.cfop', erro: `Sem CFOP (nem padrão na aba Fiscal): ${semCfop.join(', ')}` });
+    problemas.push({ campo: 'Peças sem CFOP (e sem CFOP padrão na aba Fiscal)', erro: semCfop.join(', ') });
   }
   if (problemas.length) {
-    throw new AppError(`Não dá para emitir a NF-e: ${problemas.map((p) => p.erro).join('; ')}`, 422, problemas);
+    // A mensagem fica curta: o frontend junta os detalhes ("campo — erro").
+    throw new AppError('Não dá para emitir a NF-e', 422, problemas);
   }
 
   const produtos = dinheiro(items.reduce((t, it) => t + it.valor_bruto, 0));

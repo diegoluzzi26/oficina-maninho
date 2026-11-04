@@ -128,6 +128,9 @@ test('NFS-e: tomador CNPJ, sem documento, e ISS retido', () => {
   const semDoc = notas.montarNfse(osBase, { nome: 'Consumidor', cpf_cnpj: null }, { ...fiscalBase, iss_retido: true });
   assert.equal(semDoc.cpf_tomador, undefined);
   assert.equal(semDoc.cnpj_tomador, undefined);
+  assert.equal(semDoc.razao_social_tomador, undefined); // schema: sem doc, sem tomador
+  assert.equal(semDoc.telefone_tomador, undefined);
+  assert.equal(semDoc.indicador_total_tributacao, 0);
   assert.equal(semDoc.tipo_retencao_iss, 2);
 });
 
@@ -194,8 +197,9 @@ test('NF-e: junta tudo que falta num erro só', () => {
     () => notas.montarNfe(osNfe, { nome: 'X', cpf_cnpj: null, uf: 'RS' }, fiscalNfe, semNcm),
     (err) => {
       const campos = err.details.map((d) => d.campo);
-      assert.deepEqual(campos, ['cliente.cpf_cnpj', 'cliente.endereco', 'pecas.ncm']);
-      assert.match(err.message, /Pastilha de freio/);
+      assert.deepEqual(campos, ['Cliente', 'Endereço do cliente', 'Peças sem NCM no catálogo']);
+      assert.equal(err.message, 'Não dá para emitir a NF-e');
+      assert.equal(err.details[2].erro, 'Pastilha de freio');
       return err.statusCode === 422;
     },
   );
