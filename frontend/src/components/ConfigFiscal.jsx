@@ -78,7 +78,9 @@ function Situacao({ cfg }) {
     if (cfg.pendencias.length) texto = `Falta preencher: ${cfg.pendencias.map((p) => p.rotulo).join(', ')}.`;
     else if (!cfg.conectada) texto = 'Dados completos. Agora envie o certificado digital A1 para conectar.';
     else if (cfg.certificado_vencido) texto = 'O certificado digital venceu. Envie o certificado renovado.';
-    else texto = 'Conexão incompleta. Envie o certificado de novo.';
+    else if (cfg.sem_codigo_municipio) {
+      texto = 'O emissor não devolveu o código do município. Confira cidade e CEP e salve os dados de novo.';
+    } else texto = 'Conexão incompleta. Envie o certificado de novo.';
   }
   return (
     <div className={`flex gap-3 rounded-xl border p-4 ${cor}`}>

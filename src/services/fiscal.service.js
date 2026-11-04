@@ -96,7 +96,10 @@ function visao(f) {
     conectada,
     certificado_vencido: certificadoVencido,
     pendencias: pend,
-    pronta: conectada && Boolean(tokenDoAmbiente) && !certificadoVencido && pend.length === 0,
+    // Código IBGE vem da Focus no cadastro; sem ele a NFS-e não sai.
+    sem_codigo_municipio: conectada && !f.codigo_municipio,
+    pronta: conectada && Boolean(tokenDoAmbiente) && Boolean(f.codigo_municipio)
+      && !certificadoVencido && pend.length === 0,
   };
 }
 
@@ -127,6 +130,10 @@ function payloadEmpresa(f) {
     municipio: f.municipio,
     uf: f.uf,
     habilita_nfe: true,
+    // Tributos aproximados na NF-e (Lei 12.741, venda a consumidor final).
+    discrimina_impostos: true,
+    // A Focus manda a nota por e-mail ao cliente quando ele tem e-mail.
+    enviar_email_destinatario: true,
     serie_nfe_producao: serie,
     serie_nfe_homologacao: serie,
     // NFS-e Nacional e a municipal são excludentes na Focus.
@@ -287,7 +294,9 @@ async function credenciais(oficinaId) {
     const motivo = v.pendencias.length
       ? `faltam dados fiscais (${v.pendencias.map((p) => p.rotulo).join(', ')})`
       : !v.conectada ? 'o certificado digital não foi enviado'
-        : v.certificado_vencido ? 'o certificado digital venceu' : 'a conexão com o emissor está incompleta';
+        : v.certificado_vencido ? 'o certificado digital venceu'
+          : v.sem_codigo_municipio ? 'o emissor não devolveu o código IBGE do município (salve os dados de novo)'
+            : 'a conexão com o emissor está incompleta';
     throw new AppError(`Emissão indisponível: ${motivo}. Veja Configurações > Fiscal.`, 422);
   }
   const ambiente = v.ambiente;

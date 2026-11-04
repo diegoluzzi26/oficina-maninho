@@ -207,3 +207,10 @@ test('NF-e: sem pagamento lançado vai como "outros"; regime normal recusado', (
   assert.throws(() => notas.montarNfe(osNfe, clienteNfe, { ...fiscalNfe, regime_tributario: 'regime_normal' }, catalogoNfe),
     /regime normal/);
 });
+
+test('cadastro na Focus liga tributos aproximados e e-mail ao cliente', () => {
+  const p = fiscal.payloadEmpresa(base);
+  assert.equal(p.discrimina_impostos, true);
+  assert.equal(p.enviar_email_destinatario, true);
+  assert.equal(p.cep, '94000000'); // texto: CEP com zero à esquerda (SP) não pode virar número
+});
