@@ -58,6 +58,10 @@ services:
       # master, a oficina preenche os dados mas não conecta/emite.
       # FISCAL_ENC_KEY: 32 bytes (hex) que criptografam os tokens por oficina.
       FOCUS_TOKEN_MASTER: ${FOCUS_TOKEN_MASTER:-}
+      # Consulta de veículo pela placa (API Placas / wdapi2). Sem o token,
+      # o formulário de carro segue manual.
+      PLACA_API_TOKEN: ${PLACA_API_TOKEN:-}
+      PLACA_API_URL: ${PLACA_API_URL:-}
       FOCUS_URL_PRODUCAO: ${FOCUS_URL_PRODUCAO:-}
       FOCUS_URL_HOMOLOGACAO: ${FOCUS_URL_HOMOLOGACAO:-}
       FISCAL_ENC_KEY: ${FISCAL_ENC_KEY:-}

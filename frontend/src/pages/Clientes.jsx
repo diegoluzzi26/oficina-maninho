@@ -4,6 +4,7 @@ import { brl, data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Badge } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
+import { CampoPlaca, mesclarDadosPlaca } from '../components/CampoPlaca';
 import Paginacao from '../components/Paginacao';
 
 export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
@@ -144,10 +145,9 @@ export function FormCarro({ aberto, clienteId, carro, onFechar, onSalvo }) {
         {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Campo label="Placa" obrigatorio>
-            <input className="input font-mono uppercase" value={form.placa} onChange={set('placa')}
-              required placeholder="ABC1D23" maxLength={8} />
-          </Campo>
+          <CampoPlaca obrigatorio auto={!carro} valor={form.placa}
+            onChange={(placa) => setForm((f) => ({ ...f, placa }))}
+            onDados={(d) => setForm((f) => mesclarDadosPlaca(f, d))} />
           <Campo label="Ano">
             <input type="number" className="input" value={form.ano} onChange={set('ano')}
               placeholder="2015" min="1900" max="2100" />

@@ -6,6 +6,7 @@ import { brl, data, dataHora, telefone, STATUS, nomeMes,
 import { Badge, Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
 import { SeletorMarcaModelo } from '../components/SeletorMarcaModelo';
 import { HistoricoCarro } from '../components/HistoricoCarro';
+import { CampoPlaca, mesclarDadosPlaca } from '../components/CampoPlaca';
 import { ChecklistOS } from '../components/ChecklistOS';
 import { MARCAS } from '../lib/marcas-carros';
 import { FormCliente, FormCarro } from './Clientes';
@@ -305,11 +306,9 @@ function NovaOS({ aberto, onFechar, onCriada }) {
 
           {(modoCliente === 'novo' || modoCarro === 'novo') ? (
             <div className="grid gap-3 sm:grid-cols-3">
-              <Campo label="Placa" obrigatorio>
-                <input className="input font-mono uppercase" value={novoCarro.placa} required
-                  placeholder="ABC1D23"
-                  onChange={(e) => setNovoCarro({ ...novoCarro, placa: e.target.value.toUpperCase() })} />
-              </Campo>
+              <CampoPlaca obrigatorio valor={novoCarro.placa}
+                onChange={(placa) => setNovoCarro((c) => ({ ...c, placa }))}
+                onDados={(d) => setNovoCarro((c) => mesclarDadosPlaca(c, d))} />
               <SeletorMarcaModelo marca={novoCarro.marca} modelo={novoCarro.modelo} obrigatorio
                 onChange={({ marca, modelo }) => setNovoCarro({ ...novoCarro, marca, modelo })} />
               <Campo label="Ano">

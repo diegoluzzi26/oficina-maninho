@@ -104,6 +104,8 @@ export const api = {
   carros: (params) => request('/carros', { params }),
   carro: (id) => request(`/carros/${id}`),
   historicoCarro: (id) => request(`/carros/${id}/historico`),
+  statusPlaca: () => request('/carros/placa/status'),
+  consultarPlaca: (placa) => request(`/carros/placa/${encodeURIComponent(placa)}`),
   criarCarro: (body) => request('/carros', { method: 'POST', body }),
   atualizarCarro: (id, body) => request(`/carros/${id}`, { method: 'PUT', body }),
 

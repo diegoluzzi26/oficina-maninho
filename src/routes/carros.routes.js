@@ -5,8 +5,14 @@ const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const requireRole = require('../middleware/requireRole');
 const h = require('../utils/asyncHandler');
+const placaSvc = require('../services/placa.service');
 
 router.get('/', h(async (req, res) => res.json(await svc.listar(req.query))));
+
+// Consulta externa (API Placas) pra preencher o formulário; não grava nada.
+// Precisa vir antes de '/:id'.
+router.get('/placa/status', (req, res) => res.json({ ativo: placaSvc.ativo() }));
+router.get('/placa/:placa', h(async (req, res) => res.json(await placaSvc.consultar(req.params.placa))));
 
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarPorId(req.params.id))));
