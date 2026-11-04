@@ -9,7 +9,17 @@ const CAMPOS = [
   'regime_tributario', 'cnae', 'email',
   'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf',
   'nfse_padrao', 'codigo_servico', 'codigo_tributacao_municipal', 'aliquota_iss', 'iss_retido',
-  'serie_nfe', 'ncm_padrao', 'cfop_padrao',
+  'serie_nfe', 'ncm_padrao', 'cfop_padrao', 'csosn_padrao', 'csosn_st', 'pis_cofins_cst',
+];
+
+const CSOSN = [
+  ['102', '102 — Tributada sem permissão de crédito'],
+  ['101', '101 — Tributada com permissão de crédito'],
+  ['103', '103 — Isenção do ICMS para faixa de receita'],
+  ['300', '300 — Imune'],
+  ['400', '400 — Não tributada'],
+  ['500', '500 — ICMS já cobrado por substituição tributária'],
+  ['900', '900 — Outros'],
 ];
 
 const REGIMES = [
@@ -354,17 +364,27 @@ export default function ConfigFiscal() {
         <section className="card p-5">
           <h2 className="titulo-secao">NF-e (peças)</h2>
           <p className="mb-4 text-xs text-slate-500">
-            Valores padrão para peças sem NCM/CFOP próprios no catálogo.
+            O NCM vem de cada peça do catálogo. Aqui ficam a série e a tributação padrão: confirme com o contador.
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <Campo label="Série da NF-e">
               <input className="input" inputMode="numeric" value={form.serie_nfe} onChange={set('serie_nfe')} maxLength={3} />
             </Campo>
-            <Campo label="NCM padrão" ajuda="8 dígitos">
-              <input className="input font-mono" value={form.ncm_padrao} onChange={set('ncm_padrao')} maxLength={10} />
-            </Campo>
-            <Campo label="CFOP padrão" ajuda="Ex. 5102 ou 5405 (com ST)">
+            <Campo label="CFOP padrão" ajuda="Peça sem CFOP próprio. Ex. 5102, ou 5405 com ST">
               <input className="input font-mono" value={form.cfop_padrao} onChange={set('cfop_padrao')} maxLength={4} />
+            </Campo>
+            <Campo label="CST de PIS/COFINS" ajuda="Simples Nacional costuma usar 49">
+              <input className="input font-mono" value={form.pis_cofins_cst} onChange={set('pis_cofins_cst')} maxLength={2} />
+            </Campo>
+            <Campo label="CSOSN (peça sem ST)">
+              <select className="input" value={form.csosn_padrao} onChange={set('csosn_padrao')}>
+                {CSOSN.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Campo>
+            <Campo label="CSOSN (peça com ST)" ajuda="Usado nas peças com CEST no catálogo">
+              <select className="input" value={form.csosn_st} onChange={set('csosn_st')}>
+                {CSOSN.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </Campo>
           </div>
         </section>

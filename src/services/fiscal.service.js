@@ -24,7 +24,7 @@ const CAMPOS = [
   'regime_tributario', 'cnae', 'email',
   'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf',
   'nfse_padrao', 'codigo_servico', 'codigo_tributacao_municipal', 'aliquota_iss', 'iss_retido',
-  'serie_nfe', 'ncm_padrao', 'cfop_padrao',
+  'serie_nfe', 'ncm_padrao', 'cfop_padrao', 'csosn_padrao', 'csosn_st', 'pis_cofins_cst',
 ];
 
 // Sem estes não dá pra cadastrar na Focus nem emitir. Rótulos pra tela.
@@ -86,6 +86,9 @@ function visao(f) {
     nfse_padrao: f.nfse_padrao || 'nacional',
     iss_retido: f.iss_retido ?? false,
     serie_nfe: f.serie_nfe ?? 1,
+    csosn_padrao: f.csosn_padrao || '102',
+    csosn_st: f.csosn_st || '500',
+    pis_cofins_cst: f.pis_cofins_cst || '49',
     ambiente: f.ambiente || 'homologacao',
     codigo_municipio: f.codigo_municipio ?? null,
     certificado_valido_ate: f.certificado_valido_ate ?? null,

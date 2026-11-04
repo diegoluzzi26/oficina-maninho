@@ -7,8 +7,31 @@ import { HistoricoCarro } from '../components/HistoricoCarro';
 import { CampoPlaca, mesclarDadosPlaca } from '../components/CampoPlaca';
 import Paginacao from '../components/Paginacao';
 
+// Endereço estruturado: é o que vai na nota fiscal (NF-e exige completo).
+const CAMPOS_ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf',
+  'codigo_municipio', 'inscricao_estadual'];
+
+/**
+ * Preenche rua, bairro, cidade, UF e código IBGE a partir do CEP (ViaCEP,
+ * serviço público e gratuito). Falhou ou CEP inexistente: segue manual.
+ */
+async function buscarCep(cep) {
+  const d = String(cep || '').replace(/\D/g, '');
+  if (d.length !== 8) return null;
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${d}/json/`, { signal: AbortSignal.timeout(6000) });
+    const j = await r.json();
+    if (j.erro) return null;
+    return { logradouro: j.logradouro, bairro: j.bairro, municipio: j.localidade, uf: j.uf, codigo_municipio: j.ibge };
+  } catch { return null; }
+}
+
 export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
-  const vazio = { nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '' };
+  const vazio = {
+    nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '',
+    ...Object.fromEntries(CAMPOS_ENDERECO.map((c) => [c, ''])),
+  };
+  const [buscandoCep, setBuscandoCep] = useState(false);
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -31,6 +54,7 @@ export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
         email: form.email || null,
         endereco: form.endereco || null,
         observacoes: form.observacoes || null,
+        ...Object.fromEntries(CAMPOS_ENDERECO.map((c) => [c, form[c] || ''])),
       };
       const salvo = cliente
         ? await api.atualizarCliente(cliente.id, body)
@@ -74,6 +98,54 @@ export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
           <input className="input" value={form.endereco || ''} onChange={set('endereco')}
             placeholder="RS-020, 1055 — Gravataí/RS" />
         </Campo>
+
+        <details className="rounded-lg border border-slate-200 p-3"
+          open={Boolean(form.cep || form.logradouro)}>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Endereço para nota fiscal
+            <span className="ml-1 text-xs font-normal text-slate-500">(obrigatório na NF-e de peças)</span>
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <Campo label="CEP" ajuda={buscandoCep ? 'Buscando…' : 'Preenche o resto sozinho'}>
+              <input className="input font-mono" value={form.cep || ''} maxLength={9} placeholder="00000-000"
+                onChange={set('cep')}
+                onBlur={async () => {
+                  setBuscandoCep(true);
+                  const end = await buscarCep(form.cep);
+                  setBuscandoCep(false);
+                  if (end) setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(end).filter(([, v]) => v)) }));
+                }} />
+            </Campo>
+            <div className="sm:col-span-3">
+              <Campo label="Logradouro">
+                <input className="input" value={form.logradouro || ''} onChange={set('logradouro')} maxLength={150} />
+              </Campo>
+            </div>
+            <Campo label="Número">
+              <input className="input" value={form.numero || ''} onChange={set('numero')} maxLength={60} placeholder="ou SN" />
+            </Campo>
+            <Campo label="Complemento">
+              <input className="input" value={form.complemento || ''} onChange={set('complemento')} maxLength={60} />
+            </Campo>
+            <div className="sm:col-span-2">
+              <Campo label="Bairro">
+                <input className="input" value={form.bairro || ''} onChange={set('bairro')} maxLength={60} />
+              </Campo>
+            </div>
+            <div className="sm:col-span-2">
+              <Campo label="Município">
+                <input className="input" value={form.municipio || ''} onChange={set('municipio')} maxLength={80} />
+              </Campo>
+            </div>
+            <Campo label="UF">
+              <input className="input uppercase" value={form.uf || ''} onChange={set('uf')} maxLength={2} />
+            </Campo>
+            <Campo label="Inscrição estadual" ajuda="Só empresa contribuinte">
+              <input className="input" value={form.inscricao_estadual || ''} onChange={set('inscricao_estadual')}
+                maxLength={20} />
+            </Campo>
+          </div>
+        </details>
 
         <Campo label="Observações">
           <textarea className="input min-h-[70px] resize-y" value={form.observacoes || ''}

@@ -130,3 +130,80 @@ test('NFS-e: tomador CNPJ, sem documento, e ISS retido', () => {
   assert.equal(semDoc.cnpj_tomador, undefined);
   assert.equal(semDoc.tipo_retencao_iss, 2);
 });
+
+// ---------------------------------------------------------------- NF-e
+const fiscalNfe = { ...fiscalBase, cfop_padrao: '5102', csosn_padrao: '102', csosn_st: '500', pis_cofins_cst: '49' };
+const clienteNfe = {
+  nome: 'João', cpf_cnpj: '123.456.789-09', telefone: '+5551988887777', email: 'j@x.com',
+  cep: '94010000', logradouro: 'Rua A', numero: '10', bairro: 'Centro', municipio: 'Gravataí', uf: 'RS',
+  codigo_municipio: '4309209',
+};
+const osNfe = {
+  ...osBase,
+  pecas: [
+    { id: 'a1', peca_id: 'p-1', descricao: 'Pastilha de freio', quantidade: '2', valor_unit: '100.00', valor_total: '200.00' },
+    { id: 'a2', peca_id: 'p-2', descricao: 'Lâmpada H4', quantidade: '1', valor_unit: '100.00', valor_total: '100.00' },
+  ],
+  pagamentos: [{ forma: 'pix', valor: 450 }, { forma: 'dinheiro', valor: 120 }],
+};
+const catalogoNfe = new Map([
+  ['p-1', { ncm: '68138110', cest: null, cfop: null, unidade: 'PC' }],
+  ['p-2', { ncm: '85392110', cest: '0107500', cfop: null, unidade: null }],
+]);
+
+test('repartir mantém o total em centavos', () => {
+  assert.deepEqual(notas.repartir(10, [1, 1, 1]), [3.33, 3.33, 3.34]);
+  assert.deepEqual(notas.repartir(0, [1, 2]), [0, 0]);
+});
+
+test('NF-e: itens com NCM do catálogo, CSOSN por ST, desconto e pagamentos que fecham', () => {
+  const c = notas.montarNfe(osNfe, clienteNfe, fiscalNfe, catalogoNfe, new Date('2026-11-03T13:00:00Z'));
+  assert.equal(c.cpf_destinatario, '12345678909');
+  assert.equal(c.indicador_inscricao_estadual_destinatario, 9);
+  assert.equal(c.local_destino, 1);
+  assert.equal(c.items.length, 2);
+  const [a, b] = c.items;
+  assert.equal(a.codigo_ncm, '68138110');
+  assert.equal(a.unidade_comercial, 'PC');
+  assert.equal(a.cfop, '5102');
+  assert.equal(a.icms_situacao_tributaria, '102');
+  assert.equal(b.cest, '0107500');
+  assert.equal(b.icms_situacao_tributaria, '500');
+  assert.equal(b.unidade_comercial, 'UN');
+  // OS: R$ 300 serviço + R$ 300 peças, R$ 30 de desconto -> R$ 15 nas peças.
+  assert.equal(c.valor_produtos, 300);
+  assert.equal(c.valor_desconto, 15);
+  assert.equal(c.valor_total, 285);
+  assert.equal(a.valor_desconto + b.valor_desconto, 15);
+  const pago = c.formas_pagamento.reduce((t, p) => t + p.valor_pagamento, 0);
+  assert.equal(Math.round(pago * 100), 28500);
+  assert.deepEqual(c.formas_pagamento.map((p) => p.forma_pagamento), ['17', '01']);
+});
+
+test('NF-e: outro estado vira CFOP 6xxx e IE do cliente vai junto', () => {
+  const c = notas.montarNfe(osNfe, { ...clienteNfe, uf: 'SC', inscricao_estadual: '123456789' }, fiscalNfe, catalogoNfe);
+  assert.equal(c.local_destino, 2);
+  assert.equal(c.items[0].cfop, '6102');
+  assert.equal(c.indicador_inscricao_estadual_destinatario, 1);
+  assert.equal(c.inscricao_estadual_destinatario, '123456789');
+});
+
+test('NF-e: junta tudo que falta num erro só', () => {
+  const semNcm = new Map([['p-1', { ncm: null }], ['p-2', { ncm: '85392110' }]]);
+  assert.throws(
+    () => notas.montarNfe(osNfe, { nome: 'X', cpf_cnpj: null, uf: 'RS' }, fiscalNfe, semNcm),
+    (err) => {
+      const campos = err.details.map((d) => d.campo);
+      assert.deepEqual(campos, ['cliente.cpf_cnpj', 'cliente.endereco', 'pecas.ncm']);
+      assert.match(err.message, /Pastilha de freio/);
+      return err.statusCode === 422;
+    },
+  );
+});
+
+test('NF-e: sem pagamento lançado vai como "outros"; regime normal recusado', () => {
+  const c = notas.montarNfe({ ...osNfe, pagamentos: [] }, clienteNfe, fiscalNfe, catalogoNfe);
+  assert.deepEqual(c.formas_pagamento, [{ forma_pagamento: '99', valor_pagamento: 285 }]);
+  assert.throws(() => notas.montarNfe(osNfe, clienteNfe, { ...fiscalNfe, regime_tributario: 'regime_normal' }, catalogoNfe),
+    /regime normal/);
+});

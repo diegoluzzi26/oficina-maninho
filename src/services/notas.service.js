@@ -7,7 +7,7 @@ const AppError = require('../utils/AppError');
 
 /**
  * Notas fiscais emitidas a partir da OS (tabela notas_fiscais, no schema da
- * oficina). Nesta etapa: NFS-e Nacional da mão de obra.
+ * oficina): NFS-e Nacional da mão de obra e NF-e das peças.
  *
  * Fluxo:
  *  1. emitir(): valida a OS, grava a nota como 'processando' (o índice
@@ -144,41 +144,225 @@ async function listarDaOS(osId) {
   return rows.map(visao);
 }
 
+// ---------------------------------------------------------------- NF-e (peças)
+
+// Forma de pagamento da OS -> código tPag da NF-e.
+const FORMA_NFE = {
+  dinheiro: '01', cheque: '02', cartao_credito: '03', cartao_debito: '04',
+  boleto: '15', pix: '17', transferencia: '18', outro: '99',
+};
+
+/** Reparte `total` proporcional a `pesos`, em centavos; o resto vai no último. */
+function repartir(total, pesos) {
+  const soma = pesos.reduce((t, p) => t + p, 0);
+  if (!soma || !total) return pesos.map(() => 0);
+  const partes = pesos.map((p) => dinheiro((total * p) / soma));
+  partes[partes.length - 1] = dinheiro(total - partes.slice(0, -1).reduce((t, p) => t + p, 0));
+  return partes;
+}
+
+/** Desconto da OS na parte das peças (mesma proporção usada na NFS-e). */
+function descontoPecas(os) {
+  const { servicos, desconto } = valoresServico(os);
+  const pecas = dinheiro(os.pecas.reduce((t, p) => t + Number(p.valor_total), 0));
+  return { pecas, desconto: dinheiro(Math.min(pecas, Number(os.desconto || 0) - desconto)), servicos };
+}
+
+/**
+ * Corpo do POST /v2/nfe. Puro. `catalogo` = Map(peca_id -> { ncm, cest,
+ * cfop, unidade }) das peças da OS. Junta TODOS os problemas num 422 só,
+ * pra oficina corrigir de uma vez (peça sem NCM, endereço do cliente...).
+ */
+function montarNfe(os, cliente, f, catalogo, agora = new Date()) {
+  const problemas = [];
+  if (f.regime_tributario === 'regime_normal') {
+    throw new AppError('NF-e para regime normal (Lucro Presumido/Real) ainda não é suportada. Fale com o suporte.', 422);
+  }
+
+  // Destinatário: a NF-e exige documento e endereço completo.
+  const doc = cnpj.limpar(cliente.cpf_cnpj);
+  const dest = { nome_destinatario: String(cliente.nome || '').slice(0, 60) };
+  if (/^\d{11}$/.test(doc)) dest.cpf_destinatario = doc;
+  else if (cnpj.valido(doc)) dest.cnpj_destinatario = doc;
+  else problemas.push({ campo: 'cliente.cpf_cnpj', erro: 'Cliente sem CPF/CNPJ válido' });
+
+  const faltaEndereco = [['cep', 'CEP'], ['logradouro', 'logradouro'], ['numero', 'número'],
+    ['bairro', 'bairro'], ['municipio', 'município'], ['uf', 'UF']]
+    .filter(([c]) => !cliente[c]).map(([, r]) => r);
+  if (faltaEndereco.length) {
+    problemas.push({ campo: 'cliente.endereco', erro: `Endereço do cliente incompleto: falta ${faltaEndereco.join(', ')}` });
+  }
+  Object.assign(dest, {
+    logradouro_destinatario: cliente.logradouro,
+    numero_destinatario: cliente.numero,
+    complemento_destinatario: cliente.complemento || undefined,
+    bairro_destinatario: cliente.bairro,
+    municipio_destinatario: cliente.municipio,
+    codigo_municipio_destinatario: cliente.codigo_municipio || undefined,
+    uf_destinatario: cliente.uf,
+    cep_destinatario: cliente.cep,
+    pais_destinatario: 'Brasil',
+    telefone_destinatario: digitos(cliente.telefone).replace(/^55(?=\d{10,11}$)/, '') || undefined,
+    email_destinatario: cliente.email ? String(cliente.email).slice(0, 60) : undefined,
+  });
+  // 1 = contribuinte com IE; 2 = contribuinte isento; 9 = não contribuinte.
+  const ie = cliente.inscricao_estadual;
+  if (ie && ie !== 'ISENTO') {
+    dest.indicador_inscricao_estadual_destinatario = 1;
+    dest.inscricao_estadual_destinatario = ie;
+  } else {
+    dest.indicador_inscricao_estadual_destinatario = ie === 'ISENTO' ? 2 : 9;
+  }
+
+  const interestadual = Boolean(cliente.uf && f.uf && cliente.uf !== f.uf);
+  const { desconto } = descontoPecas(os);
+  const descontos = repartir(desconto, os.pecas.map((p) => Number(p.valor_total)));
+
+  const semNcm = [];
+  const semCfop = [];
+  const items = os.pecas.map((p, i) => {
+    const cat = (p.peca_id && catalogo.get(p.peca_id)) || {};
+    const ncm = p.ncm || cat.ncm;
+    const cest = p.cest || cat.cest;
+    let cfop = p.cfop || cat.cfop || f.cfop_padrao;
+    if (!ncm) semNcm.push(p.descricao);
+    if (!cfop) semCfop.push(p.descricao);
+    // Venda pra outro estado: CFOP de 5xxx (dentro do estado) vira 6xxx.
+    if (cfop && interestadual && cfop.startsWith('5')) cfop = `6${cfop.slice(1)}`;
+    const unidade = (p.unidade || cat.unidade || 'UN').slice(0, 6);
+    const quantidade = Number(p.quantidade);
+    const unitario = Number(p.valor_unit);
+    const pis = f.pis_cofins_cst || '49';
+    return {
+      numero_item: i + 1,
+      codigo_produto: String(p.peca_id || p.id).replace(/-/g, '').slice(0, 60),
+      descricao: String(p.descricao).slice(0, 120),
+      cfop,
+      codigo_ncm: ncm,
+      cest: cest || undefined,
+      unidade_comercial: unidade,
+      quantidade_comercial: quantidade,
+      valor_unitario_comercial: unitario,
+      unidade_tributavel: unidade,
+      quantidade_tributavel: quantidade,
+      valor_unitario_tributavel: unitario,
+      valor_bruto: dinheiro(p.valor_total),
+      valor_desconto: descontos[i] > 0 ? descontos[i] : undefined,
+      inclui_no_total: 1,
+      icms_origem: 0,
+      icms_situacao_tributaria: cest ? (f.csosn_st || '500') : (f.csosn_padrao || '102'),
+      pis_situacao_tributaria: pis,
+      cofins_situacao_tributaria: pis,
+    };
+  });
+  if (semNcm.length) problemas.push({ campo: 'pecas.ncm', erro: `Peça sem NCM no catálogo: ${semNcm.join(', ')}` });
+  if (semCfop.length) {
+    problemas.push({ campo: 'pecas.cfop', erro: `Sem CFOP (nem padrão na aba Fiscal): ${semCfop.join(', ')}` });
+  }
+  if (problemas.length) {
+    throw new AppError(`Não dá para emitir a NF-e: ${problemas.map((p) => p.erro).join('; ')}`, 422, problemas);
+  }
+
+  const produtos = dinheiro(items.reduce((t, it) => t + it.valor_bruto, 0));
+  const total = dinheiro(produtos - desconto);
+  const pagos = (os.pagamentos || []).filter((p) => Number(p.valor) > 0);
+  const valores = repartir(total, pagos.map((p) => Number(p.valor)));
+  const formas_pagamento = pagos.length
+    ? pagos.map((p, i) => ({ forma_pagamento: FORMA_NFE[p.forma] || '99', valor_pagamento: valores[i] }))
+    : [{ forma_pagamento: '99', valor_pagamento: total }];
+
+  const veiculo = [os.marca, os.modelo, os.placa].filter(Boolean).join(' ');
+  return {
+    natureza_operacao: 'Venda de mercadoria',
+    data_emissao: isoBrasilia(agora),
+    data_entrada_saida: isoBrasilia(agora),
+    tipo_documento: 1,
+    finalidade_emissao: 1,
+    local_destino: interestadual ? 2 : 1,
+    consumidor_final: 1,
+    presenca_comprador: 1,
+    cnpj_emitente: f.cnpj,
+    ...dest,
+    modalidade_frete: 9,
+    valor_frete: 0,
+    valor_seguro: 0,
+    valor_outras_despesas: 0,
+    valor_produtos: produtos,
+    valor_desconto: desconto,
+    valor_total: total,
+    formas_pagamento,
+    items,
+    informacoes_adicionais_contribuinte: `Peças da OS nº ${os.numero_os}${veiculo ? ` — ${veiculo}` : ''}`.slice(0, 500),
+  };
+}
+
+// ---------------------------------------------------------------- Emissão
+
 async function carregarOS(osId) {
   const os = require('./os.service');
   const o = await os.buscarPorId(osId);
   const { rows: [cliente] } = await db.query('SELECT * FROM clientes WHERE id = $1', [o.cliente_id]);
-  return { os: o, cliente };
+  const ids = o.pecas.map((p) => p.peca_id).filter(Boolean);
+  const { rows: cat } = ids.length
+    ? await db.query('SELECT id, ncm, cest, cfop, unidade FROM pecas WHERE id = ANY($1::uuid[])', [ids])
+    : { rows: [] };
+  return { os: o, cliente, catalogo: new Map(cat.map((c) => [c.id, c])) };
 }
+
+// O que muda por tipo de nota: como montar, o valor e as chamadas na Focus.
+const TIPOS = {
+  nfse: {
+    nome: 'NFS-e',
+    montar({ os, cliente, f }) {
+      if (!os.servicos.length) throw new AppError('A OS não tem serviços (mão de obra) para a NFS-e', 422);
+      const corpo = montarNfse(os, cliente, f);
+      if (!(corpo.valor_servico > 0)) throw new AppError('O valor dos serviços da OS está zerado', 422);
+      if (corpo.desconto_incondicionado >= corpo.valor_servico) {
+        throw new AppError('O desconto cobre todo o valor dos serviços; não há NFS-e a emitir', 422);
+      }
+      return { corpo, valor: dinheiro(corpo.valor_servico - (corpo.desconto_incondicionado || 0)) };
+    },
+    emitir: focus.emitirNfsen,
+    consultar: focus.consultarNfsen,
+    cancelar: focus.cancelarNfsen,
+  },
+  nfe: {
+    nome: 'NF-e',
+    montar({ os, cliente, f, catalogo }) {
+      if (!os.pecas.length) throw new AppError('A OS não tem peças para a NF-e', 422);
+      const corpo = montarNfe(os, cliente, f, catalogo);
+      if (!(corpo.valor_total > 0)) throw new AppError('O valor das peças da OS está zerado', 422);
+      return { corpo, valor: corpo.valor_total };
+    },
+    emitir: focus.emitirNfe,
+    consultar: focus.consultarNfe,
+    cancelar: focus.cancelarNfe,
+  },
+};
 
 /**
  * Emite a nota de um tipo pra OS. `oficinaId` e `userId` vêm do JWT.
- * Devolve a nota (status 'processando' ou 'erro' com o motivo).
+ * Devolve a nota (status 'processando', 'autorizada' ou 'erro' com o motivo).
  */
 async function emitir(osId, tipo, { oficinaId, userId }) {
-  if (tipo !== 'nfse') throw new AppError('Tipo de nota ainda não disponível', 422);
+  const T = TIPOS[tipo];
+  if (!T) throw new AppError('Tipo de nota inválido', 422);
 
   const { fiscal: f, ambiente, token } = await fiscal.credenciais(oficinaId);
-  const { os, cliente } = await carregarOS(osId);
-
+  const { os, cliente, catalogo } = await carregarOS(osId);
   if (!STATUS_OS_EMITIVEL.includes(os.status)) {
     throw new AppError('Finalize a OS antes de emitir a nota fiscal', 422);
   }
-  if (!os.servicos.length) throw new AppError('A OS não tem serviços (mão de obra) para a NFS-e', 422);
-  const corpo = montarNfse(os, cliente, f);
-  if (!(corpo.valor_servico > 0)) throw new AppError('O valor dos serviços da OS está zerado', 422);
-  if (corpo.desconto_incondicionado >= corpo.valor_servico) {
-    throw new AppError('O desconto cobre todo o valor dos serviços; não há NFS-e a emitir', 422);
-  }
+  const { corpo, valor } = T.montar({ os, cliente, f, catalogo });
 
   let nota;
   try {
     nota = await db.withTransaction(async (client) => {
       const { rows: [n] } = await client.query(
         `INSERT INTO notas_fiscais (os_id, tipo, ambiente, ref, valor, payload_enviado, emitida_por)
-         VALUES ($1, 'nfse', $2, 'tmp-' || gen_random_uuid(), $3, $4, $5)
+         VALUES ($1, $2, $3, 'tmp-' || gen_random_uuid(), $4, $5, $6)
          RETURNING id`,
-        [osId, ambiente, dinheiro(corpo.valor_servico - (corpo.desconto_incondicionado || 0)), corpo, userId],
+        [osId, tipo, ambiente, valor, corpo, userId],
       );
       const ref = refDaNota(n.id);
       await client.query('UPDATE notas_fiscais SET ref = $2 WHERE id = $1', [n.id, ref]);
@@ -187,14 +371,14 @@ async function emitir(osId, tipo, { oficinaId, userId }) {
     });
   } catch (err) {
     if (err.code === '23505') {
-      throw AppError.conflict('Esta OS já tem uma NFS-e em processamento ou autorizada');
+      throw AppError.conflict(`Esta OS já tem uma ${T.nome} em processamento ou autorizada`);
     }
     throw err;
   }
 
   try {
-    const r = await focus.emitirNfsen(nota.ref, corpo, { token, ambiente });
-    await aplicarResposta(nota.id, r, ambiente);
+    const r = await T.emitir(nota.ref, corpo, { token, ambiente });
+    await aplicarResposta(nota.id, tipo, r, ambiente);
   } catch (err) {
     if (err instanceof AppError && err.statusCode === 422) {
       // Pré-validação recusou: a nota não existe na Focus. Libera reemitir.
@@ -213,23 +397,30 @@ async function emitir(osId, tipo, { oficinaId, userId }) {
   return buscar(nota.id);
 }
 
-/** Aplica o retorno da Focus (emissão ou consulta) na nota. */
-async function aplicarResposta(notaId, r, ambiente) {
+/** Aplica o retorno da Focus (emissão, consulta ou cancelamento) na nota. */
+async function aplicarResposta(notaId, tipo, r, ambiente) {
   const st = r?.status;
   if (st === 'autorizado') {
-    const chave = r.chave_nfse || (String(r.url || '').match(/[?&]chave=([^&]+)/) || [])[1] || null;
+    const nfe = tipo === 'nfe';
+    const chave = nfe
+      ? String(r.chave_nfe || '').replace(/^NFe/, '') || null
+      : r.chave_nfse || (String(r.url || '').match(/[?&]chave=([^&]+)/) || [])[1] || null;
+    const pdf = nfe ? focus.urlArquivo(r.caminho_danfe, ambiente) : (r.url_danfse || r.url || null);
     await db.query(
       `UPDATE notas_fiscais SET status = 'autorizada', numero = $2, serie = $3, chave = $4,
               codigo_verificacao = $5, url_pdf = $6, url_xml = $7, mensagem_erro = NULL,
               resposta = $8, autorizada_em = COALESCE(autorizada_em, now())
         WHERE id = $1`,
-      [notaId, r.numero ?? null, r.serie_rps ?? null, chave, r.codigo_verificacao ?? null,
-        r.url_danfse || r.url || null, focus.urlArquivo(r.caminho_xml_nota_fiscal, ambiente), r],
+      [notaId, r.numero ?? null, (nfe ? r.serie : r.serie_rps) ?? null, chave, r.codigo_verificacao ?? null,
+        pdf, focus.urlArquivo(r.caminho_xml_nota_fiscal, ambiente), r],
     );
-  } else if (st === 'erro_autorizacao' || st === 'negado') {
+  } else if (st === 'erro_autorizacao' || st === 'negado' || st === 'denegado') {
+    const msg = Array.isArray(r.erros) && r.erros.length
+      ? textoErrosFocus(r.erros)
+      : [r.status_sefaz, r.mensagem_sefaz].filter(Boolean).join(' — ') || 'Nota rejeitada pelo emissor';
     await db.query(
       `UPDATE notas_fiscais SET status = 'erro', mensagem_erro = $2, resposta = $3 WHERE id = $1`,
-      [notaId, textoErrosFocus(r.erros), r],
+      [notaId, msg, r],
     );
   } else if (st === 'cancelado') {
     await db.query(
@@ -251,10 +442,9 @@ async function atualizar(notaId, oficinaId) {
   const nota = await buscar(notaId);
   if (nota.status !== 'processando') return nota;
   const token = await fiscal.tokenDoAmbiente(oficinaId, nota.ambiente);
-  const consulta = nota.tipo === 'nfse' ? focus.consultarNfsen : null;
-  if (!consulta) return nota;
   try {
-    await aplicarResposta(nota.id, await consulta(nota.ref, { token, ambiente: nota.ambiente }), nota.ambiente);
+    const r = await TIPOS[nota.tipo].consultar(nota.ref, { token, ambiente: nota.ambiente });
+    await aplicarResposta(nota.id, nota.tipo, r, nota.ambiente);
   } catch (err) {
     // 404 só depois de um tempo: a emissão nunca chegou na Focus.
     const antiga = Date.now() - new Date(nota.criado_em).getTime() > 10 * 60 * 1000;
@@ -267,6 +457,27 @@ async function atualizar(notaId, oficinaId) {
       throw err;
     }
   }
+  return buscar(nota.id);
+}
+
+/**
+ * Cancela uma nota autorizada. Síncrono na Focus: devolve a nota já
+ * cancelada, ou 422 com o motivo da prefeitura/SEFAZ (ex.: fora do prazo).
+ */
+async function cancelar(notaId, justificativa, oficinaId) {
+  const nota = await buscar(notaId);
+  if (nota.status !== 'autorizada') throw new AppError('Só dá para cancelar nota autorizada', 422);
+  const token = await fiscal.tokenDoAmbiente(oficinaId, nota.ambiente);
+  const r = await TIPOS[nota.tipo].cancelar(nota.ref, justificativa, { token, ambiente: nota.ambiente });
+  if (r?.status !== 'cancelado') {
+    const msg = [r?.status_sefaz, r?.mensagem_sefaz].filter(Boolean).join(' — ')
+      || (Array.isArray(r?.erros) && textoErrosFocus(r.erros)) || 'Cancelamento recusado';
+    throw new AppError(`Cancelamento recusado: ${msg}`, 422);
+  }
+  await db.query(
+    `UPDATE notas_fiscais SET status = 'cancelada', justificativa_cancelamento = $2,
+            cancelada_em = now(), resposta = $3 WHERE id = $1`,
+    [nota.id, justificativa, r]);
   return buscar(nota.id);
 }
 
@@ -294,6 +505,6 @@ async function reconsultarPendentes(oficinaId, { limite = 20 } = {}) {
 }
 
 module.exports = {
-  emitir, atualizar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS,
-  montarNfse, valoresServico, aplicarResposta, refDaNota,
+  emitir, atualizar, cancelar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS,
+  montarNfse, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
 };

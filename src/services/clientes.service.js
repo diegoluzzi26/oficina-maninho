@@ -46,11 +46,17 @@ async function buscarPorId(id) {
   return { ...rows[0], carros: carros.rows };
 }
 
+// Campos que o cadastro grava (endereço estruturado é o da nota fiscal).
+const COLUNAS_CLIENTE = ['nome', 'telefone', 'cpf_cnpj', 'email', 'endereco', 'observacoes',
+  'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf', 'codigo_municipio',
+  'inscricao_estadual'];
+
 async function criar(d) {
+  const cols = COLUNAS_CLIENTE.filter((c) => d[c] !== undefined);
   const { rows } = await db.query(
-    `INSERT INTO clientes (nome, telefone, cpf_cnpj, email, endereco, observacoes)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [d.nome, d.telefone, d.cpf_cnpj || null, d.email || null, d.endereco || null, d.observacoes || null],
+    `INSERT INTO clientes (${cols.join(', ')})
+     VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
+    cols.map((c) => (d[c] === '' ? null : d[c])),
   );
   return rows[0];
 }

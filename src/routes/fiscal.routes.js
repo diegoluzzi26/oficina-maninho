@@ -16,6 +16,9 @@ const AppError = require('../utils/AppError');
  */
 router.use(requireRole('admin'));
 
+// CSOSN aceitos pela NF-e (Simples Nacional).
+const CSOSN = ['101', '102', '103', '201', '202', '203', '300', '400', '500', '900'];
+
 // '' vira null (limpar campo); espaços nas pontas somem.
 const texto = (max) => z.string().trim().max(max)
   .transform((v) => (v === '' ? null : v)).nullable().optional();
@@ -61,6 +64,9 @@ const configBody = z.object({
   serie_nfe: z.coerce.number().int().min(1).max(999).optional(),
   ncm_padrao: soDigitos(8, 'NCM'),
   cfop_padrao: soDigitos(4, 'CFOP'),
+  csosn_padrao: z.enum(CSOSN).optional(),
+  csosn_st: z.enum(CSOSN).optional(),
+  pis_cofins_cst: z.string().trim().regex(/^\d{2}$/, 'CST com 2 dígitos').optional(),
   ambiente: z.enum(['homologacao', 'producao']).optional(),
 }).strict();
 

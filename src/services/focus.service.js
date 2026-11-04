@@ -127,6 +127,27 @@ function consultarNfsen(ref, { token, ambiente }) {
   return req(`/v2/nfsen/${encodeURIComponent(ref)}`, { token, ambiente });
 }
 
+/** DELETE /v2/nfsen/:ref — cancelamento síncrono, justificativa de 15 a 255 caracteres. */
+function cancelarNfsen(ref, justificativa, { token, ambiente }) {
+  return req(`/v2/nfsen/${encodeURIComponent(ref)}`, { method: 'DELETE', body: { justificativa }, token, ambiente });
+}
+
+// ---------------------------------------------------------------- NF-e
+
+/** POST /v2/nfe?ref= — 202 processando (assíncrona) ou 201 já autorizada (síncrona). */
+function emitirNfe(ref, dados, { token, ambiente }) {
+  return req('/v2/nfe', { method: 'POST', body: dados, query: { ref }, token, ambiente });
+}
+
+function consultarNfe(ref, { token, ambiente }) {
+  return req(`/v2/nfe/${encodeURIComponent(ref)}`, { token, ambiente });
+}
+
+/** DELETE /v2/nfe/:ref — síncrono; a SEFAZ aceita em até 24 h da emissão (varia por UF). */
+function cancelarNfe(ref, justificativa, { token, ambiente }) {
+  return req(`/v2/nfe/${encodeURIComponent(ref)}`, { method: 'DELETE', body: { justificativa }, token, ambiente });
+}
+
 /** A Focus devolve o XML como caminho relativo; vira URL completa do ambiente. */
 function urlArquivo(caminho, ambiente) {
   if (!caminho) return null;
@@ -135,5 +156,6 @@ function urlArquivo(caminho, ambiente) {
 
 module.exports = {
   URLS, configurado, req, criarEmpresa, atualizarEmpresa, consultarEmpresa,
-  listarGatilhos, criarGatilho, emitirNfsen, consultarNfsen, urlArquivo,
+  listarGatilhos, criarGatilho, emitirNfsen, consultarNfsen, cancelarNfsen,
+  emitirNfe, consultarNfe, cancelarNfe, urlArquivo,
 };

@@ -43,6 +43,27 @@ const criarUsuario = z.object({
 });
 
 // ----- clientes -----
+const digitosOuNulo = (n, rotulo) => z.string().trim()
+  .transform((s) => s.replace(/\D/g, ''))
+  .refine((s) => s === '' || s.length === n, `${rotulo} deve ter ${n} dígitos`)
+  .transform((s) => (s === '' ? null : s)).nullable().optional();
+const textoOuNulo = (max) => z.string().trim().max(max)
+  .transform((s) => (s === '' ? null : s)).nullable().optional();
+const enderecoFiscal = {
+  cep: digitosOuNulo(8, 'CEP'),
+  logradouro: textoOuNulo(150),
+  numero: textoOuNulo(60),
+  complemento: textoOuNulo(60),
+  bairro: textoOuNulo(60),
+  municipio: textoOuNulo(80),
+  uf: z.string().trim().toUpperCase()
+    .refine((s) => s === '' || /^[A-Z]{2}$/.test(s), 'UF inválida')
+    .transform((s) => (s === '' ? null : s)).nullable().optional(),
+  codigo_municipio: digitosOuNulo(7, 'Código IBGE'),
+  inscricao_estadual: z.string().trim().max(20)
+    .transform((s) => (/^isento$/i.test(s) ? 'ISENTO' : s.replace(/\D/g, '')))
+    .transform((s) => (s === '' ? null : s)).nullable().optional(),
+};
 const criarCliente = z.object({
   nome: z.string().min(2, 'Nome muito curto'),
   telefone,
@@ -50,6 +71,8 @@ const criarCliente = z.object({
   email: z.string().email('E-mail inválido').optional().nullable().or(z.literal('')),
   endereco: z.string().optional().nullable(),
   observacoes: z.string().optional().nullable(),
+  // Endereço estruturado, exigido na nota fiscal ('' limpa).
+  ...enderecoFiscal,
 });
 const atualizarCliente = criarCliente.partial();
 
