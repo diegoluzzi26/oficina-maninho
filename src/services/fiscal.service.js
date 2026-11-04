@@ -235,9 +235,14 @@ async function conectar(oficinaId, { arquivo, senha }) {
     senha_certificado: senha,
     certificado_especifico: true,
   };
-  const emp = atual.focus_empresa_id
-    ? await focus.atualizarEmpresa(atual.focus_empresa_id, corpo)
+  // O CNPJ pode já existir na conta (cadastrado em outro ambiente do sistema
+  // ou à mão no painel da Focus): aí atualiza aquela empresa em vez de criar.
+  const empresaId = atual.focus_empresa_id
+    || (await focus.buscarEmpresaPorCnpj(atual.cnpj))?.id;
+  const emp = empresaId
+    ? await focus.atualizarEmpresa(empresaId, corpo)
     : await focus.criarEmpresa(corpo);
+  if (emp && emp.id === undefined && empresaId) emp.id = empresaId;
 
   await db.withTransaction((client) => gravarRespostaFocus(client, oficinaId, emp));
   await garantirGatilhos(oficinaId).catch((err) => {

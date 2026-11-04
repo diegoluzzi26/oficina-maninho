@@ -101,6 +101,12 @@ function consultarEmpresa(id) {
   return req(`/v2/empresas/${encodeURIComponent(id)}`);
 }
 
+/** Empresa da conta com este CNPJ (GET /v2/empresas?cnpj=), ou null. */
+async function buscarEmpresaPorCnpj(cnpj) {
+  const lista = await req('/v2/empresas', { query: { cnpj } });
+  return (Array.isArray(lista) ? lista : []).find((e) => String(e.cnpj) === String(cnpj)) || null;
+}
+
 // ---------------------------------------------------------------- Gatilhos
 
 /** Gatilhos (webhooks) da empresa no ambiente. Usa o token DA EMPRESA. */
@@ -155,7 +161,7 @@ function urlArquivo(caminho, ambiente) {
 }
 
 module.exports = {
-  URLS, configurado, req, criarEmpresa, atualizarEmpresa, consultarEmpresa,
+  URLS, configurado, req, criarEmpresa, atualizarEmpresa, consultarEmpresa, buscarEmpresaPorCnpj,
   listarGatilhos, criarGatilho, emitirNfsen, consultarNfsen, cancelarNfsen,
   emitirNfe, consultarNfe, cancelarNfe, urlArquivo,
 };
