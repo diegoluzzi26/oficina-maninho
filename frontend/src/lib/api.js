@@ -67,6 +67,8 @@ export const api = {
     body: { email, senha, ...(oficina_slug ? { oficina_slug } : {}) },
   }),
   oficinas: () => request('/oficinas'),
+  // Cadastro self-service da landing: cria a oficina em teste e devolve a sessão.
+  cadastro: (dados) => request('/cadastro', { method: 'POST', body: dados }),
 
   // --- usuários da própria oficina (só admin) ---
   usuarios: () => request('/auth/usuarios'),

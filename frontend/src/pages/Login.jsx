@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { api, setSession } from '../lib/api';
 import { Alerta, Spinner, Campo } from '../components/ui';
@@ -188,6 +188,12 @@ export default function Login() {
 
           <p className="mt-5 text-center text-xs text-slate-400">
             Esqueceu a senha? Peça ao administrador para redefinir.
+          </p>
+          <p className="mt-3 text-center text-sm text-slate-600">
+            Ainda não usa?{' '}
+            <Link to="/cadastro" className="font-semibold text-maninho-700 hover:underline">
+              Teste grátis por 14 dias
+            </Link>
           </p>
 
           <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">

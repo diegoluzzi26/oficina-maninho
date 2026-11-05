@@ -57,6 +57,9 @@ app.use('/api/auth', require('./routes/auth.routes'));
 // Contador de visitas da landing (público)
 app.use('/api/visitas', require('./routes/visitas.routes'));
 
+// Cadastro self-service da landing (público, com limite por IP e por dia).
+app.use('/api/cadastro', require('./routes/cadastro.routes'));
+
 // Lista pública de oficinas (só o dropdown do login)
 app.use('/api/oficinas', require('./routes/oficinas.routes'));
 

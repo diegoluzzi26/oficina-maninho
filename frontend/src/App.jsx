@@ -3,6 +3,7 @@ import { getToken } from './lib/api';
 import { temPermissao, telaInicial } from './lib/permissoes';
 import Layout, { SemAcesso } from './components/Layout';
 import Login from './pages/Login';
+import Cadastro from './pages/Cadastro';
 import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import Ordens from './pages/Ordens';
@@ -41,6 +42,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/cadastro" element={<Cadastro />} />
         {/* Views "papel" — sem Layout, pra não vir cabeçalho colorido na impressão */}
         <Route path="/os/:id/imprimir"
           element={<Protegida><ImprimirOS /></Protegida>} />
