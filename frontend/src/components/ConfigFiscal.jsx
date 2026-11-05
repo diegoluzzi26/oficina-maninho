@@ -9,7 +9,7 @@ const CAMPOS = [
   'regime_tributario', 'cnae', 'email',
   'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf',
   'nfse_padrao', 'codigo_servico', 'codigo_tributacao_municipal', 'aliquota_iss', 'iss_retido',
-  'serie_nfe', 'ncm_padrao', 'cfop_padrao', 'csosn_padrao', 'csosn_st', 'pis_cofins_cst',
+  'serie_nfe', 'ncm_padrao', 'cfop_padrao', 'csosn_padrao', 'csosn_st', 'pis_cofins_cst', 'aliquota_simples',
 ];
 
 const CSOSN = [
@@ -45,7 +45,7 @@ function corpoDe(form) {
   for (const c of CAMPOS) {
     const v = form[c];
     if (c === 'iss_retido') b[c] = Boolean(v);
-    else if (c === 'aliquota_iss') b[c] = v === '' ? null : Number(String(v).replace(',', '.'));
+    else if (c === 'aliquota_iss' || c === 'aliquota_simples') b[c] = v === '' ? null : Number(String(v).replace(',', '.'));
     else if (c === 'serie_nfe') b[c] = v === '' ? 1 : Number(v);
     else if (c === 'nfse_padrao') b[c] = v || 'nacional';
     else b[c] = v === '' ? null : v;
@@ -419,6 +419,13 @@ export default function ConfigFiscal() {
               <input type="checkbox" checked={form.iss_retido} onChange={set('iss_retido')} />
               ISS retido pelo tomador
             </label>
+            {['simples_nacional', 'simples_excesso_sublimite'].includes(form.regime_tributario) && (
+              <Campo label="Alíquota efetiva do Simples (%)" obrigatorio
+                ajuda="A do extrato do DAS (ou pergunte ao contador). Vai na NFS-e como tributos aproximados">
+                <input className="input" inputMode="decimal" value={form.aliquota_simples}
+                  onChange={set('aliquota_simples')} placeholder="6,00" maxLength={6} />
+              </Campo>
+            )}
           </div>
         </section>
 

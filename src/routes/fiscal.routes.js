@@ -60,6 +60,7 @@ const configBody = z.object({
     .transform((v) => (v === '' ? null : v)).nullable().optional(),
   codigo_tributacao_municipal: texto(30),
   aliquota_iss: z.coerce.number().min(0).max(5).nullable().optional(),
+  aliquota_simples: z.coerce.number().min(0).max(33).nullable().optional(),
   iss_retido: z.boolean().optional(),
   serie_nfe: z.coerce.number().int().min(1).max(999).optional(),
   ncm_padrao: soDigitos(8, 'NCM'),

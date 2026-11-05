@@ -122,9 +122,13 @@ function montarNfse(os, cliente, f, agora = new Date()) {
     // com ISS retido ou fora dessa apuração.
     percentual_aliquota_relativa_municipio: f.aliquota_iss === null || f.aliquota_iss === undefined
       || (issPeloSimples(f) && !f.iss_retido) ? undefined : Number(f.aliquota_iss),
-    // Grupo de tributos aproximados (totTrib) é obrigatório; 0 = não informar
-    // valores estimados (Decreto 8.264/2014).
-    indicador_total_tributacao: 0,
+    // Grupo de tributos aproximados (totTrib) é obrigatório. ME/EPP do
+    // Simples informa o percentual do Simples (pTotTribSN) e o emissor
+    // recusa o indicador; os demais usam o indicador 0 (não informar
+    // valores estimados, Decreto 8.264/2014).
+    ...(OPCAO_SIMPLES[f.regime_tributario] === 3
+      ? { percentual_total_tributos_simples_nacional: Number(f.aliquota_simples) }
+      : { indicador_total_tributacao: 0 }),
   };
 }
 
@@ -461,6 +465,10 @@ const TIPOS = {
     nome: 'NFS-e',
     montar({ os, cliente, f }) {
       if (!os.servicos.length) throw new AppError('A OS não tem serviços (mão de obra) para a NFS-e', 422);
+      if (OPCAO_SIMPLES[f.regime_tributario] === 3 && (f.aliquota_simples === null || f.aliquota_simples === undefined)) {
+        throw new AppError(
+          'Informe em Configurações > Fiscal a alíquota efetiva do Simples Nacional (está no extrato do DAS)', 422);
+      }
       const corpo = montarNfse(os, cliente, f);
       if (!(corpo.valor_servico > 0)) throw new AppError('O valor dos serviços da OS está zerado', 422);
       if (corpo.desconto_incondicionado >= corpo.valor_servico) {

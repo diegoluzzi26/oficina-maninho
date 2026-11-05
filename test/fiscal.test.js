@@ -93,7 +93,7 @@ const osBase = {
   ],
   pecas: [{ valor_total: '300.00' }],
 };
-const fiscalBase = { ...base, codigo_municipio: '4309209', iss_retido: false };
+const fiscalBase = { ...base, codigo_municipio: '4309209', iss_retido: false, aliquota_simples: 6 };
 
 test('NFS-e: desconto proporcional à mão de obra', () => {
   assert.deepEqual(notas.valoresServico(osBase), { servicos: 300, desconto: 15 });
@@ -131,7 +131,7 @@ test('NFS-e: tomador CNPJ, sem documento, e ISS retido', () => {
   assert.equal(semDoc.cnpj_tomador, undefined);
   assert.equal(semDoc.razao_social_tomador, undefined); // schema: sem doc, sem tomador
   assert.equal(semDoc.telefone_tomador, undefined);
-  assert.equal(semDoc.indicador_total_tributacao, 0);
+  assert.equal(semDoc.percentual_total_tributos_simples_nacional, 6);
   assert.equal(semDoc.tipo_retencao_iss, 2);
 });
 
@@ -269,4 +269,13 @@ test('NFS-e Nacional: alíquota só com ISS retido ou fora da apuração pelo Si
   assert.equal(excesso.percentual_aliquota_relativa_municipio, 3);
   const normal = notas.montarNfse(osBase, { nome: 'X' }, { ...fiscalBase, regime_tributario: 'regime_normal' });
   assert.equal(normal.percentual_aliquota_relativa_municipio, 3);
+});
+
+test('NFS-e Nacional: ME/EPP manda o percentual do Simples, não o indicador', () => {
+  const sn = notas.montarNfse(osBase, { nome: 'X' }, fiscalBase);
+  assert.equal(sn.percentual_total_tributos_simples_nacional, 6);
+  assert.equal(sn.indicador_total_tributacao, undefined);
+  const normal = notas.montarNfse(osBase, { nome: 'X' }, { ...fiscalBase, regime_tributario: 'regime_normal' });
+  assert.equal(normal.indicador_total_tributacao, 0);
+  assert.equal(normal.percentual_total_tributos_simples_nacional, undefined);
 });
