@@ -2,18 +2,19 @@
 const AppError = require('../utils/AppError');
 
 /**
- * Consulta de veículo pela placa via API Placas (wdapi2.com.br), conta única
- * da plataforma. Sem PLACA_API_TOKEN no .env, a consulta fica desligada e o
- * formulário segue manual.
+ * Consulta de veículo pela placa via API Placas v3 (wdapi2.com.br/v3), conta
+ * única da plataforma. Sem PLACA_API_TOKEN no .env, a consulta fica desligada
+ * e o formulário segue manual.
  *
- * O token vai no caminho da URL (é o formato do provedor), então a URL
- * nunca é logada nem devolvida em erro.
+ * Usa só o bloco `/basico/{placa}` (marca, modelo, ano, cor, combustível).
+ * O chassi completo é outro produto cobrado à parte (`/chassi`), então não
+ * é pedido. O token vai no header Authorization: Bearer e nunca é logado.
  *
  * Cada consulta é cobrada: o resultado fica num cache em memória por 24h
  * (dado do veículo não é por oficina) pra não pagar duas vezes a mesma placa.
  */
 
-const BASE_URL = () => (process.env.PLACA_API_URL || 'https://wdapi2.com.br/consulta').replace(/\/+$/, '');
+const BASE_URL = () => (process.env.PLACA_API_URL || 'https://wdapi2.com.br/v3').replace(/\/+$/, '');
 const TIMEOUT_MS = 10000;
 const CACHE_MS = 24 * 60 * 60 * 1000;
 const CACHE_MAX = 500;
@@ -55,7 +56,8 @@ function normalizarModelo(bruto) {
 
 /** Resposta do provedor -> campos do formulário de carro. Tolerante a campos ausentes. */
 function mapearResposta(json, placa) {
-  const j = json || {};
+  // v3: { basico: { error, message, dados: {...} } }; formato antigo: campos na raiz
+  const j = json?.basico?.dados || json || {};
   const ex = j.extra || {};
   const marca = normalizarMarca(j.MARCA || j.marca || ex.marca);
   const modelo = normalizarModelo(j.MODELO || j.modelo || ex.modelo);
@@ -70,14 +72,14 @@ function mapearResposta(json, placa) {
     cor: j.cor ? titulo(j.cor) : null,
     // o provedor costuma mascarar parte do chassi; só aproveita se vier inteiro
     chassi: /^[A-HJ-NPR-Z0-9]{17}$/.test(chassiBruto) ? chassiBruto : null,
-    combustivel: ex.combustivel ? titulo(ex.combustivel) : null,
+    combustivel: (j.combustivel || ex.combustivel) ? titulo(j.combustivel || ex.combustivel) : null,
     municipio: j.municipio ? titulo(j.municipio) : null,
     uf: j.uf ? String(j.uf).toUpperCase() : null,
   };
 }
 
 function mensagemErro(status, json) {
-  const msg = (json && (json.mensagemRetorno || json.message || json.erro)) || '';
+  const msg = (json && (json.basico?.message || json.message || json.mensagemRetorno || json.erro)) || '';
   if (status === 401 || status === 403) return 'Consulta de placa: token inválido. Avise o suporte.';
   if (status === 402) return 'Consulta de placa sem saldo no provedor. Avise o suporte.';
   if (status === 404 || status === 406) return 'Placa não encontrada na base. Preencha os dados à mão.';
@@ -97,8 +99,10 @@ async function consultar(placaEntrada) {
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   let res; let json = null;
   try {
-    res = await fetch(`${BASE_URL()}/${placa}/${encodeURIComponent(token())}`,
-      { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+    res = await fetch(`${BASE_URL()}/basico/${placa}`, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token()}` },
+    });
     json = await res.json().catch(() => null);
   } catch (e) {
     throw new AppError(e.name === 'AbortError'
@@ -112,6 +116,7 @@ async function consultar(placaEntrada) {
     const st = [404, 406].includes(res.status) ? 404 : res.status === 429 ? 429 : 502;
     throw new AppError(mensagemErro(res.status, json), st);
   }
+  if (json?.basico?.error) throw new AppError(mensagemErro(404, json), 404);
   const dados = mapearResposta(json, placa);
   if (!dados.marca && !dados.modelo) throw new AppError(mensagemErro(404, json), 404);
 

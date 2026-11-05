@@ -7,10 +7,19 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const svc = require('../src/services/placa.service');
 
-const respostaGol = {
-  MARCA: 'VW', MODELO: 'VW/GOL 1.0 GIV', ano: '2015', anoModelo: '2016',
-  cor: 'BRANCA', chassi: '*****12345', municipio: 'PORTO ALEGRE', uf: 'rs',
-  extra: { combustivel: 'ALCOOL / GASOLINA' },
+// Formato da API Placas v3 (/v3/basico/{placa}), conforme a documentação.
+const respostaCrossfox = {
+  basico: {
+    error: false,
+    message: '',
+    dados: {
+      marcamodelo: 'VW/CROSSFOX', mensagemRetorno: 'Sem erros.', final_chassi: '00000',
+      modelo: 'CROSSFOX', marca: 'VW', cor: 'PRATA', ano: '2007', anoModelo: '2008',
+      municipio: 'São Leopoldo', uf: 'RS', combustivel: 'Alcool / Gasolina',
+    },
+  },
+  error: false,
+  message: 'Consulta efetuada com sucesso',
 };
 
 let fetchOriginal; let chamadas;
@@ -20,18 +29,19 @@ beforeEach(() => {
 });
 afterEach(() => { global.fetch = fetchOriginal; delete process.env.PLACA_API_TOKEN; });
 
-const fetchFalso = (status, body) => async (url) => {
-  chamadas.push(url);
+const fetchFalso = (status, body) => async (url, opts = {}) => {
+  chamadas.push({ url, headers: opts.headers || {} });
   return { ok: status < 400, status, json: async () => body };
 };
 
-test('mapeia a resposta do provedor pros campos do formulário', () => {
-  const d = svc.mapearResposta(respostaGol, 'ABC1D23');
+test('mapeia a resposta v3 pros campos do formulário', () => {
+  const d = svc.mapearResposta(respostaCrossfox, 'INT8C36');
   assert.equal(d.marca, 'Volkswagen');
-  assert.equal(d.modelo, 'Gol 1.0 Giv');
-  assert.equal(d.ano, 2016);
-  assert.equal(d.cor, 'Branca');
-  assert.equal(d.chassi, null, 'chassi mascarado não é aproveitado');
+  assert.equal(d.modelo, 'Crossfox');
+  assert.equal(d.ano, 2008, 'usa o ano do modelo');
+  assert.equal(d.cor, 'Prata');
+  assert.equal(d.chassi, null, 'o básico só traz o final do chassi');
+  assert.equal(d.combustivel, 'Alcool / Gasolina');
   assert.equal(d.uf, 'RS');
 });
 
@@ -46,36 +56,46 @@ test('modelo: siglas e motorização em maiúsculas', () => {
   assert.equal(svc.normalizarModelo('FIAT/PALIO FIRE 16V'), 'Palio Fire 16V');
 });
 
-test('aproveita chassi completo', () => {
-  const d = svc.mapearResposta({ ...respostaGol, chassi: '9bwaa05u0ep123456' }, 'ABC1D23');
-  assert.equal(d.chassi, '9BWAA05U0EP123456');
+test('chama /v3/basico com o token no header Bearer, fora da URL', async () => {
+  global.fetch = fetchFalso(200, respostaCrossfox);
+  await svc.consultar('BAS1C00');
+  const { url, headers } = chamadas[0];
+  assert.equal(url, 'https://wdapi2.com.br/v3/basico/BAS1C00');
+  assert.equal(headers.Authorization, 'Bearer token-teste');
+  assert.ok(!url.includes('token-teste'));
 });
 
 test('consulta normaliza a placa e usa cache na segunda vez', async () => {
-  global.fetch = fetchFalso(200, respostaGol);
+  global.fetch = fetchFalso(200, respostaCrossfox);
   const a = await svc.consultar('xyz-9a87');
   const b = await svc.consultar('XYZ9A87');
   assert.equal(a.placa, 'XYZ9A87');
   assert.deepEqual(a, b);
   assert.equal(chamadas.length, 1);
-  assert.match(chamadas[0], /\/XYZ9A87\/token-teste$/);
 });
 
 test('token com aspas e espaços copiados junto é limpo', async () => {
   process.env.PLACA_API_TOKEN = '  "token-teste"\n';
-  global.fetch = fetchFalso(200, respostaGol);
+  global.fetch = fetchFalso(200, respostaCrossfox);
   await svc.consultar('LMP1A23');
-  assert.match(chamadas[0], /\/LMP1A23\/token-teste$/);
+  assert.equal(chamadas[0].headers.Authorization, 'Bearer token-teste');
 });
 
-test('placa não encontrada vira 404 com mensagem amigável', async () => {
-  global.fetch = fetchFalso(406, { mensagemRetorno: 'Placa não encontrada' });
+test('placa não encontrada (HTTP 404) vira 404 com mensagem amigável', async () => {
+  global.fetch = fetchFalso(404, { code: 'placa_nao_encontrada', message: 'Nenhum registro encontrado' });
   await assert.rejects(svc.consultar('NAO1A11'), (e) => e.statusCode === 404 && /não encontrada/.test(e.message));
 });
 
-test('sem saldo e token inválido não vazam o token', async () => {
-  global.fetch = fetchFalso(402, {});
-  await assert.rejects(svc.consultar('SAL1D00'), (e) => /saldo/.test(e.message) && !e.message.includes('token-teste'));
+test('bloco básico com erro em HTTP 200 também vira não encontrada', async () => {
+  global.fetch = fetchFalso(200, { basico: { error: true, message: 'Sem dados', dados: {} } });
+  await assert.rejects(svc.consultar('NAO1A12'), (e) => e.statusCode === 404);
+});
+
+test('token recusado (401) e sem saldo (402) não vazam o token', async () => {
+  global.fetch = fetchFalso(401, { code: 'nao_autorizado', message: 'Token ausente ou inválido.' });
+  await assert.rejects(svc.consultar('TOK1D00'), (e) => /token inválido/.test(e.message) && !e.message.includes('token-teste'));
+  global.fetch = fetchFalso(402, { code: 'saldo_insuficiente' });
+  await assert.rejects(svc.consultar('SAL1D00'), (e) => /saldo/.test(e.message));
 });
 
 test('sem token configurado fica desligado', async () => {
@@ -85,7 +105,7 @@ test('sem token configurado fica desligado', async () => {
 });
 
 test('placa inválida é recusada antes de chamar o provedor', async () => {
-  global.fetch = fetchFalso(200, respostaGol);
+  global.fetch = fetchFalso(200, respostaCrossfox);
   await assert.rejects(svc.consultar('12345'), (e) => e.statusCode === 400);
   assert.equal(chamadas.length, 0);
 });
