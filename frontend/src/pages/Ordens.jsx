@@ -702,8 +702,12 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
 // Kanban: colunas = etapas (por oficina), cards arrastáveis
 // ---------------------------------------------------------------------
 
-/** Dias que a OS está parada na etapa atual (pro SLA visual). */
+/**
+ * Dias que a OS está parada na etapa atual (pro SLA visual).
+ * OS finalizada ou paga já saiu da oficina: não conta como parada.
+ */
 function diasNaEtapa(o) {
+  if (o.status === 'finalizada' || o.status === 'paga') return 0;
   if (!o.etapa_entrou_em) return 0;
   const ms = Date.now() - new Date(o.etapa_entrou_em).getTime();
   return Math.max(0, Math.floor(ms / 86400000));
