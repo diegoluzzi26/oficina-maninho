@@ -117,7 +117,8 @@ test('NFS-e: corpo com prestador, tomador CPF, serviço e ISS', () => {
   assert.equal(c.valor_servico, 300);
   assert.equal(c.desconto_incondicionado, 15);
   assert.equal(c.tipo_retencao_iss, 1);
-  assert.equal(c.percentual_aliquota_relativa_municipio, 3);
+  // Simples apurando ISS pelo Simples, sem retenção: emissor recusa alíquota.
+  assert.equal(c.percentual_aliquota_relativa_municipio, undefined);
   assert.match(c.descricao_servico, /^Serviços da OS nº 42 — Fiat Uno ABC1D23: Troca de óleo; Alinhamento \(2x\)$/);
   assert.equal(c.cep_tomador, undefined); // sem endereço completo, não manda
 });
@@ -259,4 +260,13 @@ test('mensagem da prefeitura com acento quebrado volta ao normal; texto certo n�
   const quebrado = Buffer.from('Este município utiliza o Emissor Nacional', 'utf8').toString('latin1');
   assert.equal(notas.consertarAcentos(quebrado), 'Este município utiliza o Emissor Nacional');
   assert.equal(notas.consertarAcentos('Já está certo: emissão'), 'Já está certo: emissão');
+});
+
+test('NFS-e Nacional: alíquota só com ISS retido ou fora da apuração pelo Simples', () => {
+  const retido = notas.montarNfse(osBase, { nome: 'X' }, { ...fiscalBase, iss_retido: true });
+  assert.equal(retido.percentual_aliquota_relativa_municipio, 3);
+  const excesso = notas.montarNfse(osBase, { nome: 'X' }, { ...fiscalBase, regime_tributario: 'simples_excesso_sublimite' });
+  assert.equal(excesso.percentual_aliquota_relativa_municipio, 3);
+  const normal = notas.montarNfse(osBase, { nome: 'X' }, { ...fiscalBase, regime_tributario: 'regime_normal' });
+  assert.equal(normal.percentual_aliquota_relativa_municipio, 3);
 });

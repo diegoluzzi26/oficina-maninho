@@ -42,6 +42,7 @@ const OPCAO_SIMPLES = {
 };
 // Como o ISS é apurado: 1 = tudo pelo SN; 2 = ISS fora do SN (excesso de sublimite).
 const APURACAO_SIMPLES = { simples_nacional: 1, simples_excesso_sublimite: 2 };
+const issPeloSimples = (f) => f.regime_tributario === 'simples_nacional' || f.regime_tributario === 'mei';
 
 /**
  * Tomador a partir do cadastro do cliente. Sem CPF/CNPJ válido o tomador
@@ -116,7 +117,11 @@ function montarNfse(os, cliente, f, agora = new Date()) {
     desconto_incondicionado: desconto > 0 ? desconto : undefined,
     tributacao_iss: 1,
     tipo_retencao_iss: f.iss_retido ? 2 : 1,
-    percentual_aliquota_relativa_municipio: f.aliquota_iss === null ? undefined : Number(f.aliquota_iss),
+    // Simples Nacional/MEI apurando o ISS pelo Simples e sem retenção: o
+    // emissor nacional recusa alíquota (ela sai da guia do Simples). Só vai
+    // com ISS retido ou fora dessa apuração.
+    percentual_aliquota_relativa_municipio: f.aliquota_iss === null || f.aliquota_iss === undefined
+      || (issPeloSimples(f) && !f.iss_retido) ? undefined : Number(f.aliquota_iss),
     // Grupo de tributos aproximados (totTrib) é obrigatório; 0 = não informar
     // valores estimados (Decreto 8.264/2014).
     indicador_total_tributacao: 0,
