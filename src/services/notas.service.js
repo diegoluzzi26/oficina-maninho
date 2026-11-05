@@ -101,7 +101,9 @@ function montarNfse(os, cliente, f, agora = new Date()) {
     data_competencia: isoBrasilia(os.fechada_em ? new Date(os.fechada_em) : agora).slice(0, 10),
     codigo_municipio_emissora: f.codigo_municipio,
     cnpj_prestador: f.cnpj,
-    inscricao_municipal_prestador: digitos(f.inscricao_municipal) || undefined,
+    // Sem IM: o emissor nacional identifica pelo CNPJ e recusa a IM quando o
+    // município não tem dados complementares no CNC NFS-e (caso de Gravataí,
+    // primeira emissão real em 2026-11-05).
     codigo_opcao_simples_nacional: OPCAO_SIMPLES[f.regime_tributario],
     regime_tributario_simples_nacional: APURACAO_SIMPLES[f.regime_tributario],
     regime_especial_tributacao: 0,

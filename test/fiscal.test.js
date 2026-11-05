@@ -106,7 +106,7 @@ test('NFS-e: corpo com prestador, tomador CPF, serviço e ISS', () => {
   assert.equal(c.data_emissao, '2026-11-03T10:00:00-03:00');
   assert.equal(c.data_competencia, '2026-11-02'); // fechada 19h30 em Brasília
   assert.equal(c.cnpj_prestador, '02130104000146');
-  assert.equal(c.inscricao_municipal_prestador, '12345');
+  assert.equal(c.inscricao_municipal_prestador, undefined); // CNC recusa IM sem cadastro complementar
   assert.equal(c.codigo_opcao_simples_nacional, 3);
   assert.equal(c.regime_tributario_simples_nacional, 1);
   assert.equal(c.cpf_tomador, '12345678909');
