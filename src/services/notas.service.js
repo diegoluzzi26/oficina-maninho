@@ -127,14 +127,27 @@ function montarNfse(os, cliente, f, agora = new Date()) {
 function textoErro(err) {
   if (err instanceof AppError) {
     const det = Array.isArray(err.details) ? err.details.map((d) => d.erro).join('; ') : '';
-    return [err.message.replace(/^Focus NFe: /, ''), det].filter(Boolean).join(': ').slice(0, 1000);
+    return consertarAcentos([err.message.replace(/^Focus NFe: /, ''), det].filter(Boolean).join(': ')).slice(0, 1000);
   }
-  return String(err?.message || err).slice(0, 1000);
+  return consertarAcentos(String(err?.message || err)).slice(0, 1000);
+}
+
+/**
+ * Mensagem da prefeitura que chegou com acento quebrado ("municÃpio"):
+ * era UTF-8 lido como Latin-1 no caminho. Desfaz só quando o padrão
+ * aparece, pra não estragar texto que já veio certo.
+ */
+function consertarAcentos(t) {
+  const s = String(t ?? '');
+  if (!/Ã[-¿]|Ã[\s ]|Â[-¿]/.test(s)) return s;
+  const bytes = Buffer.from(s, 'latin1').toString('utf8');
+  return bytes.includes('�') ? s : bytes;
 }
 
 function textoErrosFocus(erros) {
   return (Array.isArray(erros) ? erros : [])
     .map((e) => [e.mensagem, e.correcao && `Correção: ${e.correcao}`].filter(Boolean).join(' '))
+    .map(consertarAcentos)
     .join(' | ').slice(0, 1000) || 'Nota rejeitada pelo emissor';
 }
 
@@ -670,5 +683,5 @@ async function reconsultarPendentes(oficinaId, { limite = 20 } = {}) {
 
 module.exports = {
   emitir, atualizar, cancelar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS, listar,
-  montarNfse, montarNfseMunicipal, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
+  consertarAcentos, montarNfse, montarNfseMunicipal, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
 };

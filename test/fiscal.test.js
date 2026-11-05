@@ -254,3 +254,9 @@ test('NFS-e municipal: tira "/" dos textos (o IPM não aceita)', () => {
   assert.equal(c.servico.discriminacao.includes('/'), false);
   assert.equal(c.tomador.endereco.complemento, 'apto 3-B');
 });
+
+test('mensagem da prefeitura com acento quebrado volta ao normal; texto certo não muda', () => {
+  const quebrado = Buffer.from('Este município utiliza o Emissor Nacional', 'utf8').toString('latin1');
+  assert.equal(notas.consertarAcentos(quebrado), 'Este município utiliza o Emissor Nacional');
+  assert.equal(notas.consertarAcentos('Já está certo: emissão'), 'Já está certo: emissão');
+});
