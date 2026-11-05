@@ -19,7 +19,9 @@ const CACHE_MS = 24 * 60 * 60 * 1000;
 const CACHE_MAX = 500;
 const cache = new Map();
 
-const ativo = () => !!process.env.PLACA_API_TOKEN;
+// Tolera espaço, quebra de linha e aspas copiados junto com o token no .env.
+const token = () => String(process.env.PLACA_API_TOKEN || '').trim().replace(/^["']+|["']+$/g, '').trim();
+const ativo = () => !!token();
 
 const MARCAS = {
   VW: 'Volkswagen', VOLKSWAGEN: 'Volkswagen', VOLKSWAGEM: 'Volkswagen',
@@ -95,7 +97,7 @@ async function consultar(placaEntrada) {
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   let res; let json = null;
   try {
-    res = await fetch(`${BASE_URL()}/${placa}/${encodeURIComponent(process.env.PLACA_API_TOKEN)}`,
+    res = await fetch(`${BASE_URL()}/${placa}/${encodeURIComponent(token())}`,
       { signal: ctrl.signal, headers: { Accept: 'application/json' } });
     json = await res.json().catch(() => null);
   } catch (e) {

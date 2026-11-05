@@ -61,6 +61,13 @@ test('consulta normaliza a placa e usa cache na segunda vez', async () => {
   assert.match(chamadas[0], /\/XYZ9A87\/token-teste$/);
 });
 
+test('token com aspas e espaços copiados junto é limpo', async () => {
+  process.env.PLACA_API_TOKEN = '  "token-teste"\n';
+  global.fetch = fetchFalso(200, respostaGol);
+  await svc.consultar('LMP1A23');
+  assert.match(chamadas[0], /\/LMP1A23\/token-teste$/);
+});
+
 test('placa não encontrada vira 404 com mensagem amigável', async () => {
   global.fetch = fetchFalso(406, { mensagemRetorno: 'Placa não encontrada' });
   await assert.rejects(svc.consultar('NAO1A11'), (e) => e.statusCode === 404 && /não encontrada/.test(e.message));
