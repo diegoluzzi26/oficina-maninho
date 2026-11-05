@@ -42,6 +42,33 @@
         } catch (e) { /* ignore */ }
       })();
     </script>
+    <script>
+      // Depois de um deploy, uma página aberta (ou guardada pelo navegador)
+      // pode apontar pra arquivos da versão anterior, que não existem mais:
+      // a tela fica branca. Se um arquivo /assets/ falhar ao carregar,
+      // recarrega a página uma vez (no máximo a cada 30 s, pra não entrar
+      // em laço se o problema for outro).
+      (function () {
+        function recarregar() {
+          try {
+            var ultimo = Number(sessionStorage.getItem('recarregou_versao') || 0);
+            if (Date.now() - ultimo < 30000) return;
+            sessionStorage.setItem('recarregou_versao', String(Date.now()));
+          } catch (e) { /* sem storage: recarrega mesmo assim */ }
+          window.location.reload();
+        }
+        window.addEventListener('error', function (e) {
+          var el = e.target;
+          var url = el && (el.src || el.href);
+          if (url && /\/assets\//.test(url)) recarregar();
+        }, true);
+        // Pedaço carregado sob demanda (ex.: gráficos) que sumiu no deploy.
+        window.addEventListener('vite:preloadError', function (e) {
+          e.preventDefault();
+          recarregar();
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
