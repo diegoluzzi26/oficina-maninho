@@ -41,6 +41,19 @@ router.get('/resumo', h(async (_req, res) => res.json(await svc.resumo())));
 
 router.get('/parecidas', requireRole('admin'), h(async (_req, res) => res.json(await svc.parecidas())));
 
+// NCM em lote: sugestões pras peças sem NCM e aplicação do que o admin escolheu.
+router.get('/ncm-lote', requireRole('admin'), h(async (_req, res) => res.json(await svc.sugestoesNcmLote())));
+
+const ncmLoteBody = z.object({
+  itens: z.array(z.object({
+    id: z.string().uuid(),
+    ncm: z.string().trim().transform((s) => s.replace(/[.\s]/g, '')).pipe(z.string().regex(/^\d{8}$/, 'NCM deve ter 8 dígitos')),
+  })).min(1).max(500),
+});
+
+router.post('/ncm-lote', requireRole('admin'), validate({ body: ncmLoteBody }),
+  h(async (req, res) => res.json(await svc.aplicarNcmLote(req.body.itens))));
+
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarPorId(req.params.id))));
 

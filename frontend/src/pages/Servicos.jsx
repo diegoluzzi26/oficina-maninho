@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api, getUser } from '../lib/api';
 import { brl } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner } from '../components/ui';
-import { ModalPeca, ModalParecidas, ncmBR } from '../components/CatalogoPecas';
+import { ModalPeca, ModalParecidas, ModalNcmLote, ncmBR } from '../components/CatalogoPecas';
 
 /**
  * Catálogo (serviços + peças) numa mesma página, alternada por aba.
@@ -259,6 +259,7 @@ export default function Servicos() {
   const [semNcm, setSemNcm] = useState(false);
   const [editandoPeca, setEditandoPeca] = useState(null);
   const [parecidasAberto, setParecidasAberto] = useState(false);
+  const [loteAberto, setLoteAberto] = useState(false);
 
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
@@ -324,6 +325,11 @@ export default function Servicos() {
                 Juntar peças parecidas
               </button>
             )}
+            {ehAdmin && qtdSemNcm > 0 && (
+              <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => setLoteAberto(true)}>
+                Preencher NCM em lote
+              </button>
+            )}
           </>
         )}
       </div>
@@ -331,7 +337,7 @@ export default function Servicos() {
       {aba === 'pecas' && pecas && qtdSemNcm > 0 && (
         <Alerta tipo="aviso">
           {qtdSemNcm === 1 ? '1 peça está' : `${qtdSemNcm} peças estão`} sem NCM. Para emitir NF-e das peças,
-          cada uma precisa do próprio NCM: use <b>Editar</b> para escolher na tabela oficial.
+          cada uma precisa do próprio NCM: use <b>Preencher NCM em lote</b> ou <b>Editar</b> em cada peça.
         </Alerta>
       )}
 
@@ -402,6 +408,13 @@ export default function Servicos() {
       {editandoPeca && (
         <ModalPeca peca={editandoPeca} onFechar={() => setEditandoPeca(null)}
           onSalvo={(a) => { setPecas((l) => l.map((x) => (x.id === a.id ? a : x))); setEditandoPeca(null); }} />
+      )}
+      {loteAberto && (
+        <ModalNcmLote onFechar={() => setLoteAberto(false)}
+          onAplicado={(_, porId) => {
+            setPecas((l) => l.map((x) => (porId[x.id] ? { ...x, ncm: porId[x.id] } : x)));
+            setLoteAberto(false);
+          }} />
       )}
       {parecidasAberto && (
         <ModalParecidas onFechar={() => { setParecidasAberto(false); carregar(); }}

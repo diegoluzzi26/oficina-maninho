@@ -108,6 +108,39 @@ async function unificar(principalId, outras) {
   });
 }
 
+/**
+ * Peças ativas sem NCM, cada uma com até 3 sugestões da tabela oficial,
+ * pra revisão em lote no catálogo. As mais usadas vêm primeiro.
+ */
+async function sugestoesNcmLote({ limite = 500 } = {}) {
+  const pecas = (await listar({ sem_ncm: true }))
+    .sort((a, b) => b.usos - a.usos || a.nome.localeCompare(b.nome))
+    .slice(0, limite);
+  const out = [];
+  for (const p of pecas) {
+    const sugestoes = (await ncm.sugerirParaPeca(p.nome)).slice(0, 3);
+    out.push({ id: p.id, nome: p.nome, usos: p.usos, sugestoes });
+  }
+  return out;
+}
+
+/**
+ * Grava o NCM escolhido em várias peças de uma vez. Todos os códigos são
+ * validados contra a tabela vigente antes; um inválido barra o lote inteiro.
+ */
+async function aplicarNcmLote(itens) {
+  for (const it of itens) await validarNcm(it.ncm);
+  return db.withTransaction(async (client) => {
+    let atualizadas = 0;
+    for (const it of itens) {
+      const { rowCount } = await client.query(
+        'UPDATE pecas SET ncm = $2 WHERE id = $1 AND ativo', [it.id, it.ncm]);
+      atualizadas += rowCount;
+    }
+    return { atualizadas };
+  });
+}
+
 /** Quantas peças ativas ainda estão sem NCM. */
 async function resumo() {
   const { rows: [r] } = await db.query(
@@ -116,4 +149,7 @@ async function resumo() {
   return r;
 }
 
-module.exports = { listar, buscarPorId, atualizar, desativar, parecidas, unificar, resumo };
+module.exports = {
+  listar, buscarPorId, atualizar, desativar, parecidas, unificar, resumo,
+  sugestoesNcmLote, aplicarNcmLote,
+};

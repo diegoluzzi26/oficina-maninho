@@ -59,6 +59,32 @@ function linhasDoJson(json, hoje = new Date().toISOString().slice(0, 10)) {
   return linhas;
 }
 
+/**
+ * Tabela vigente em memória (~10 mil linhas): a busca por palavra roda aqui,
+ * sem regex no banco, pra dar conta de sugerir NCM pro catálogo inteiro de
+ * uma vez. Recarrega após importar ou a cada 6 h.
+ */
+let cache = null;
+const CACHE_MS = 6 * 3600 * 1000;
+
+async function tabela() {
+  if (cache && Date.now() - cache.em < CACHE_MS) return cache.linhas;
+  const { rows } = await db.pool.query(
+    `SELECT codigo, descricao, descricao_completa, busca FROM public.ncm
+      WHERE data_fim IS NULL OR data_fim >= CURRENT_DATE`);
+  const linhas = rows.map((r) => {
+    const niveis = r.busca.split(' > ');
+    return {
+      ...r,
+      niveis,
+      folha: niveis[niveis.length - 1],
+      perto: niveis.slice(-3).join(' '),
+    };
+  });
+  cache = { linhas, em: Date.now() };
+  return linhas;
+}
+
 /** Troca a tabela inteira numa transação. */
 async function gravar(json) {
   const linhas = linhasDoJson(json);
@@ -79,6 +105,7 @@ async function gravar(json) {
       [json.Ato || null, json.Data_Ultima_Atualizacao_NCM || null, linhas.length],
     );
   });
+  cache = null; // a próxima busca relê a tabela nova
   return { total: linhas.length, ato: json.Ato, vigencia: json.Data_Ultima_Atualizacao_NCM };
 }
 
@@ -122,7 +149,13 @@ const radical = (p) => (p.length <= 5 ? p : p.slice(0, Math.max(5, p.length - 2)
 function padrao(p) {
   const r = radical(p);
   const fim = r === p ? '(s|es)?' : '[a-z]{0,4}';
-  return `(^|[^a-z0-9])${r}${fim}([^a-z0-9]|$)`;
+  return `${r}${fim}([^a-z0-9]|$)`;
+}
+
+/** A palavra em qualquer lugar (re) e abrindo um nível da árvore (inicio). */
+function regexesDe(p) {
+  const nucleo = padrao(p);
+  return { re: new RegExp(`(^|[^a-z0-9])${nucleo}`), inicio: new RegExp(`^[\\s-]*${nucleo}`) };
 }
 
 // Palavras de balcão que não ajudam a achar o NCM (e excluiriam o certo).
@@ -151,18 +184,18 @@ const CAPITULOS_OFICINA = new Set(['27', '34', '38', '40', '68', '70', '73', '83
 
 /**
  * Pontua um candidato: palavra no próprio código e nos níveis logo acima
- * vale mais que lá no capítulo; texto de veículo/motor e capítulo típico de
- * oficina sobem.
+ * vale mais que lá no capítulo; nível que COMEÇA com a palavra (a posição
+ * "Lâmpadas e tubos elétricos…") vale mais que um que só a cita ("…para
+ * lâmpadas", que é peça de outra coisa); texto de veículo/motor e capítulo
+ * típico de oficina sobem.
  */
-function pontuar(linha, padroes) {
-  const niveis = semAcento(linha.descricao_completa).toLowerCase().split(' > ');
-  const perto = niveis.slice(-3).join(' ');
+function pontuar(linha, regexes) {
   let p = 0;
-  for (const pad of padroes) {
-    const re = new RegExp(pad);
-    if (re.test(niveis[niveis.length - 1])) p += 4;
-    else if (re.test(perto)) p += 2;
+  for (const { re, inicio } of regexes) {
+    if (re.test(linha.folha)) p += 4;
+    else if (re.test(linha.perto)) p += 2;
     else p += 1;
+    if (linha.niveis.slice(1).some((n) => inicio.test(n))) p += 3;
   }
   if (/veiculo|automove|motor/.test(linha.busca)) p += 2;
   if (CAPITULOS_OFICINA.has(linha.codigo.slice(0, 2))) p += 1;
@@ -184,16 +217,13 @@ async function buscar(termo, { limite = 20 } = {}) {
         ORDER BY codigo LIMIT $2`, [`${dig}%`, limite]);
     return rows;
   }
-  const padroes = semAcento(t).toLowerCase().split(/[^a-z0-9]+/)
-    .filter((p) => p.length >= 3).slice(0, 6).map(padrao);
-  if (!padroes.length) return [];
-  const where = padroes.map((_, i) => `busca ~ $${i + 1}`).join(' AND ');
-  const { rows } = await db.pool.query(
-    `SELECT codigo, descricao, descricao_completa, busca FROM public.ncm
-      WHERE ${where} AND (data_fim IS NULL OR data_fim >= CURRENT_DATE)
-      LIMIT 3000`, padroes);
-  return rows
-    .map((r) => ({ ...r, pontos: pontuar(r, padroes) }))
+  const regexes = semAcento(t).toLowerCase().split(/[^a-z0-9]+/)
+    .filter((p) => p.length >= 3).slice(0, 6).map(regexesDe);
+  if (!regexes.length) return [];
+  const linhas = await tabela();
+  return linhas
+    .filter((r) => regexes.every(({ re }) => re.test(r.busca)))
+    .map((r) => ({ ...r, pontos: pontuar(r, regexes) }))
     .sort((a, b) => b.pontos - a.pontos || a.codigo.localeCompare(b.codigo))
     .slice(0, limite)
     .map(({ codigo, descricao, descricao_completa }) => ({ codigo, descricao, descricao_completa }));

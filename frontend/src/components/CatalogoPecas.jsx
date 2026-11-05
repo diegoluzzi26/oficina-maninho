@@ -208,6 +208,134 @@ export function ModalPeca({ peca, onFechar, onSalvo }) {
   );
 }
 
+/** Uma peça no lote: marcar, escolher entre as sugestões ou digitar outro NCM. */
+function LinhaLote({ item, escolha, onMudar }) {
+  const [outro, setOutro] = useState(false);
+  const sel = item.sugestoes.find((s) => s.codigo === escolha.ncm);
+  const ultimo = (s) => s.descricao_completa.split(' > ').slice(-1)[0];
+  return (
+    <li className="flex flex-wrap items-start gap-3 px-4 py-3">
+      <input type="checkbox" className="mt-1" checked={escolha.marcada}
+        disabled={!/^\d{8}$/.test(escolha.ncm)}
+        onChange={(e) => onMudar({ ...escolha, marcada: e.target.checked })}
+        aria-label={`Aplicar NCM em ${item.nome}`} />
+      <div className="min-w-[160px] flex-1">
+        <p className="text-sm font-semibold text-slate-800">{item.nome}</p>
+        <p className="text-[11px] text-slate-500">{item.usos} uso{item.usos === 1 ? '' : 's'} em OS</p>
+      </div>
+      <div className="w-full min-w-0 space-y-1 sm:w-[330px]">
+        {!outro ? (
+          <select className="input py-1.5 text-xs" value={escolha.ncm}
+            onChange={(e) => {
+              if (e.target.value === '__outro') { setOutro(true); onMudar({ ncm: '', marcada: false }); return; }
+              onMudar({ ncm: e.target.value, marcada: Boolean(e.target.value) });
+            }}>
+            {!item.sugestoes.length && <option value="">Sem sugestão — digite o NCM</option>}
+            {item.sugestoes.map((s) => (
+              <option key={s.codigo} value={s.codigo}>{ncmBR(s.codigo)} — {ultimo(s).slice(0, 70)}</option>
+            ))}
+            <option value="__outro">Outro código…</option>
+          </select>
+        ) : (
+          <div className="flex gap-2">
+            <input className="input flex-1 py-1.5 font-mono text-xs" value={ncmBR(escolha.ncm)} maxLength={10}
+              placeholder="0000.00.00" autoFocus
+              onChange={(e) => {
+                const ncm = e.target.value.replace(/\D/g, '').slice(0, 8);
+                onMudar({ ncm, marcada: ncm.length === 8 });
+              }} />
+            {item.sugestoes.length > 0 && (
+              <button type="button" className="btn-ghost px-2 py-1 text-xs"
+                onClick={() => { setOutro(false); onMudar({ ncm: item.sugestoes[0].codigo, marcada: true }); }}>
+                Sugestões
+              </button>
+            )}
+          </div>
+        )}
+        {sel && (
+          <p className="truncate text-[11px] text-slate-500" title={sel.descricao_completa}>
+            {sel.descricao_completa.split(' > ').slice(-3, -1).join(' › ')}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * NCM em lote: todas as peças sem NCM com a sugestão da tabela oficial já
+ * escolhida. A oficina confere, troca o que estiver errado e aplica de uma
+ * vez. Nada é gravado sem passar por aqui.
+ */
+export function ModalNcmLote({ onFechar, onAplicado }) {
+  const [itens, setItens] = useState(null);
+  const [escolhas, setEscolhas] = useState({});
+  const [erro, setErro] = useState('');
+  const [aplicando, setAplicando] = useState(false);
+
+  useEffect(() => {
+    api.ncmLote().then((lista) => {
+      setItens(lista);
+      setEscolhas(Object.fromEntries(lista.map((i) => [i.id, {
+        ncm: i.sugestoes[0]?.codigo || '',
+        marcada: false,
+      }])));
+    }).catch((e) => setErro(e.message));
+  }, []);
+
+  const marcadas = Object.entries(escolhas).filter(([, e]) => e.marcada && /^\d{8}$/.test(e.ncm));
+  const comSugestao = itens?.filter((i) => i.sugestoes.length) || [];
+  const marcarTodas = (v) => setEscolhas((es) => Object.fromEntries(Object.entries(es)
+    .map(([id, e]) => [id, { ...e, marcada: v && /^\d{8}$/.test(e.ncm) }])));
+
+  async function aplicar() {
+    setErro(''); setAplicando(true);
+    try {
+      const r = await api.aplicarNcmLote(marcadas.map(([id, e]) => ({ id, ncm: e.ncm })));
+      onAplicado(r, Object.fromEntries(marcadas.map(([id, e]) => [id, e.ncm])));
+    } catch (err) { setErro(err.message); setAplicando(false); }
+  }
+
+  return (
+    <Modal aberto largura="max-w-3xl" titulo="Preencher NCM das peças" onFechar={onFechar}>
+      <p className="mb-3 text-sm text-slate-600">
+        Cada peça sem NCM já vem com a sugestão da tabela oficial. <b>Confira</b> antes de marcar: NCM errado
+        pode gerar rejeição da nota ou imposto errado. Na dúvida, deixe desmarcada e pergunte ao contador.
+      </p>
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {itens === null && !erro && (
+        <p className="py-6 text-center text-sm text-slate-500"><Spinner className="mr-2 inline h-4 w-4" />Buscando sugestões…</p>
+      )}
+      {itens?.length === 0 && <p className="py-6 text-center text-sm text-slate-500">Todas as peças já têm NCM.</p>}
+      {itens?.length > 0 && (
+        <>
+          <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
+            <span className="text-slate-500">{itens.length} peças sem NCM · {comSugestao.length} com sugestão</span>
+            <button type="button" className="font-semibold text-maninho-600 hover:underline" onClick={() => marcarTodas(true)}>
+              Marcar todas com sugestão
+            </button>
+            <button type="button" className="font-semibold text-slate-500 hover:underline" onClick={() => marcarTodas(false)}>
+              Desmarcar todas
+            </button>
+          </div>
+          <ul className="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200">
+            {itens.map((i) => (
+              <LinhaLote key={i.id} item={i} escolha={escolhas[i.id]}
+                onMudar={(e) => setEscolhas((es) => ({ ...es, [i.id]: e }))} />
+            ))}
+          </ul>
+        </>
+      )}
+      <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4">
+        <button type="button" className="btn-ghost" onClick={onFechar}>Fechar</button>
+        <button type="button" className="btn-primary" disabled={!marcadas.length || aplicando} onClick={aplicar}>
+          {aplicando ? <><Spinner className="h-4 w-4" /> Aplicando…</> : `Aplicar NCM em ${marcadas.length} peça${marcadas.length === 1 ? '' : 's'}`}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Um grupo de peças parecidas: escolhe qual fica e quais juntam nela. */
 function GrupoParecidas({ grupo, onUnificado }) {
   const [principal, setPrincipal] = useState(grupo[0].id);

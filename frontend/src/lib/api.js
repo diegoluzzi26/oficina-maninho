@@ -119,6 +119,8 @@ export const api = {
   pecasParecidas: () => request('/pecas/parecidas'),
   unificarPecas: (id, outras) => request(`/pecas/${id}/unificar`, { method: 'POST', body: { outras } }),
   sugestoesNcm: (id) => request(`/pecas/${id}/sugestoes-ncm`),
+  ncmLote: () => request('/pecas/ncm-lote'),
+  aplicarNcmLote: (itens) => request('/pecas/ncm-lote', { method: 'POST', body: { itens } }),
   buscarNcm: (busca) => request('/ncm', { params: { busca } }),
 
   ordens: (params) => request('/os', { params }),
