@@ -21,6 +21,10 @@ router.post('/', requireRole('admin'), validate({ body: v.criarServico }),
 router.put('/:id', requireRole('admin'), validate({ params: v.idParam, body: v.atualizarServico }),
   h(async (req, res) => res.json(await svc.atualizar(req.params.id, req.body))));
 
+// "É peça": move o item pro catálogo de peças.
+router.post('/:id/virar-peca', requireRole('admin'), validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.virarPeca(req.params.id))));
+
 router.delete('/:id', requireRole('admin'), validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.desativar(req.params.id))));
 

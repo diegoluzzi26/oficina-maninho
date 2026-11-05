@@ -90,7 +90,7 @@ function FormServico({ aberto, onFechar, onSalvo }) {
 }
 
 // ------------------ Linha de serviço ------------------
-function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido }) {
+function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido, onVirouPeca }) {
   const [modo, setModo] = useState('ver');
   const [valor, setValor] = useState(String(servico.valor_padrao ?? ''));
   const [tempo, setTempo] = useState(String(servico.tempo_estimado_min ?? ''));
@@ -117,6 +117,15 @@ function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido }) {
     setTempo(String(servico.tempo_estimado_min ?? ''));
     setRet(String(servico.intervalo_retorno_meses ?? ''));
     setErro(''); setModo('ver');
+  }
+
+  async function virarPeca() {
+    if (!confirm(`"${servico.nome}" é uma peça? Ela passa para o catálogo de peças e sai dos serviços. As OS antigas não mudam.`)) return;
+    setErro('');
+    try {
+      await api.servicoVirarPeca(servico.id);
+      onVirouPeca(servico.id);
+    } catch (e) { setErro(e.message); }
   }
 
   async function excluir() {
@@ -160,6 +169,10 @@ function LinhaServico({ servico, ehAdmin, onSalvo, onExcluido }) {
               <button onClick={() => setModo('editar')}
                 className="rounded px-2 py-1 text-[11px] font-semibold text-maninho-600 hover:bg-maninho-50">
                 Editar
+              </button>
+              <button onClick={virarPeca} title="Mover para o catálogo de peças"
+                className="rounded px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100">
+                É peça
               </button>
               <button onClick={excluir}
                 className="rounded px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">
@@ -385,14 +398,15 @@ export default function Servicos() {
                   <span className="hidden w-24 text-right sm:inline">Retorno</span>
                 </>
               )}
-              {ehAdmin && <span className="w-[110px]">&nbsp;</span>}
+              {ehAdmin && <span className={aba === 'servicos' ? 'w-[160px]' : 'w-[110px]'}>&nbsp;</span>}
             </div>
           </div>
           <ul className="divide-y-0">
             {filtrada.map((item) => aba === 'servicos' ? (
               <LinhaServico key={item.id} servico={item} ehAdmin={ehAdmin}
                 onSalvo={(a) => setServicos((l) => l.map((x) => x.id === a.id ? a : x))}
-                onExcluido={(id) => setServicos((l) => l.filter((x) => x.id !== id))} />
+                onExcluido={(id) => setServicos((l) => l.filter((x) => x.id !== id))}
+                onVirouPeca={() => carregar()} />
             ) : (
               <LinhaPeca key={item.id} peca={item} ehAdmin={ehAdmin}
                 onEditar={setEditandoPeca}

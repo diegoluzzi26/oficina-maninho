@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const { chave } = require('../utils/semelhanca');
 
 async function listar({ busca, incluir_inativos } = {}) {
   const params = []; const where = [];
@@ -51,4 +52,29 @@ async function desativar(id) {
   return rows[0];
 }
 
-module.exports = { listar, buscarPorId, criar, atualizar, desativar };
+/**
+ * Item cadastrado como serviço que na verdade é peça ("Bateria",
+ * "Filtro de óleo"): passa pro catálogo de peças e sai do de serviços.
+ * Se já existe peça com o mesmo nome normalizado, usa ela. As OS antigas
+ * não mudam (continuam com a linha de serviço que foi lançada).
+ */
+async function virarPeca(id) {
+  return db.withTransaction(async (client) => {
+    const { rows: [s] } = await client.query('SELECT * FROM servicos WHERE id = $1 AND ativo', [id]);
+    if (!s) throw AppError.notFound('Serviço não encontrado');
+    const { rows: pecas } = await client.query('SELECT id, nome FROM pecas WHERE ativo');
+    const mesma = pecas.find((p) => chave(p.nome) === chave(s.nome));
+    let pecaId = mesma?.id;
+    if (!pecaId) {
+      const { rows: [nova] } = await client.query(
+        `INSERT INTO pecas (nome, valor_padrao, intervalo_retorno_meses)
+         VALUES ($1, $2, $3) RETURNING id`,
+        [s.nome, s.valor_padrao, s.intervalo_retorno_meses ?? null]);
+      pecaId = nova.id;
+    }
+    await client.query('UPDATE servicos SET ativo = FALSE WHERE id = $1', [id]);
+    return { servico_id: id, peca_id: pecaId, peca_existente: Boolean(mesma) };
+  });
+}
+
+module.exports = { listar, buscarPorId, criar, atualizar, desativar, virarPeca };

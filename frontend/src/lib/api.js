@@ -112,6 +112,7 @@ export const api = {
   servicos: () => request('/servicos'),
   criarServico: (body) => request('/servicos', { method: 'POST', body }),
   desativarServico: (id) => request(`/servicos/${id}`, { method: 'DELETE' }),
+  servicoVirarPeca: (id) => request(`/servicos/${id}/virar-peca`, { method: 'POST', body: {} }),
 
   pecas: (params) => request('/pecas', { params }),
   atualizarPeca: (id, body) => request(`/pecas/${id}`, { method: 'PUT', body }),

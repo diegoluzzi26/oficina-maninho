@@ -12,12 +12,25 @@ const { chave: chaveNome } = require('../utils/semelhanca');
  *
  * Ideia: o usuário nunca precisa "cadastrar antes de usar" — bate o
  * nome e o catálogo cresce sozinho conforme a oficina atende.
+ *
+ * Exceção: nome com "mão de obra" ("Mão de obra troca de óleo") aponta pro
+ * serviço único "Mão de Obra" do catálogo, se ele existir, em vez de criar
+ * um serviço novo pra cada variação. O texto lançado na OS fica como foi
+ * digitado.
  */
+const MAO_DE_OBRA = /m(a|ã)o\s*-?\s*de\s*-?\s*obra/i;
+
 async function garantirServicoNoCatalogo(client, item) {
   if (item.servico_id) return item.servico_id;
 
   const nome = (item.nome_servico || '').trim();
   if (!nome) return null;
+
+  if (MAO_DE_OBRA.test(nome)) {
+    const mo = await client.query(
+      "SELECT id FROM servicos WHERE lower(btrim(nome)) IN ('mão de obra', 'mao de obra') AND ativo LIMIT 1");
+    if (mo.rows[0]) return mo.rows[0].id;
+  }
 
   const existe = await client.query(
     'SELECT id FROM servicos WHERE lower(nome) = lower($1) AND ativo',
