@@ -202,6 +202,72 @@ async function listar(f = {}) {
   };
 }
 
+// ---------------------------------------------------------------- NFS-e municipal
+
+/**
+ * NFS-e pelo sistema próprio da prefeitura (ex.: Gravataí / AtendeNet), no
+ * formato da Focus (/v2/nfse). Puro. Diferente da Nacional: o tomador com
+ * CPF/CNPJ e endereço completo (com código IBGE) é obrigatório, e a
+ * inscrição municipal do prestador vai junto. Junta tudo que falta num 422.
+ */
+function montarNfseMunicipal(os, cliente, f, agora = new Date()) {
+  const problemas = [];
+  const doc = cnpj.limpar(cliente.cpf_cnpj);
+  const tom = {};
+  if (/^\d{11}$/.test(doc)) tom.cpf = doc;
+  else if (cnpj.valido(doc)) tom.cnpj = doc;
+  else problemas.push({ campo: 'Cliente', erro: 'sem CPF/CNPJ válido no cadastro' });
+
+  const falta = [['cep', 'CEP'], ['logradouro', 'logradouro'], ['numero', 'número'], ['bairro', 'bairro'],
+    ['uf', 'UF'], ['codigo_municipio', 'código IBGE (preencha pelo CEP)']]
+    .filter(([c]) => !cliente[c]).map(([, r]) => r);
+  if (falta.length) problemas.push({ campo: 'Endereço do cliente', erro: `falta ${falta.join(', ')}` });
+  if (!digitos(f.inscricao_municipal)) {
+    problemas.push({ campo: 'Aba Fiscal', erro: 'falta a inscrição municipal da oficina' });
+  }
+  if (problemas.length) throw new AppError('Não dá para emitir a NFS-e', 422, problemas);
+
+  const { servicos, desconto } = valoresServico(os);
+  const tel = digitos(cliente.telefone).replace(/^55(?=\d{10,11}$)/, '');
+  const simples = ['simples_nacional', 'simples_excesso_sublimite', 'mei'].includes(f.regime_tributario);
+  return {
+    data_emissao: isoBrasilia(agora),
+    natureza_operacao: '1', // tributação no município
+    optante_simples_nacional: simples,
+    // 5 = MEI; 6 = ME/EPP do Simples Nacional.
+    regime_especial_tributacao: f.regime_tributario === 'mei' ? '5' : simples ? '6' : undefined,
+    prestador: {
+      cnpj: f.cnpj,
+      inscricao_municipal: digitos(f.inscricao_municipal),
+      codigo_municipio: f.codigo_municipio,
+    },
+    tomador: {
+      ...tom,
+      razao_social: String(cliente.nome || '').slice(0, 115),
+      email: cliente.email ? String(cliente.email).slice(0, 80) : undefined,
+      telefone: tel.length >= 10 && tel.length <= 11 ? tel : undefined,
+      endereco: {
+        logradouro: String(cliente.logradouro).slice(0, 125),
+        numero: String(cliente.numero).slice(0, 10),
+        complemento: cliente.complemento ? String(cliente.complemento).slice(0, 60) : undefined,
+        bairro: String(cliente.bairro).slice(0, 60),
+        codigo_municipio: cliente.codigo_municipio,
+        uf: cliente.uf,
+        cep: cliente.cep,
+      },
+    },
+    servico: {
+      valor_servicos: servicos,
+      desconto_incondicionado: desconto > 0 ? desconto : undefined,
+      iss_retido: Boolean(f.iss_retido),
+      item_lista_servico: f.codigo_servico, // Gravataí: 6 dígitos (140101)
+      discriminacao: descricao(os),
+      codigo_municipio: f.codigo_municipio,
+      aliquota: f.aliquota_iss === null || f.aliquota_iss === undefined ? undefined : Number(f.aliquota_iss),
+    },
+  };
+}
+
 // ---------------------------------------------------------------- NF-e (peças)
 
 // Forma de pagamento da OS -> código tPag da NF-e.
@@ -385,6 +451,24 @@ const TIPOS = {
     consultar: focus.consultarNfsen,
     cancelar: focus.cancelarNfsen,
   },
+  // Mesmo tipo 'nfse' na tabela de notas; muda o caminho na Focus. Só
+  // produção (o sistema da prefeitura não tem ambiente de teste).
+  nfse_municipal: {
+    nome: 'NFS-e',
+    montar({ os, cliente, f }) {
+      if (!os.servicos.length) throw new AppError('A OS não tem serviços (mão de obra) para a NFS-e', 422);
+      const corpo = montarNfseMunicipal(os, cliente, f);
+      const s = corpo.servico;
+      if (!(s.valor_servicos > 0)) throw new AppError('O valor dos serviços da OS está zerado', 422);
+      if (s.desconto_incondicionado >= s.valor_servicos) {
+        throw new AppError('O desconto cobre todo o valor dos serviços; não há NFS-e a emitir', 422);
+      }
+      return { corpo, valor: dinheiro(s.valor_servicos - (s.desconto_incondicionado || 0)) };
+    },
+    emitir: focus.emitirNfse,
+    consultar: focus.consultarNfse,
+    cancelar: focus.cancelarNfse,
+  },
   nfe: {
     nome: 'NF-e',
     montar({ os, cliente, f, catalogo }) {
@@ -399,15 +483,33 @@ const TIPOS = {
   },
 };
 
+/** Variante da nota já emitida: NFS-e municipal leva 'prestador' no corpo. */
+async function tipoDaNota(nota) {
+  if (nota.tipo !== 'nfse') return TIPOS[nota.tipo];
+  const { rows: [r] } = await db.query(
+    "SELECT payload_enviado ? 'prestador' AS municipal FROM notas_fiscais WHERE id = $1", [nota.id]);
+  return r?.municipal ? TIPOS.nfse_municipal : TIPOS.nfse;
+}
+
 /**
  * Emite a nota de um tipo pra OS. `oficinaId` e `userId` vêm do JWT.
  * Devolve a nota (status 'processando', 'autorizada' ou 'erro' com o motivo).
  */
 async function emitir(osId, tipo, { oficinaId, userId }) {
-  const T = TIPOS[tipo];
-  if (!T) throw new AppError('Tipo de nota inválido', 422);
+  if (!TIPOS[tipo]) throw new AppError('Tipo de nota inválido', 422);
 
-  const { fiscal: f, ambiente, token } = await fiscal.credenciais(oficinaId);
+  const cred = await fiscal.credenciais(oficinaId);
+  const { fiscal: f } = cred;
+  let { ambiente, token } = cred;
+  let T = TIPOS[tipo];
+  if (tipo === 'nfse' && f.nfse_municipal) {
+    if (!f.prefeitura_configurada) {
+      throw new AppError('Informe o login e a senha do site da prefeitura em Configurações > Fiscal', 422);
+    }
+    T = TIPOS.nfse_municipal;
+    ambiente = 'producao';
+    token = await fiscal.tokenDoAmbiente(oficinaId, 'producao');
+  }
   const { os, cliente, catalogo } = await carregarOS(osId);
   if (!STATUS_OS_EMITIVEL.includes(os.status)) {
     throw new AppError('Finalize a OS antes de emitir a nota fiscal', 422);
@@ -502,7 +604,7 @@ async function atualizar(notaId, oficinaId) {
   if (nota.status !== 'processando') return nota;
   const token = await fiscal.tokenDoAmbiente(oficinaId, nota.ambiente);
   try {
-    const r = await TIPOS[nota.tipo].consultar(nota.ref, { token, ambiente: nota.ambiente });
+    const r = await (await tipoDaNota(nota)).consultar(nota.ref, { token, ambiente: nota.ambiente });
     await aplicarResposta(nota.id, nota.tipo, r, nota.ambiente);
   } catch (err) {
     // 404 só depois de um tempo: a emissão nunca chegou na Focus.
@@ -527,7 +629,7 @@ async function cancelar(notaId, justificativa, oficinaId) {
   const nota = await buscar(notaId);
   if (nota.status !== 'autorizada') throw new AppError('Só dá para cancelar nota autorizada', 422);
   const token = await fiscal.tokenDoAmbiente(oficinaId, nota.ambiente);
-  const r = await TIPOS[nota.tipo].cancelar(nota.ref, justificativa, { token, ambiente: nota.ambiente });
+  const r = await (await tipoDaNota(nota)).cancelar(nota.ref, justificativa, { token, ambiente: nota.ambiente });
   if (r?.status !== 'cancelado') {
     const msg = [r?.status_sefaz, r?.mensagem_sefaz].filter(Boolean).join(' — ')
       || (Array.isArray(r?.erros) && textoErrosFocus(r.erros)) || 'Cancelamento recusado';
@@ -565,5 +667,5 @@ async function reconsultarPendentes(oficinaId, { limite = 20 } = {}) {
 
 module.exports = {
   emitir, atualizar, cancelar, atualizarPorRef, reconsultarPendentes, buscar, listarDaOS, listar,
-  montarNfse, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
+  montarNfse, montarNfseMunicipal, montarNfe, valoresServico, repartir, aplicarResposta, refDaNota,
 };

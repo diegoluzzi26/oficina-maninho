@@ -152,6 +152,63 @@ function Certificado({ cfg, onConectado }) {
   );
 }
 
+/**
+ * NFS-e pelo sistema da prefeitura (ex.: Gravataí): a Focus entra com o
+ * login e a senha do site da prefeitura. A senha vai direto pra Focus.
+ */
+function AcessoPrefeitura({ cfg, onSalvo }) {
+  const [login, setLogin] = useState(cfg.prefeitura_login || '');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setErro(''); setSalvando(true);
+    try { onSalvo(await api.salvarPrefeitura(login.trim(), senha)); setSenha(''); }
+    catch (err) { setErro(err.message); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <form onSubmit={salvar} className="card p-5">
+      <h2 className="titulo-secao">Acesso ao site da prefeitura (NFS-e)</h2>
+      <div className="mb-4 space-y-1 text-xs text-slate-600">
+        <p>
+          A NFS-e sai pelo sistema da prefeitura usando o mesmo login e senha que você usa no site dela.
+          A senha vai direto para o emissor (Focus NFe) e não fica guardada aqui.
+        </p>
+        <p className="font-semibold text-ouro-700">
+          Esse sistema não tem ambiente de teste: toda NFS-e emitida vale de verdade.
+        </p>
+        <p>
+          No site da prefeitura, libere o acesso: <b>Emissão de NFS-e por WebService → Liberar Acesso ao Usuário</b>.
+        </p>
+      </div>
+      {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {cfg.prefeitura_configurada && (
+        <p className="mb-3 text-sm text-emerald-700">Acesso enviado (login {cfg.prefeitura_login}). Para trocar, informe de novo.</p>
+      )}
+      {!cfg.conectada && <p className="mb-3 text-sm text-ouro-700">Envie o certificado digital primeiro.</p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Campo label="Login da prefeitura" obrigatorio>
+          <input className="input" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off"
+            disabled={!cfg.conectada} required maxLength={100} />
+        </Campo>
+        <Campo label="Senha da prefeitura" obrigatorio>
+          <input type="password" className="input" value={senha} onChange={(e) => setSenha(e.target.value)}
+            autoComplete="off" disabled={!cfg.conectada} required maxLength={200} />
+        </Campo>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button type="submit" className="btn-primary" disabled={!cfg.conectada || salvando || !login.trim() || !senha}>
+          {salvando ? <><Spinner className="h-4 w-4" /> Enviando…</> : 'Salvar acesso da prefeitura'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /** Homologação (teste) ↔ produção (validade fiscal). */
 function Ambiente({ cfg, onSalvo, onErro }) {
   const [salvando, setSalvando] = useState(false);
@@ -339,7 +396,7 @@ export default function ConfigFiscal() {
             <Campo label="Padrão da NFS-e" ajuda="Nacional é o padrão desde 2026; municipal só se a prefeitura exigir">
               <select className="input" value={form.nfse_padrao} onChange={set('nfse_padrao')}>
                 <option value="nacional">Nacional</option>
-                <option value="municipal">Sistema da prefeitura</option>
+                <option value="municipal">Sistema da prefeitura (ex.: Gravataí)</option>
               </select>
             </Campo>
             <Campo label="Código de tributação do serviço" obrigatorio
@@ -399,6 +456,9 @@ export default function ConfigFiscal() {
       </form>
 
       <Certificado cfg={cfg} onConectado={(c) => { aplicar(c); setOk('Oficina conectada ao emissor.'); }} />
+      {cfg.nfse_municipal && (
+        <AcessoPrefeitura cfg={cfg} onSalvo={(c) => { aplicar(c); setOk('Acesso da prefeitura enviado ao emissor.'); }} />
+      )}
       {cfg.conectada && <Ambiente cfg={cfg} onSalvo={aplicar} onErro={setErro} />}
     </div>
   );

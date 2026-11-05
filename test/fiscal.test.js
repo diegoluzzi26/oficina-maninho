@@ -218,3 +218,31 @@ test('cadastro na Focus liga tributos aproximados e e-mail ao cliente', () => {
   assert.equal(p.enviar_email_destinatario, true);
   assert.equal(p.cep, '94000000'); // texto: CEP com zero à esquerda (SP) não pode virar número
 });
+
+// ---------------------------------------------------------------- NFS-e municipal (Gravataí)
+test('NFS-e municipal: formato da prefeitura com prestador, tomador e serviço', () => {
+  const c = notas.montarNfseMunicipal(osBase, clienteNfe, fiscalBase, new Date('2026-11-05T13:00:00Z'));
+  assert.equal(c.natureza_operacao, '1');
+  assert.equal(c.optante_simples_nacional, true);
+  assert.equal(c.regime_especial_tributacao, '6');
+  assert.deepEqual(c.prestador, { cnpj: '02130104000146', inscricao_municipal: '12345', codigo_municipio: '4309209' });
+  assert.equal(c.tomador.cpf, '12345678909');
+  assert.equal(c.tomador.endereco.codigo_municipio, '4309209');
+  assert.equal(c.tomador.telefone, '51988887777');
+  assert.equal(c.servico.item_lista_servico, '140101');
+  assert.equal(c.servico.valor_servicos, 300);
+  assert.equal(c.servico.desconto_incondicionado, 15);
+  assert.equal(c.servico.aliquota, 3);
+  assert.equal(c.servico.codigo_municipio, '4309209');
+});
+
+test('NFS-e municipal: tomador sem documento ou sem código IBGE barra com tudo que falta', () => {
+  assert.throws(
+    () => notas.montarNfseMunicipal(osBase, { nome: 'X', cpf_cnpj: null, cep: '94010000' }, { ...fiscalBase, inscricao_municipal: null }),
+    (err) => {
+      assert.deepEqual(err.details.map((d) => d.campo), ['Cliente', 'Endereço do cliente', 'Aba Fiscal']);
+      assert.match(err.details[1].erro, /código IBGE/);
+      return err.statusCode === 422;
+    },
+  );
+});

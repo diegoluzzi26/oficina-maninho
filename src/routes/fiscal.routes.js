@@ -98,6 +98,16 @@ function erroUpload(err, _req, _res, next) {
   next(err);
 }
 
+// Acesso ao site da prefeitura (NFS-e municipal, ex.: Gravataí).
+const prefeituraBody = z.object({
+  login: z.string().trim().min(1).max(100),
+  senha: z.string().min(1).max(200),
+}).strict();
+
+router.put('/prefeitura', validate({ body: prefeituraBody }), h(async (req, res) => {
+  res.json(await fiscal.salvarPrefeitura(req.user.oficina_id, req.body));
+}));
+
 router.post('/certificado', upload.single('arquivo'), erroUpload, h(async (req, res) => {
   if (!req.file) throw new AppError('Envie o certificado no campo "arquivo"', 400);
   const senha = typeof req.body?.senha === 'string' ? req.body.senha : '';

@@ -98,6 +98,11 @@ function visao(f) {
     pendencias: pend,
     // Código IBGE vem da Focus no cadastro; sem ele a NFS-e não sai.
     sem_codigo_municipio: conectada && !f.codigo_municipio,
+    // NFS-e pelo sistema da prefeitura (ex.: Gravataí): só produção, com
+    // login e senha do site da prefeitura (a senha fica só na Focus).
+    nfse_municipal: (f.nfse_padrao || 'nacional') === 'municipal',
+    prefeitura_login: f.prefeitura_login ?? null,
+    prefeitura_configurada: Boolean(f.prefeitura_login && f.prefeitura_senha_em),
     pronta: conectada && Boolean(tokenDoAmbiente) && Boolean(f.codigo_municipio)
       && !certificadoVencido && pend.length === 0,
   };
@@ -138,6 +143,7 @@ function payloadEmpresa(f) {
     serie_nfe_homologacao: serie,
     // NFS-e Nacional e a municipal são excludentes na Focus.
     habilita_nfse: !nacional,
+    login_responsavel: !nacional && f.prefeitura_login ? f.prefeitura_login : undefined,
     habilita_nfsen_homologacao: nacional,
     habilita_nfsen_producao: nacional && producao,
   };
@@ -309,6 +315,27 @@ async function credenciais(oficinaId) {
   return { fiscal: { ...f, ...v }, ambiente, token };
 }
 
+/**
+ * Login e senha do site da prefeitura (NFS-e municipal). Vão pra empresa na
+ * Focus; aqui fica só o login e a data do envio da senha.
+ */
+async function salvarPrefeitura(oficinaId, { login, senha }) {
+  const atual = await linha(oficinaId);
+  if (!atual.focus_empresa_id) {
+    throw new AppError('Conecte a oficina na Focus (envie o certificado) antes de informar o acesso da prefeitura', 422);
+  }
+  const emp = await focus.atualizarEmpresa(atual.focus_empresa_id, {
+    login_responsavel: login, senha_responsavel: senha,
+  });
+  await db.withTransaction(async (client) => {
+    await client.query(
+      'UPDATE oficina_fiscal SET prefeitura_login = $2, prefeitura_senha_em = now() WHERE oficina_id = $1',
+      [oficinaId, login]);
+    await gravarRespostaFocus(client, oficinaId, emp);
+  });
+  return obter(oficinaId);
+}
+
 /** Token de um ambiente específico (a nota é consultada no ambiente em que foi emitida). */
 async function tokenDoAmbiente(oficinaId, ambiente) {
   const f = await linha(oficinaId);
@@ -319,5 +346,5 @@ async function tokenDoAmbiente(oficinaId, ambiente) {
 
 module.exports = {
   CAMPOS, OBRIGATORIOS, obter, salvar, conectar, payloadEmpresa, pendencias,
-  garantirGatilhos, credenciais, tokenDoAmbiente,
+  garantirGatilhos, credenciais, tokenDoAmbiente, salvarPrefeitura,
 };

@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const notas = require('../services/notas.service');
+const fiscal = require('../services/fiscal.service');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
 const { exigirPermissao: pode } = require('../middleware/permissoes');
@@ -12,6 +13,18 @@ const h = require('../utils/asyncHandler');
  * 'fiscal'. Consultar fica com quem vê as OS; emitir e cancelar exigem a
  * permissão 'fiscal' (Equipe).
  */
+
+// O que a tela da OS precisa saber antes de emitir: se a nota vale de
+// verdade (produção, ou NFS-e pela prefeitura, que não tem teste).
+router.get('/situacao', h(async (req, res) => {
+  const f = await fiscal.obter(req.user.oficina_id);
+  res.json({
+    ambiente: f.ambiente,
+    nfse_municipal: f.nfse_municipal,
+    nfse_valendo: f.ambiente === 'producao' || f.nfse_municipal,
+    nfe_valendo: f.ambiente === 'producao',
+  });
+}));
 
 // Notas de uma OS (bloco na OS).
 router.get('/da-os/:id', validate({ params: v.idParam }), h(async (req, res) => {

@@ -332,6 +332,8 @@ export const api = {
   // --- nota fiscal: configuração da oficina (só admin, adicional Nota fiscal) ---
   fiscalConfig: () => request('/fiscal/config'),
   salvarFiscalConfig: (body) => request('/fiscal/config', { method: 'PUT', body }),
+  salvarPrefeitura: (login, senha) => request('/fiscal/prefeitura', { method: 'PUT', body: { login, senha } }),
+  notasSituacao: () => request('/notas-fiscais/situacao'),
   // Multipart: certificado A1 + senha (não passa pelo `request`).
   async enviarCertificadoFiscal(arquivo, senha) {
     const fd = new FormData();

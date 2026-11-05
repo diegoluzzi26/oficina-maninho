@@ -134,7 +134,10 @@ export function NotasDaOS({ os, podeEmitir }) {
   const [emitindo, setEmitindo] = useState(null);
   const [erro, setErro] = useState('');
   const [cancelando, setCancelando] = useState(null);
+  const [situacao, setSituacao] = useState(null);
   const timer = useRef(null);
+
+  useEffect(() => { api.notasSituacao().then(setSituacao).catch(() => {}); }, []);
 
   const carregar = useCallback(() => {
     api.notasDaOS(os.id).then(setNotas).catch((e) => {
@@ -159,6 +162,12 @@ export function NotasDaOS({ os, podeEmitir }) {
   const substituir = (n) => setNotas((l) => l.map((x) => (x.id === n.id ? n : x)));
 
   async function emitir(tipo) {
+    // Nota que vale de verdade (produção, ou NFS-e pela prefeitura, que não
+    // tem ambiente de teste): confirma antes.
+    const valendo = tipo === 'nfse' ? situacao?.nfse_valendo : situacao?.nfe_valendo;
+    if (valendo && !window.confirm(
+      `Esta ${TIPO_NOTA[tipo]} vai valer de verdade (com validade fiscal). Conferiu cliente e valores? Emitir agora?`,
+    )) return;
     setErro(''); setEmitindo(tipo);
     try {
       const n = await api.emitirNota(os.id, tipo);

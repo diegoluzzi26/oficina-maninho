@@ -138,6 +138,24 @@ function cancelarNfsen(ref, justificativa, { token, ambiente }) {
   return req(`/v2/nfsen/${encodeURIComponent(ref)}`, { method: 'DELETE', body: { justificativa }, token, ambiente });
 }
 
+// ---------------------------------------------------------------- NFS-e municipal
+
+/**
+ * NFS-e pelo sistema da prefeitura (padrão do município, ex.: Gravataí /
+ * AtendeNet). POST /v2/nfse?ref=; a prefeitura autoriza depois.
+ */
+function emitirNfse(ref, dados, { token, ambiente }) {
+  return req('/v2/nfse', { method: 'POST', body: dados, query: { ref }, token, ambiente });
+}
+
+function consultarNfse(ref, { token, ambiente }) {
+  return req(`/v2/nfse/${encodeURIComponent(ref)}`, { token, ambiente });
+}
+
+function cancelarNfse(ref, justificativa, { token, ambiente }) {
+  return req(`/v2/nfse/${encodeURIComponent(ref)}`, { method: 'DELETE', body: { justificativa }, token, ambiente });
+}
+
 // ---------------------------------------------------------------- NF-e
 
 /** POST /v2/nfe?ref= — 202 processando (assíncrona) ou 201 já autorizada (síncrona). */
@@ -163,5 +181,6 @@ function urlArquivo(caminho, ambiente) {
 module.exports = {
   URLS, configurado, req, criarEmpresa, atualizarEmpresa, consultarEmpresa, buscarEmpresaPorCnpj,
   listarGatilhos, criarGatilho, emitirNfsen, consultarNfsen, cancelarNfsen,
+  emitirNfse, consultarNfse, cancelarNfse,
   emitirNfe, consultarNfe, cancelarNfe, urlArquivo,
 };
