@@ -7,7 +7,16 @@
 #   {$DOMINIO_ANTIGO}   → endereço antigo (duckdns) redireciona pro sistema novo
 #
 # Vêm do .env (ex: DOMINIO=gestaotorque.com.br, DOMINIO_ANTIGO=eletricamaninho.duckdns.org).
-# HTTPS grátis via Let's Encrypt, HTTP/3 ativo.
+# HTTPS grátis via Let's Encrypt.
+#
+# HTTP/3 (QUIC/UDP) desligado: pelo HTTP/3 o Chrome não conseguia baixar os
+# arquivos grandes do sistema (bundle de ~470 KB voltava 503/"Failed to fetch")
+# e a tela ficava em branco; HTTP/1.1 e HTTP/2 entregavam normal.
+{
+	servers {
+		protocols h1 h2
+	}
+}
 
 (comum) {
 	encode gzip zstd

@@ -36,7 +36,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"     # HTTP/3
     environment:
       DOMINIO: "${DOMINIO:?defina DOMINIO no .env, ex gestaotorque.com.br}"
       DOMINIO_ANTIGO: "${DOMINIO_ANTIGO:-eletricamaninho.duckdns.org}"
