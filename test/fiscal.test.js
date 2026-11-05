@@ -246,3 +246,11 @@ test('NFS-e municipal: tomador sem documento ou sem código IBGE barra com tudo 
     },
   );
 });
+
+test('NFS-e municipal: tira "/" dos textos (o IPM não aceita)', () => {
+  const os = { ...osBase, servicos: [{ nome_servico: 'Instalação de som/multimídia', quantidade: 1, valor_total: '100.00' }], pecas: [] };
+  const c = notas.montarNfseMunicipal(os, { ...clienteNfe, complemento: 'apto 3/B' }, fiscalBase);
+  assert.match(c.servico.discriminacao, /som-multimídia/);
+  assert.equal(c.servico.discriminacao.includes('/'), false);
+  assert.equal(c.tomador.endereco.complemento, 'apto 3-B');
+});

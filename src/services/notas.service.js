@@ -210,6 +210,9 @@ async function listar(f = {}) {
  * CPF/CNPJ e endereço completo (com código IBGE) é obrigatório, e a
  * inscrição municipal do prestador vai junto. Junta tudo que falta num 422.
  */
+// O web service do IPM (Atende.Net, NTE 35/2021) não aceita "/" no XML.
+const semBarra = (v) => (v === null || v === undefined ? v : String(v).replace(/\//g, '-'));
+
 function montarNfseMunicipal(os, cliente, f, agora = new Date()) {
   const problemas = [];
   const doc = cnpj.limpar(cliente.cpf_cnpj);
@@ -243,14 +246,14 @@ function montarNfseMunicipal(os, cliente, f, agora = new Date()) {
     },
     tomador: {
       ...tom,
-      razao_social: String(cliente.nome || '').slice(0, 115),
+      razao_social: semBarra(String(cliente.nome || '').slice(0, 115)),
       email: cliente.email ? String(cliente.email).slice(0, 80) : undefined,
       telefone: tel.length >= 10 && tel.length <= 11 ? tel : undefined,
       endereco: {
-        logradouro: String(cliente.logradouro).slice(0, 125),
-        numero: String(cliente.numero).slice(0, 10),
-        complemento: cliente.complemento ? String(cliente.complemento).slice(0, 60) : undefined,
-        bairro: String(cliente.bairro).slice(0, 60),
+        logradouro: semBarra(String(cliente.logradouro).slice(0, 125)),
+        numero: semBarra(String(cliente.numero).slice(0, 10)),
+        complemento: cliente.complemento ? semBarra(String(cliente.complemento).slice(0, 60)) : undefined,
+        bairro: semBarra(String(cliente.bairro).slice(0, 60)),
         codigo_municipio: cliente.codigo_municipio,
         uf: cliente.uf,
         cep: cliente.cep,
@@ -261,7 +264,7 @@ function montarNfseMunicipal(os, cliente, f, agora = new Date()) {
       desconto_incondicionado: desconto > 0 ? desconto : undefined,
       iss_retido: Boolean(f.iss_retido),
       item_lista_servico: f.codigo_servico, // Gravataí: 6 dígitos (140101)
-      discriminacao: descricao(os),
+      discriminacao: semBarra(descricao(os)),
       codigo_municipio: f.codigo_municipio,
       aliquota: f.aliquota_iss === null || f.aliquota_iss === undefined ? undefined : Number(f.aliquota_iss),
     },

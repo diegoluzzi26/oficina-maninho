@@ -175,14 +175,15 @@ function AcessoPrefeitura({ cfg, onSalvo }) {
       <h2 className="titulo-secao">Acesso ao site da prefeitura (NFS-e)</h2>
       <div className="mb-4 space-y-1 text-xs text-slate-600">
         <p>
-          A NFS-e sai pelo sistema da prefeitura usando o mesmo login e senha que você usa no site dela.
+          A NFS-e sai pelo sistema da prefeitura usando o CNPJ da oficina e a mesma senha do site dela.
           A senha vai direto para o emissor (Focus NFe) e não fica guardada aqui.
         </p>
         <p className="font-semibold text-ouro-700">
           Esse sistema não tem ambiente de teste: toda NFS-e emitida vale de verdade.
         </p>
         <p>
-          No site da prefeitura, libere o acesso: <b>Emissão de NFS-e por WebService → Liberar Acesso ao Usuário</b>.
+          Antes, libere o acesso no <b>Portal do Cidadão / Autoatendimento</b> da prefeitura (não no sistema da
+          NFS-e): serviço <b>Emissão de NFS-e por WebService</b> → <b>Liberar Acesso ao Usuário</b>.
         </p>
       </div>
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
@@ -191,8 +192,9 @@ function AcessoPrefeitura({ cfg, onSalvo }) {
       )}
       {!cfg.conectada && <p className="mb-3 text-sm text-ouro-700">Envie o certificado digital primeiro.</p>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Campo label="Login da prefeitura" obrigatorio>
-          <input className="input" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off"
+        <Campo label="Login da prefeitura" obrigatorio ajuda="O CNPJ da oficina (só números)">
+          <input className="input font-mono" value={login} autoComplete="off" placeholder={cfg.cnpj || 'CNPJ'}
+            onChange={(e) => setLogin(e.target.value)}
             disabled={!cfg.conectada} required maxLength={100} />
         </Campo>
         <Campo label="Senha da prefeitura" obrigatorio>
