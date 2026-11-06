@@ -4,6 +4,7 @@ const { z } = require('zod');
 const svc = require('../services/os.service');
 const clientes = require('../services/clientes.service');
 const wa = require('../services/whatsapp.service');
+const orcamento = require('../services/orcamento.service');
 const config = require('../services/config.service');
 const v = require('../validators/schemas');
 const validate = require('../middleware/validate');
@@ -190,6 +191,21 @@ router.delete('/:id/adiantamentos/:adiantamentoId',
     await svc.removerAdiantamento(req.params.id, req.params.adiantamentoId);
     res.status(204).end();
   }));
+
+// Orçamento em PDF: download na tela da OS e envio como anexo no WhatsApp.
+router.get('/:id/orcamento.pdf', validate({ params: v.idParam }), h(async (req, res) => {
+  const { buffer, nomeArquivo } = await orcamento.pdfDaOS(req.params.id, req.user.oficina_id);
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${nomeArquivo}"`,
+    'Cache-Control': 'no-store',
+  });
+  res.send(buffer);
+}));
+
+router.post('/:id/orcamento/whatsapp', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(
+    await orcamento.enviarPorWhatsApp(req.params.id, req.user.oficina_id))));
 
 // Exclui OS inteira (bloqueado se paga)
 router.delete('/:id', validate({ params: v.idParam }),

@@ -150,6 +150,52 @@ async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
 }
 
 /**
+ * Envia um documento (PDF) pelo WhatsApp via Evolution (sendMedia).
+ * `base64` é o arquivo cru em base64, sem prefixo `data:`. O log guarda
+ * só a legenda e o nome do arquivo — o base64 não vai pro banco.
+ */
+async function enviarDocumento({
+  telefone, base64, nomeArquivo, legenda = '', mimetype = 'application/pdf', cliente_id, os_id,
+}) {
+  if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) {
+    throw new AppError('WhatsApp disponível a partir do plano Profissional', 403);
+  }
+  const e = ensureEnabled();
+  const numero = digitos(telefone);
+  const corpoLog = `[${nomeArquivo}] ${legenda}`.trim();
+
+  const { ok, status, json } = await evolutionRequest(
+    `/message/sendMedia/${e.instance}`,
+    {
+      method: 'POST',
+      body: {
+        number: numero, mediatype: 'document', mimetype,
+        caption: legenda, media: base64, fileName: nomeArquivo,
+      },
+    },
+  );
+
+  if (!ok) {
+    const motivo = json?.response?.message || json?.message || `HTTP ${status}`;
+    await logMensagem({
+      direction: 'outbound', kind: 'other', status: 'failed',
+      telefone, cliente_id, os_id, body: corpoLog,
+      payload: { erro: json, arquivo: nomeArquivo }, erro: { motivo, status },
+    });
+    throw new AppError(`Falha ao enviar WhatsApp: ${motivo}`, status === 500 ? 502 : status);
+  }
+
+  const waId = json?.key?.id || json?.messageId || json?.id || null;
+  const rec = await logMensagem({
+    wa_message_id: waId,
+    direction: 'outbound', kind: 'other', status: 'sent',
+    telefone, cliente_id, os_id, body: corpoLog,
+    payload: { key: json?.key || null, arquivo: nomeArquivo }, enviado_em: new Date(),
+  });
+  return { id: waId, wa_message_id: waId, registro: rec };
+}
+
+/**
  * Retrocompat: alguns call sites antigos chamavam `enviarTemplate` ou
  * passavam `template` como fallback. Evolution não tem essa diferença;
  * usamos sempre `enviarTexto` com o texto que já vinha montado.
@@ -336,6 +382,7 @@ async function desconectar() {
 module.exports = {
   janelaAberta,
   enviarTexto,
+  enviarDocumento,
   enviarTemplate,
   notificar,
   processarWebhook,
