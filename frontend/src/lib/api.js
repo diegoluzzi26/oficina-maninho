@@ -280,6 +280,32 @@ export const api = {
   iaConversar: (mensagens) => request('/ia/conversar', { method: 'POST', body: { mensagens } }),
 
   /**
+   * Abre o orçamento em PDF da OS numa aba nova. Mesmo motivo do Excel:
+   * precisa do JWT no header, então busca como blob. A aba é aberta antes
+   * do fetch (no clique) pra o navegador não bloquear como pop-up.
+   */
+  async abrirOrcamentoPdf(id) {
+    const aba = window.open('', '_blank');
+    try {
+      const token = getToken();
+      const res = await fetch(`${BASE}/os/${id}/orcamento.pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(err.erro || `Erro ${res.status}`, res.status);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      if (aba) aba.location.href = url; else window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      if (aba) aba.close();
+      throw e;
+    }
+  },
+  enviarOrcamentoWhatsApp: (id) => request(`/os/${id}/orcamento/whatsapp`, { method: 'POST', body: {} }),
+
+  /**
    * Baixa o Excel do mês. Como o backend exige JWT, não dá pra usar
    * <a href> puro — o browser não manda header. Faz fetch com Authorization,
    * transforma em blob e dispara download programaticamente.

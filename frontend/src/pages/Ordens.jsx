@@ -986,6 +986,25 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
     finally { setCarregando(false); }
   }
 
+  // Orçamento em PDF (gerado no servidor): abre pra conferir/baixar ou
+  // manda direto no WhatsApp do cliente, com legenda pronta.
+  async function abrirOrcamento() {
+    setErro('');
+    try { await api.abrirOrcamentoPdf(os.id); } catch (e) { setErro(e.message); }
+  }
+
+  async function enviarOrcamento() {
+    if (!os.cliente_telefone) { setErro('Cliente sem telefone cadastrado.'); return; }
+    if (!confirm(`Enviar o orçamento da OS nº ${os.numero_os} (${brl(os.valor_total)}) `
+      + `em PDF pro WhatsApp de ${os.cliente_nome}?`)) return;
+    setCarregando(true); setErro(''); setAviso('');
+    try {
+      const r = await api.enviarOrcamentoWhatsApp(os.id);
+      setAviso(`Orçamento enviado pelo WhatsApp para ${r.para}.`);
+    } catch (e) { setErro(`Orçamento não enviado: ${e.message}`); }
+    finally { setCarregando(false); }
+  }
+
   useEffect(() => {
     if (!os) { setAdiantamentos([]); return; }
     api.adiantamentosOS(os.id).then(setAdiantamentos).catch(() => setAdiantamentos([]));
@@ -1249,6 +1268,20 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             title={os.status === 'paga' ? 'Imprimir recibo' : 'Imprimir OS para o cliente assinar'}>
             🖨 {os.status === 'paga' ? 'Recibo' : 'Imprimir'}
           </a>
+          {os.status !== 'paga' && (
+            <>
+              <button type="button" onClick={abrirOrcamento}
+                className="rounded bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+                title="Abrir o orçamento em PDF para conferir ou baixar">
+                📄 Orçamento
+              </button>
+              <button type="button" onClick={enviarOrcamento} disabled={carregando}
+                className="rounded bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                title="Mandar o orçamento em PDF no WhatsApp do cliente">
+                📲 Enviar orçamento
+              </button>
+            </>
+          )}
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
               · Paga em {data(os.paga_em)} ·{' '}
