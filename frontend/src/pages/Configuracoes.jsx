@@ -307,6 +307,7 @@ const STATUS_ETAPA = [
   { valor: 'em_andamento', rotulo: 'Em andamento' },
   { valor: 'finalizada', rotulo: 'Finalizada' },
   { valor: 'paga', rotulo: 'Paga' },
+  { valor: 'negada', rotulo: 'Orçamento negado' },
 ];
 const rotuloStatus = (v) => (STATUS_ETAPA.find((s) => s.valor === (v || ''))?.rotulo) || v;
 

@@ -44,6 +44,7 @@ const FILTROS = [
   { chave: 'em_andamento', texto: 'Em andamento' },
   { chave: 'finalizada', texto: 'Finalizadas' },
   { chave: 'paga', texto: 'Pagas' },
+  { chave: 'negada', texto: 'Orçamentos negados' },
 ];
 
 // Transições que a UI oferece via botão "Mudar para". Espelha o
@@ -51,10 +52,11 @@ const FILTROS = [
 // precisam bater. OS paga PODE voltar pra finalizada agora
 // ("reabrir OS"), então a lista deixou de ser vazia.
 const PROXIMOS = {
-  aberta: ['em_andamento', 'finalizada'],
-  em_andamento: ['finalizada', 'aberta'],
+  aberta: ['em_andamento', 'finalizada', 'negada'],
+  em_andamento: ['finalizada', 'aberta', 'negada'],
   finalizada: ['paga', 'em_andamento'],
   paga: ['finalizada'],
+  negada: ['aberta', 'em_andamento'],
 };
 
 /**
@@ -707,7 +709,7 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
  * OS finalizada ou paga já saiu da oficina: não conta como parada.
  */
 function diasNaEtapa(o) {
-  if (o.status === 'finalizada' || o.status === 'paga') return 0;
+  if (o.status === 'finalizada' || o.status === 'paga' || o.status === 'negada') return 0;
   if (!o.etapa_entrou_em) return 0;
   const ms = Date.now() - new Date(o.etapa_entrou_em).getTime();
   return Math.max(0, Math.floor(ms / 86400000));

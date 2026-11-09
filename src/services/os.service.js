@@ -325,10 +325,12 @@ async function atualizar(id, dados) {
 // (reabrir) pra ajustar itens/valor e depois refechar. Antes tinha
 // bloqueio em 'paga' mas cria mais atrito do que segurança.
 const TRANSICOES = {
-  aberta:       ['em_andamento', 'finalizada', 'paga'],
-  em_andamento: ['aberta', 'finalizada', 'paga'],
+  aberta:       ['em_andamento', 'finalizada', 'paga', 'negada'],
+  em_andamento: ['aberta', 'finalizada', 'paga', 'negada'],
   finalizada:   ['aberta', 'em_andamento', 'paga'],
   paga:         ['aberta', 'em_andamento', 'finalizada'],
+  // Orçamento negado só volta pra fila (cliente mudou de ideia).
+  negada:       ['aberta', 'em_andamento'],
 };
 
 /**
@@ -486,12 +488,15 @@ async function mudarEtapa(id, etapaId, dadosPagamento = {}) {
 }
 
 /**
- * Ordens para o quadro Kanban: todas as OS "ativas" — ainda não pagas —
- * mais as pagas recentes (últimos 30 dias), ignorando o filtro de mês e
- * sem paginação (é um board limitado por natureza, não a lista paginável).
+ * Ordens para o quadro Kanban: todas as OS "ativas" mais as pagas e os
+ * orçamentos negados recentes (últimos 30 dias), ignorando o filtro de mês
+ * e sem paginação (é um board limitado por natureza, não a lista paginável).
+ * Negados mais antigos seguem salvos e aparecem no filtro da lista.
  */
 async function listarKanban({ busca, cliente_id, marca } = {}) {
-  const where = [`(o.status <> 'paga' OR o.paga_em >= now() - interval '30 days')`];
+  const where = [`(o.status NOT IN ('paga','negada')
+    OR (o.status = 'paga' AND o.paga_em >= now() - interval '30 days')
+    OR (o.status = 'negada' AND o.etapa_entrou_em >= now() - interval '30 days'))`];
   const params = [];
 
   if (cliente_id) { params.push(cliente_id); where.push(`o.cliente_id = $${params.length}`); }

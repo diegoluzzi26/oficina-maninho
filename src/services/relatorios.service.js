@@ -54,7 +54,7 @@ async function resumo(filtros) {
   // OS em aberto não entram no faturamento, mas o dono quer ver o que está na fila
   const pipeline = await db.query(
     `SELECT status, count(*)::int AS qtd, COALESCE(sum(valor_total),0)::numeric AS valor
-       FROM ordens_servico WHERE status <> 'paga' GROUP BY status`,
+       FROM ordens_servico WHERE status NOT IN ('paga','negada') GROUP BY status`,
   );
 
   return {
@@ -180,7 +180,7 @@ async function painelMes({ ano, mes } = {}) {
     ),
     db.query(
       `SELECT status, count(*)::int AS qtd, COALESCE(sum(valor_total),0)::numeric AS valor
-         FROM ordens_servico WHERE status NOT IN ('paga')
+         FROM ordens_servico WHERE status NOT IN ('paga','negada')
         GROUP BY status`,
     ),
     db.query(

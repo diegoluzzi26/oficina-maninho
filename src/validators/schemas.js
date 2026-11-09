@@ -182,7 +182,7 @@ const parcelaPagamento = z.object({
 });
 
 const mudarStatus = z.object({
-  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']),
+  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga', 'negada']),
   notificar_whatsapp: z.boolean().default(false),
   // Só usados quando status === 'paga'
   forma_pagamento: z.enum(FORMAS_PAG).optional(),
@@ -195,7 +195,7 @@ const mudarStatus = z.object({
 // ----- etapas do kanban -----
 // status_ao_entrar liga (opcional) a etapa ao status financeiro da OS.
 // String vazia vira null pra facilitar o "— nenhum —" do <select>.
-const statusEtapa = z.enum(['aberta', 'em_andamento', 'finalizada', 'paga'])
+const statusEtapa = z.enum(['aberta', 'em_andamento', 'finalizada', 'paga', 'negada'])
   .optional().nullable().or(z.literal('').transform(() => null));
 
 const criarEtapa = z.object({

@@ -12,7 +12,7 @@ const h = require('../utils/asyncHandler');
 const { formatBR } = require('../utils/phone');
 
 const listaQuery = v.paginacao.extend({
-  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']).optional(),
+  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga', 'negada']).optional(),
   cliente_id: v.uuid.optional(),
   marca: z.string().trim().optional(),
   forma_pagamento: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
