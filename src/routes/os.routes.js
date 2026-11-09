@@ -199,6 +199,7 @@ router.get('/:id/orcamento.pdf', validate({ params: v.idParam }),
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${nome}"`,
+      'Cache-Control': 'no-store',
     });
     res.send(pdf);
   }));
