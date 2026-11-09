@@ -104,7 +104,7 @@ const PLANO_LABEL = {
 };
 // Mesmas chaves de ADICIONAIS em src/config/planos.js.
 const ADICIONAIS = {
-  fiscal: { nome: 'Nota fiscal', mensal: 39, planos: ['profissional', 'completo'] },
+  fiscal: { nome: 'Nota fiscal', mensal: 39, planos: ['profissional'], incluso: ['completo'] },
 };
 
 function AssinaturaBadge({ status }) {
@@ -187,7 +187,9 @@ function FormAssinatura({ oficina, onFechar, onSalvo }) {
                     onChange={() => alternarAdicional(k)} />
                   <span>{a.nome} (+ {brl(a.mensal)}/mês)</span>
                   {!compativel && (
-                    <span className="text-xs text-amber-700">inativo neste plano</span>
+                    <span className="text-xs text-amber-700">
+                      {a.incluso.includes(form.plano) ? 'já incluso neste plano, sem cobrança' : 'inativo neste plano'}
+                    </span>
                   )}
                 </label>
               );

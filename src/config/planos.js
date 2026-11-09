@@ -12,7 +12,8 @@
  *                 o lançamento de despesa depende deles)
  *   funcionarios  cadastro de funcionários / pessoal
  *   ia            recursos de IA
- *   fiscal        emissão de NFS-e/NF-e (só via adicional, ver ADICIONAIS)
+ *   fiscal        emissão de NFS-e/NF-e (incluso no Completo; no Profissional
+ *                 é adicional, ver ADICIONAIS)
  *
  * Anual = 10 mensalidades (2 meses grátis). usuarios: null = ilimitado.
  */
@@ -36,7 +37,7 @@ const PLANOS = {
     mensal: 199,
     anual: 1990,
     usuarios: null,
-    recursos: ['whatsapp', 'followup', 'gestao', 'funcionarios', 'ia'],
+    recursos: ['whatsapp', 'followup', 'gestao', 'funcionarios', 'ia', 'fiscal'],
   },
 };
 
@@ -56,7 +57,7 @@ const ADICIONAIS = {
     descricao: 'Emissão de NFS-e e NF-e direto da OS',
     mensal: 39,
     anual: 390,
-    planos: ['profissional', 'completo'],
+    planos: ['profissional'],
   },
 };
 
