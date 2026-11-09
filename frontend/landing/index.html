@@ -107,6 +107,9 @@ main{padding-top:72px}
 .logo b{font-weight:700}
 .logo em{font-style:normal;font-weight:700;color:var(--laranja-claro)}
 .nav-links{display:flex;gap:30px;font-size:15px;color:var(--mudo)}
+.nav-links a{white-space:nowrap}
+.logo span{white-space:nowrap}
+@media (max-width:1200px){.nav-links{gap:18px}.nav-acoes{gap:12px}}
 .nav-links a:hover{color:var(--creme)}
 .nav-acoes{display:flex;align-items:center;gap:18px}
 .entrar{display:inline-flex;align-items:center;padding:10px 20px;border:1px solid rgba(226,232,240,.22);border-radius:999px;font-size:14.5px;font-weight:700;color:var(--creme);white-space:nowrap;transition:background .25s,border-color .25s}
@@ -343,6 +346,35 @@ section{padding:120px 0;position:relative}
 }
 .selo-auto b{font-family:var(--mono);font-size:10.5px;color:var(--zap);letter-spacing:.08em;text-transform:uppercase;display:block}
 
+/* nota fiscal */
+.nf-passos{list-style:none;display:grid;gap:18px;margin:34px 0 26px}
+.nf-passos li{display:flex;gap:16px;font-size:16.5px}
+.nf-passos .n{
+  width:38px;height:38px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;
+  font-family:var(--mono);font-size:15px;font-weight:700;background:rgba(255,90,31,.16);color:var(--laranja-claro);
+}
+.nf-passos b{color:var(--creme);display:block}
+.nf-passos span{color:var(--mudo)}
+.nf-preco{font-size:15px;color:var(--mudo);margin-bottom:28px}
+.nf-preco b{color:var(--creme)}
+.nf-os{
+  background:var(--creme);color:var(--grafite);border-radius:18px;padding:24px;max-width:500px;margin-inline:auto;
+  box-shadow:0 50px 100px -30px rgba(0,0,0,.8);transform:rotate(1.2deg);transition:transform .6s cubic-bezier(.2,.8,.2,1);
+}
+.nf-os:hover{transform:none}
+.nf-os-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:var(--display);font-weight:700;font-size:19px}
+.nf-os-sit{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;background:#d9f2e3;color:#0b6b37;white-space:nowrap}
+.nf-os-sub{font-size:14px;color:#5b6b82;margin-top:2px}
+.nf-os-rot{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#5b6b82;margin:20px 0 6px}
+.nf-nota{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:13px 0;border-top:1px dashed #d9cbbd}
+.nf-nota strong{font-family:var(--display);font-size:16px}
+.nf-nota small{font-size:13px;color:#5b6b82;display:block}
+.nf-nota .valor{font-family:var(--mono);font-size:14px;font-weight:700;text-align:right}
+.nf-arquivos{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px}
+.nf-autorizada{font-weight:700;color:#0b6b37;display:inline-flex;align-items:center;gap:5px;margin-right:auto}
+.nf-autorizada svg{width:15px;height:15px}
+.nf-arquivo{font-family:var(--mono);font-weight:700;color:#c23d0c;border:1px solid rgba(194,61,12,.35);border-radius:7px;padding:3px 9px}
+
 /* passos */
 .passos{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--linha-forte)}
 .passo{padding:34px 34px 10px 0;position:relative}
@@ -423,15 +455,12 @@ footer{border-top:1px solid var(--linha);padding:40px 0 120px;color:var(--mudo);
 footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
 
 /* frase que acende palavra por palavra conforme rola */
-.frase-rola{height:230vh;padding:0;position:relative}
-.frase-rola .fixa{position:sticky;top:0;height:100vh;display:flex;align-items:center}
+.frase-rola{padding:clamp(72px,12vw,140px) 0}
 .frase-rola p{
   font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:1.15;
   font-size:clamp(30px,5vw,64px);color:var(--creme);max-width:20ch;
 }
-.frase-rola .p{opacity:.14;transition:opacity .25s,color .25s}
-.frase-rola .p.on{opacity:1}
-.frase-rola .p.destaque.on{color:var(--laranja)}
+.frase-rola .p.destaque{color:var(--laranja)}
 
 /* revelação ao rolar */
 .revela{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.8,.2,1),transform .9s cubic-bezier(.2,.8,.2,1)}
@@ -522,9 +551,6 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .sobe,.revela{opacity:1;transform:none}
-  .frase-rola{height:auto;padding:90px 0}
-  .frase-rola .fixa{position:static;height:auto}
-  .frase-rola .p{opacity:1}
 }
 </style>
 </head>
@@ -554,6 +580,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     <nav class="nav-links" aria-label="Seções">
       <a href="#recursos">Recursos</a>
       <a href="#whatsapp">WhatsApp automático</a>
+      <a href="#nota-fiscal">Nota fiscal</a>
       <a href="#planos">Planos</a>
       <a href="#duvidas">Dúvidas</a>
     </nav>
@@ -571,6 +598,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
   <a class="item" href="#recursos">Recursos</a>
   <a class="item" href="#por-dentro">Telas do sistema</a>
   <a class="item" href="#whatsapp">WhatsApp automático</a>
+  <a class="item" href="#nota-fiscal">Nota fiscal</a>
   <a class="item" href="#planos">Planos</a>
   <a class="item" href="#duvidas">Dúvidas</a>
   <div class="btns">
@@ -853,6 +881,43 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     </div>
   </section>
 
+  <!-- ===== NOTA FISCAL (valores da OS #1048 mostrada em Recursos) ===== -->
+  <section id="nota-fiscal">
+    <div class="wrap zap-grid">
+      <div class="revela">
+        <span class="kicker">Nota fiscal</span>
+        <h2 style="margin-top:20px">Fechou a OS,<br>a nota sai dali.</h2>
+        <p class="lead" style="margin-top:22px">Nada de abrir o site da prefeitura e digitar tudo de novo. Cliente, serviços, peças e valores já estão na OS. Você só manda emitir.</p>
+        <ol class="nf-passos">
+          <li><div class="n">1</div><div><b>Finaliza a OS</b><span>Do jeito que você já faz todo dia.</span></div></li>
+          <li><div class="n">2</div><div><b>Clica em Emitir</b><span>NFS-e pra mão de obra e NF-e pras peças, na própria tela da OS.</span></div></li>
+          <li><div class="n">3</div><div><b>PDF e XML prontos</b><span>Acompanha a autorização ali mesmo. Se a nota for recusada, o motivo aparece na tela.</span></div></li>
+        </ol>
+        <p class="nf-preco"><b>Adicional de R$ 39/mês</b> nos planos Profissional e Completo. A configuração é uma vez só: certificado digital A1 e os dados fiscais que o seu contador passa.</p>
+        <a class="btn btn-linha" data-zap="Oi! Quero saber como emitir nota fiscal pelo Gestão Torque." href="#">
+          <svg><use href="#i-zap"/></svg>Quero emitir nota assim
+        </a>
+      </div>
+      <div class="revela d2">
+        <div class="nf-os" role="img" aria-label="Exemplo de OS finalizada com NFS-e da mão de obra e NF-e das peças autorizadas, cada uma com PDF e XML">
+          <div class="nf-os-cab"><span>OS #1048</span><span class="nf-os-sit">Finalizada</span></div>
+          <p class="nf-os-sub">Kwid 1.0 · Fernanda L.</p>
+          <p class="nf-os-rot">Nota fiscal</p>
+          <div class="nf-nota">
+            <div><strong>NFS-e</strong><small>Mão de obra</small></div>
+            <span class="valor">R$ 60,00</span>
+            <div class="nf-arquivos"><span class="nf-autorizada"><svg><use href="#i-ok"/></svg>Autorizada</span><span class="nf-arquivo">PDF</span><span class="nf-arquivo">XML</span></div>
+          </div>
+          <div class="nf-nota">
+            <div><strong>NF-e</strong><small>Peças</small></div>
+            <span class="valor">R$ 227,00</span>
+            <div class="nf-arquivos"><span class="nf-autorizada"><svg><use href="#i-ok"/></svg>Autorizada</span><span class="nf-arquivo">PDF</span><span class="nf-arquivo">XML</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== COMO FUNCIONA ===== -->
   <section>
     <div class="wrap">
@@ -914,6 +979,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
             <li><svg><use href="#i-ok"/></svg>Lembrete de revisão, retornos e follow-up</li>
             <li><svg><use href="#i-ok"/></svg>Despesas recorrentes, fornecedores e DRE</li>
             <li><svg><use href="#i-ok"/></svg>Funcionários e equipe</li>
+            <li><svg><use href="#i-ok"/></svg>Nota fiscal opcional: + R$ 39/mês</li>
           </ul>
           <a class="btn btn-zap" data-cadastro href="/app/#/cadastro">Testar 14 dias grátis</a>
         </article>
@@ -928,6 +994,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
             <li><svg><use href="#i-ok"/></svg>Tudo do Profissional</li>
             <li><svg><use href="#i-ok"/></svg>Recursos de inteligência artificial</li>
             <li><svg><use href="#i-ok"/></svg>Suporte prioritário</li>
+            <li><svg><use href="#i-ok"/></svg>Nota fiscal opcional: + R$ 39/mês</li>
           </ul>
           <a class="btn btn-linha" data-zap="Oi! Tenho interesse no plano Completo do Gestão Torque." href="#">Falar sobre o Completo</a>
         </article>
@@ -952,6 +1019,10 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
           <p>Não. O Gestão Torque roda no navegador: computador do balcão, notebook, tablet ou celular. Seus dados ficam na nuvem, com backup.</p></details>
         <details><summary>O WhatsApp é o número da minha oficina mesmo?<span class="mais"></span></summary>
           <p>Sim. Nos planos Profissional e Completo você conecta o WhatsApp da oficina lendo um QR Code, igual ao WhatsApp Web. O cliente recebe a mensagem do número que ele já conhece.</p></details>
+        <details><summary>O sistema emite nota fiscal?<span class="mais"></span></summary>
+          <p>Emite, com o adicional Nota fiscal nos planos Profissional e Completo: R$ 39 por mês ou R$ 390 por ano. A NFS-e da mão de obra e a NF-e das peças saem direto da OS finalizada, com PDF e XML.</p></details>
+        <details><summary>O que preciso pra começar a emitir?<span class="mais"></span></summary>
+          <p>Certificado digital A1 do CNPJ da oficina e os dados fiscais que o seu contador passa, como regime tributário e alíquota de ISS. Você configura uma vez e a gente ajuda pelo WhatsApp.</p></details>
         <details><summary>O teste grátis pede cartão?<span class="mais"></span></summary>
           <p>Não. São 14 dias com tudo liberado do plano Profissional, sem cartão e sem compromisso. No fim, você escolhe se quer continuar e em qual plano.</p></details>
         <details><summary>Tenho fidelidade ou multa pra cancelar?<span class="mais"></span></summary>
@@ -1065,7 +1136,7 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     ultimo = y;
   }, { passive: true });
 
-  // Frase grande: cada palavra acende conforme a seção passa pela tela.
+  // Frase grande: palavras com * ficam em laranja.
   var fraseSec = document.getElementById('fraseRola');
   var fraseP = fraseSec.querySelector('[data-frase]');
   fraseP.setAttribute('aria-label', fraseP.dataset.frase.replace(/\*/g, ''));
@@ -1078,17 +1149,6 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:2
     fraseP.appendChild(document.createTextNode(' '));
     return el;
   });
-  function acendeFrase() {
-    var caixa = fraseSec.getBoundingClientRect();
-    var curso = caixa.height - innerHeight;
-    // Começa a acender um pouco antes de a frase parar no meio da tela.
-    var prog = Math.min(1, Math.max(0, (-caixa.top + innerHeight * .35) / (curso + innerHeight * .2)));
-    var n = Math.round(prog * palavras.length);
-    palavras.forEach(function (el, i) { el.classList.toggle('on', i < n); });
-  }
-  addEventListener('scroll', acendeFrase, { passive: true });
-  addEventListener('resize', acendeFrase);
-  acendeFrase();
 
   // Revela ao rolar
   var io = new IntersectionObserver(function (es) {
