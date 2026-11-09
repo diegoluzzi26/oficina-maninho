@@ -43,6 +43,7 @@ export const STATUS = {
   em_andamento: { texto: 'Em andamento', classe: 'bg-ouro-100 text-ouro-700 ring-ouro-300' },
   finalizada: { texto: 'Finalizada', classe: 'bg-marca-100 text-marca-800 ring-marca-200' },
   paga: { texto: 'Paga', classe: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  negada: { texto: 'Orçamento negado', classe: 'bg-rose-50 text-rose-700 ring-rose-200' },
 };
 
 /** Primeiro e último dia de um mês relativo ao atual, em AAAA-MM-DD. */

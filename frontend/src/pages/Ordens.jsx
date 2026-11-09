@@ -44,6 +44,7 @@ const FILTROS = [
   { chave: 'em_andamento', texto: 'Em andamento' },
   { chave: 'finalizada', texto: 'Finalizadas' },
   { chave: 'paga', texto: 'Pagas' },
+  { chave: 'negada', texto: 'Orçamentos negados' },
 ];
 
 // Transições que a UI oferece via botão "Mudar para". Espelha o
@@ -51,10 +52,11 @@ const FILTROS = [
 // precisam bater. OS paga PODE voltar pra finalizada agora
 // ("reabrir OS"), então a lista deixou de ser vazia.
 const PROXIMOS = {
-  aberta: ['em_andamento', 'finalizada'],
-  em_andamento: ['finalizada', 'aberta'],
+  aberta: ['em_andamento', 'finalizada', 'negada'],
+  em_andamento: ['finalizada', 'aberta', 'negada'],
   finalizada: ['paga', 'em_andamento'],
   paga: ['finalizada'],
+  negada: ['aberta', 'em_andamento'],
 };
 
 /**
@@ -707,7 +709,7 @@ function PagarOS({ os, onFechar, onPago, etapaId = null }) {
  * OS finalizada ou paga já saiu da oficina: não conta como parada.
  */
 function diasNaEtapa(o) {
-  if (o.status === 'finalizada' || o.status === 'paga') return 0;
+  if (o.status === 'finalizada' || o.status === 'paga' || o.status === 'negada') return 0;
   if (!o.etapa_entrou_em) return 0;
   const ms = Date.now() - new Date(o.etapa_entrou_em).getTime();
   return Math.max(0, Math.floor(ms / 86400000));
@@ -1124,6 +1126,31 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
     }
   }
 
+  async function abrirOrcamento() {
+    setErro(''); setAviso('');
+    // A aba precisa abrir no clique; depois do fetch o navegador bloqueia.
+    const aba = window.open('', '_blank');
+    try {
+      await api.abrirOrcamento(os.id, aba);
+    } catch (e) {
+      aba?.close();
+      setErro(e.message);
+    }
+  }
+
+  async function enviarOrcamento() {
+    if (!confirm(`Enviar o orçamento de ${brl(os.valor_total)} no WhatsApp de ${os.cliente_nome} (${telefone(os.cliente_telefone)})?`)) return;
+    setCarregando(true); setErro(''); setAviso('');
+    try {
+      await api.enviarOrcamento(os.id);
+      setAviso(`Orçamento enviado no WhatsApp de ${os.cliente_nome}.`);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
   async function adicionarServico() {
     if (!novoSvc.servico_id && !novoSvc.nome_servico) return;
     setCarregando(true); setErro('');
@@ -1249,6 +1276,20 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             title={os.status === 'paga' ? 'Imprimir recibo' : 'Imprimir OS para o cliente assinar'}>
             🖨 {os.status === 'paga' ? 'Recibo' : 'Imprimir'}
           </a>
+          {['aberta', 'em_andamento'].includes(os.status) && (
+            <>
+              <button type="button" onClick={abrirOrcamento} disabled={carregando}
+                className="rounded bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                title="Abrir o orçamento em PDF">
+                📄 Orçamento
+              </button>
+              <button type="button" onClick={enviarOrcamento} disabled={carregando}
+                className="rounded bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                title="Mandar o PDF do orçamento no WhatsApp do cliente">
+                📲 Enviar orçamento
+              </button>
+            </>
+          )}
           {os.paga_em && (
             <span className="text-xs text-emerald-700">
               · Paga em {data(os.paga_em)} ·{' '}
@@ -1309,6 +1350,200 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
             <p className="text-sm text-slate-700">{os.observacoes}</p>
           </div>
         )}
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="label">Serviços</p>
+            {editavel && addAberto !== 'servico' && (
+              <button onClick={() => setAddAberto('servico')} className="btn-ghost px-2.5 py-1 text-xs">
+                + Adicionar
+              </button>
+            )}
+          </div>
+          {os.servicos?.length ? (
+            <table className="w-full">
+              <tbody className="divide-y divide-slate-100">
+                {os.servicos.map((s) => {
+                  const emEdicao = editandoItem?.tipo === 'servico' && editandoItem.id === s.id;
+                  if (emEdicao) {
+                    return (
+                      <tr key={s.id} className="bg-maninho-50/60">
+                        <td className="py-2 pr-2">
+                          <input className="input w-full py-1 text-xs"
+                            value={editandoItem.nome_servico}
+                            onChange={(e) => setEditandoItem((v) => ({ ...v, nome_servico: e.target.value }))} />
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <input type="number" min="1" className="input w-14 py-1 text-xs"
+                              value={editandoItem.quantidade}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
+                            <span className="text-xs text-slate-500">×</span>
+                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
+                              value={editandoItem.valor_unit}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
+                          </div>
+                        </td>
+                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
+                          <button onClick={salvarEdicaoItem} disabled={carregando}
+                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
+                          <button onClick={() => setEditandoItem(null)}
+                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={s.id}>
+                      <td className="py-2 text-sm text-slate-700">{s.nome_servico}</td>
+                      <td className="py-2 text-right text-xs text-slate-500">
+                        {s.quantidade}× {brl(s.valor_unit)}
+                      </td>
+                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(s.valor_total)}</td>
+                      {editavel && (
+                        <td className="w-16 py-2 text-right">
+                          <button onClick={() => iniciarEdicaoServico(s)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
+                          <button onClick={() => removerItem('servico', s.id)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : <p className="text-sm text-slate-400">{os.servicos ? 'Nenhum serviço lançado' : 'Carregando…'}</p>}
+
+          {editavel && addAberto === 'servico' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+              <datalist id="datalist-servicos-detalhe">
+                {servicos.map((s) => (
+                  <option key={s.id} value={s.nome}>{`R$ ${Number(s.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
+              <input list="datalist-servicos-detalhe"
+                className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                placeholder="Nome do serviço (catálogo ou novo)"
+                value={novoSvc.nome_servico}
+                onChange={(e) => atualizarNomeNovoSvc(e.target.value)} />
+              <input type="number" min="1" className="input w-16 py-1.5 text-xs" value={novoSvc.quantidade}
+                onChange={(e) => setNovoSvc((v) => ({ ...v, quantidade: e.target.value }))} />
+              <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum"
+                value={novoSvc.valor_unit} placeholder="valor"
+                onChange={(e) => setNovoSvc((v) => ({ ...v, valor_unit: e.target.value }))} />
+              <button onClick={adicionarServico}
+                disabled={(!novoSvc.servico_id && !novoSvc.nome_servico) || carregando}
+                className="btn-primary px-3 py-1 text-xs">Adicionar</button>
+              <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="label">Peças</p>
+            {editavel && addAberto !== 'peca' && (
+              <button onClick={() => setAddAberto('peca')} className="btn-ghost px-2.5 py-1 text-xs">
+                + Adicionar
+              </button>
+            )}
+          </div>
+          {os.pecas?.length ? (
+            <table className="w-full">
+              <tbody className="divide-y divide-slate-100">
+                {os.pecas.map((p) => {
+                  const emEdicao = editandoItem?.tipo === 'peca' && editandoItem.id === p.id;
+                  if (emEdicao) {
+                    return (
+                      <tr key={p.id} className="bg-maninho-50/60">
+                        <td className="py-2 pr-2">
+                          <input className="input w-full py-1 text-xs"
+                            value={editandoItem.descricao}
+                            onChange={(e) => setEditandoItem((v) => ({ ...v, descricao: e.target.value }))} />
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <input type="number" min="0.01" step="0.01" className="input w-14 py-1 text-xs"
+                              value={editandoItem.quantidade}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
+                            <span className="text-xs text-slate-500">×</span>
+                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
+                              value={editandoItem.valor_unit}
+                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
+                          </div>
+                        </td>
+                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
+                          <button onClick={salvarEdicaoItem} disabled={carregando}
+                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
+                          <button onClick={() => setEditandoItem(null)}
+                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={p.id}>
+                      <td className="py-2 text-sm text-slate-700">{p.descricao}</td>
+                      <td className="py-2 text-right text-xs text-slate-500">
+                        {Number(p.quantidade)}× {brl(p.valor_unit)}
+                      </td>
+                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(p.valor_total)}</td>
+                      {editavel && (
+                        <td className="w-16 py-2 text-right">
+                          <button onClick={() => iniciarEdicaoPeca(p)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
+                          <button onClick={() => removerItem('peca', p.id)} disabled={carregando}
+                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-slate-400">{os.pecas ? 'Nenhuma peça lançada' : 'Carregando…'}</p>
+          )}
+
+          {editavel && addAberto === 'peca' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+              <datalist id="datalist-pecas-detalhe">
+                {pecasCatalogo.map((p) => (
+                  <option key={p.id} value={p.nome}>{`R$ ${Number(p.valor_padrao).toFixed(2)}`}</option>
+                ))}
+              </datalist>
+              <input list="datalist-pecas-detalhe"
+                className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                placeholder="Peça (catálogo ou nova)"
+                value={novaPeca.descricao}
+                onChange={(e) => {
+                  const nome = e.target.value;
+                  const hit = pecasCatalogo.find(
+                    (x) => x.nome.toLowerCase() === nome.trim().toLowerCase());
+                  setNovaPeca((v) => ({
+                    ...v, descricao: nome,
+                    valor_unit: (v.valor_unit === '' || v.valor_unit == null) && hit
+                      ? String(hit.valor_padrao) : v.valor_unit,
+                  }));
+                }} />
+              <input type="number" min="0.01" step="0.01" className="input w-16 py-1.5 text-xs" value={novaPeca.quantidade}
+                onChange={(e) => setNovaPeca((v) => ({ ...v, quantidade: e.target.value }))} />
+              <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum" placeholder="valor"
+                value={novaPeca.valor_unit}
+                onChange={(e) => setNovaPeca((v) => ({ ...v, valor_unit: e.target.value }))} />
+              <button onClick={adicionarPeca}
+                disabled={!novaPeca.descricao || !novaPeca.valor_unit || carregando}
+                className="btn-primary px-3 py-1 text-xs">Adicionar</button>
+              <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
+              <DicaPecaParecida nome={novaPeca.descricao} catalogo={pecasCatalogo}
+                onUsar={(hit) => setNovaPeca((v) => ({
+                  ...v, descricao: hit.nome,
+                  valor_unit: v.valor_unit === '' || v.valor_unit == null ? String(hit.valor_padrao) : v.valor_unit,
+                }))} />
+            </div>
+          )}
+        </div>
 
         {/* Adiantamentos / sinais do cliente. Entram no fluxo de caixa
             na data que foram recebidos. */}
@@ -1450,200 +1685,6 @@ function DetalheOS({ os, onFechar, onMudou, onPagar, onExcluida }) {
                   )}
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="label">Serviços</p>
-            {editavel && addAberto !== 'servico' && (
-              <button onClick={() => setAddAberto('servico')} className="btn-ghost px-2.5 py-1 text-xs">
-                + Adicionar
-              </button>
-            )}
-          </div>
-          {os.servicos?.length ? (
-            <table className="w-full">
-              <tbody className="divide-y divide-slate-100">
-                {os.servicos.map((s) => {
-                  const emEdicao = editandoItem?.tipo === 'servico' && editandoItem.id === s.id;
-                  if (emEdicao) {
-                    return (
-                      <tr key={s.id} className="bg-maninho-50/60">
-                        <td className="py-2 pr-2">
-                          <input className="input w-full py-1 text-xs"
-                            value={editandoItem.nome_servico}
-                            onChange={(e) => setEditandoItem((v) => ({ ...v, nome_servico: e.target.value }))} />
-                        </td>
-                        <td className="py-2 text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <input type="number" min="1" className="input w-14 py-1 text-xs"
-                              value={editandoItem.quantidade}
-                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
-                            <span className="text-xs text-slate-500">×</span>
-                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
-                              value={editandoItem.valor_unit}
-                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
-                          </div>
-                        </td>
-                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
-                          <button onClick={salvarEdicaoItem} disabled={carregando}
-                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
-                          <button onClick={() => setEditandoItem(null)}
-                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
-                        </td>
-                      </tr>
-                    );
-                  }
-                  return (
-                    <tr key={s.id}>
-                      <td className="py-2 text-sm text-slate-700">{s.nome_servico}</td>
-                      <td className="py-2 text-right text-xs text-slate-500">
-                        {s.quantidade}× {brl(s.valor_unit)}
-                      </td>
-                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(s.valor_total)}</td>
-                      {editavel && (
-                        <td className="w-16 py-2 text-right">
-                          <button onClick={() => iniciarEdicaoServico(s)} disabled={carregando}
-                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
-                          <button onClick={() => removerItem('servico', s.id)} disabled={carregando}
-                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : <p className="text-sm text-slate-400">Nenhum serviço lançado</p>}
-
-          {editavel && addAberto === 'servico' && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-              <datalist id="datalist-servicos-detalhe">
-                {servicos.map((s) => (
-                  <option key={s.id} value={s.nome}>{`R$ ${Number(s.valor_padrao).toFixed(2)}`}</option>
-                ))}
-              </datalist>
-              <input list="datalist-servicos-detalhe"
-                className="input flex-1 min-w-[180px] py-1.5 text-xs"
-                placeholder="Nome do serviço (catálogo ou novo)"
-                value={novoSvc.nome_servico}
-                onChange={(e) => atualizarNomeNovoSvc(e.target.value)} />
-              <input type="number" min="1" className="input w-16 py-1.5 text-xs" value={novoSvc.quantidade}
-                onChange={(e) => setNovoSvc((v) => ({ ...v, quantidade: e.target.value }))} />
-              <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum"
-                value={novoSvc.valor_unit} placeholder="valor"
-                onChange={(e) => setNovoSvc((v) => ({ ...v, valor_unit: e.target.value }))} />
-              <button onClick={adicionarServico}
-                disabled={(!novoSvc.servico_id && !novoSvc.nome_servico) || carregando}
-                className="btn-primary px-3 py-1 text-xs">Adicionar</button>
-              <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="label">Peças</p>
-            {editavel && addAberto !== 'peca' && (
-              <button onClick={() => setAddAberto('peca')} className="btn-ghost px-2.5 py-1 text-xs">
-                + Adicionar
-              </button>
-            )}
-          </div>
-          {os.pecas?.length ? (
-            <table className="w-full">
-              <tbody className="divide-y divide-slate-100">
-                {os.pecas.map((p) => {
-                  const emEdicao = editandoItem?.tipo === 'peca' && editandoItem.id === p.id;
-                  if (emEdicao) {
-                    return (
-                      <tr key={p.id} className="bg-maninho-50/60">
-                        <td className="py-2 pr-2">
-                          <input className="input w-full py-1 text-xs"
-                            value={editandoItem.descricao}
-                            onChange={(e) => setEditandoItem((v) => ({ ...v, descricao: e.target.value }))} />
-                        </td>
-                        <td className="py-2 text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <input type="number" min="0.01" step="0.01" className="input w-14 py-1 text-xs"
-                              value={editandoItem.quantidade}
-                              onChange={(e) => setEditandoItem((v) => ({ ...v, quantidade: e.target.value }))} />
-                            <span className="text-xs text-slate-500">×</span>
-                            <input type="number" step="0.01" min="0" className="input w-24 py-1 text-xs tnum"
-                              value={editandoItem.valor_unit}
-                              onChange={(e) => setEditandoItem((v) => ({ ...v, valor_unit: e.target.value }))} />
-                          </div>
-                        </td>
-                        <td className="w-auto py-2 pl-2 text-right" colSpan={2}>
-                          <button onClick={salvarEdicaoItem} disabled={carregando}
-                            className="btn-primary px-2 py-1 text-xs">Salvar</button>
-                          <button onClick={() => setEditandoItem(null)}
-                            className="btn-ghost ml-1 px-2 py-1 text-xs">Cancelar</button>
-                        </td>
-                      </tr>
-                    );
-                  }
-                  return (
-                    <tr key={p.id}>
-                      <td className="py-2 text-sm text-slate-700">{p.descricao}</td>
-                      <td className="py-2 text-right text-xs text-slate-500">
-                        {Number(p.quantidade)}× {brl(p.valor_unit)}
-                      </td>
-                      <td className="tnum w-24 py-2 text-right text-sm font-semibold">{brl(p.valor_total)}</td>
-                      {editavel && (
-                        <td className="w-16 py-2 text-right">
-                          <button onClick={() => iniciarEdicaoPeca(p)} disabled={carregando}
-                            className="px-1.5 text-slate-400 hover:text-maninho-700" title="Editar">✎</button>
-                          <button onClick={() => removerItem('peca', p.id)} disabled={carregando}
-                            className="px-1.5 text-slate-400 hover:text-rose-600" title="Remover">✕</button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
-            <p className="text-sm text-slate-400">Nenhuma peça lançada</p>
-          )}
-
-          {editavel && addAberto === 'peca' && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-              <datalist id="datalist-pecas-detalhe">
-                {pecasCatalogo.map((p) => (
-                  <option key={p.id} value={p.nome}>{`R$ ${Number(p.valor_padrao).toFixed(2)}`}</option>
-                ))}
-              </datalist>
-              <input list="datalist-pecas-detalhe"
-                className="input flex-1 min-w-[180px] py-1.5 text-xs"
-                placeholder="Peça (catálogo ou nova)"
-                value={novaPeca.descricao}
-                onChange={(e) => {
-                  const nome = e.target.value;
-                  const hit = pecasCatalogo.find(
-                    (x) => x.nome.toLowerCase() === nome.trim().toLowerCase());
-                  setNovaPeca((v) => ({
-                    ...v, descricao: nome,
-                    valor_unit: (v.valor_unit === '' || v.valor_unit == null) && hit
-                      ? String(hit.valor_padrao) : v.valor_unit,
-                  }));
-                }} />
-              <input type="number" min="0.01" step="0.01" className="input w-16 py-1.5 text-xs" value={novaPeca.quantidade}
-                onChange={(e) => setNovaPeca((v) => ({ ...v, quantidade: e.target.value }))} />
-              <input type="number" step="0.01" min="0" className="input w-28 py-1.5 text-xs tnum" placeholder="valor"
-                value={novaPeca.valor_unit}
-                onChange={(e) => setNovaPeca((v) => ({ ...v, valor_unit: e.target.value }))} />
-              <button onClick={adicionarPeca}
-                disabled={!novaPeca.descricao || !novaPeca.valor_unit || carregando}
-                className="btn-primary px-3 py-1 text-xs">Adicionar</button>
-              <button onClick={() => setAddAberto(null)} className="btn-ghost px-2 py-1 text-xs">Cancelar</button>
-              <DicaPecaParecida nome={novaPeca.descricao} catalogo={pecasCatalogo}
-                onUsar={(hit) => setNovaPeca((v) => ({
-                  ...v, descricao: hit.nome,
-                  valor_unit: v.valor_unit === '' || v.valor_unit == null ? String(hit.valor_padrao) : v.valor_unit,
-                }))} />
             </div>
           )}
         </div>
@@ -2026,6 +2067,14 @@ export default function Ordens() {
   const [pagando, setPagando] = useState(null);
   const [sp, setSp] = useSearchParams();
 
+  // Kanban e lista só trazem o resumo da OS: serviços e peças vêm do detalhe.
+  function abrirDetalhe(o) {
+    setDetalhe(o);
+    api.ordem(o.id)
+      .then((completa) => setDetalhe((atual) => (atual?.id === o.id ? completa : atual)))
+      .catch((e) => setErro(e.message));
+  }
+
   // ?os=<id> abre o detalhe direto (link vindo da aba Notas Fiscais).
   useEffect(() => {
     const id = sp.get('os');
@@ -2236,7 +2285,7 @@ export default function Ordens() {
       {vista === 'kanban' ? (
         <KanbanOS etapas={etapas} ordens={kanbanOrdens} carregando={!kanbanOrdens}
           largura={larguraKanban}
-          onCard={setDetalhe}
+          onCard={abrirDetalhe}
           onPagarEtapa={(o, etapaId) => abrirPagar(o, etapaId)}
           onFinalizarEtapa={(o, etapaId) => setFinalizando({ os: o, etapaId })}
           onRecarregar={carregarKanban}
@@ -2306,7 +2355,7 @@ export default function Ordens() {
                         <tr className="bg-maninho-50/30">
                           <td colSpan={7} className="px-4 py-3">
                             <PreviewOS os={expandida} carregando={carregandoExpansao}
-                              onAbrirModal={() => setDetalhe(o)}
+                              onAbrirModal={() => abrirDetalhe(o)}
                               onNovoRetorno={() => setNovoRetorno(expandida || o)} />
                           </td>
                         </tr>

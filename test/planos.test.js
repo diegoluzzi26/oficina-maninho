@@ -6,14 +6,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const planos = require('../src/config/planos');
 
-test('adicional fiscal libera o recurso nos planos compatíveis', () => {
-  assert.equal(planos.temRecurso('profissional', 'fiscal', ['fiscal']), true);
-  assert.equal(planos.temRecurso('completo', 'fiscal', ['fiscal']), true);
+test('Completo já inclui nota fiscal, sem adicional', () => {
+  assert.equal(planos.temRecurso('completo', 'fiscal', []), true);
+  assert.equal(planos.temRecurso('completo', 'fiscal'), true);
 });
 
-test('sem o adicional, nenhum plano libera fiscal', () => {
-  for (const p of planos.ORDEM) assert.equal(planos.temRecurso(p, 'fiscal', []), false);
-  assert.equal(planos.temRecurso('completo', 'fiscal'), false);
+test('no Profissional, nota fiscal depende do adicional', () => {
+  assert.equal(planos.temRecurso('profissional', 'fiscal', ['fiscal']), true);
+  assert.equal(planos.temRecurso('profissional', 'fiscal', []), false);
 });
 
 test('no Essencial o adicional fica inativo: não libera nem cobra', () => {
@@ -22,10 +22,17 @@ test('no Essencial o adicional fica inativo: não libera nem cobra', () => {
   assert.equal(planos.valorAssinatura('essencial', ['fiscal'], 'mensal'), 59);
 });
 
+test('oficina no Completo com adicional antigo não paga por ele', () => {
+  assert.deepEqual(planos.adicionaisAtivos('completo', ['fiscal']), []);
+  assert.equal(planos.valorAssinatura('completo', ['fiscal'], 'mensal'), 199);
+  assert.equal(planos.valorAssinatura('completo', ['fiscal'], 'anual'), 1990);
+  assert.equal(planos.temRecurso('completo', 'fiscal', ['fiscal']), true);
+});
+
 test('valor da assinatura soma plano + adicionais ativos', () => {
   assert.equal(planos.valorAssinatura('profissional', [], 'mensal'), 119);
   assert.equal(planos.valorAssinatura('profissional', ['fiscal'], 'mensal'), 158);
-  assert.equal(planos.valorAssinatura('completo', ['fiscal'], 'anual'), 2380);
+  assert.equal(planos.valorAssinatura('profissional', ['fiscal'], 'anual'), 1580);
   assert.equal(planos.valorAssinatura('profissional', null), 119);
 });
 

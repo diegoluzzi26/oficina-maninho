@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const svc = require('../services/os.service');
+const orcamento = require('../services/orcamento.service');
 const clientes = require('../services/clientes.service');
 const wa = require('../services/whatsapp.service');
 const config = require('../services/config.service');
@@ -12,7 +13,7 @@ const h = require('../utils/asyncHandler');
 const { formatBR } = require('../utils/phone');
 
 const listaQuery = v.paginacao.extend({
-  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga']).optional(),
+  status: z.enum(['aberta', 'em_andamento', 'finalizada', 'paga', 'negada']).optional(),
   cliente_id: v.uuid.optional(),
   marca: z.string().trim().optional(),
   forma_pagamento: z.enum(['dinheiro', 'pix', 'boleto', 'cartao_credito',
@@ -190,6 +191,21 @@ router.delete('/:id/adiantamentos/:adiantamentoId',
     await svc.removerAdiantamento(req.params.id, req.params.adiantamentoId);
     res.status(204).end();
   }));
+
+// Orçamento em PDF. oficina_id vem sempre do JWT.
+router.get('/:id/orcamento.pdf', validate({ params: v.idParam }),
+  h(async (req, res) => {
+    const { pdf, nome } = await orcamento.gerar(req.params.id, req.user.oficina_id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${nome}"`,
+    });
+    res.send(pdf);
+  }));
+
+router.post('/:id/orcamento/enviar', validate({ params: v.idParam }),
+  h(async (req, res) => res.json(
+    await orcamento.enviarWhatsApp(req.params.id, req.user.oficina_id))));
 
 // Exclui OS inteira (bloqueado se paga)
 router.delete('/:id', validate({ params: v.idParam }),

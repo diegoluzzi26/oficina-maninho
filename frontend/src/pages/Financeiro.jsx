@@ -92,8 +92,44 @@ function TooltipFin({ active, payload, label }) {
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+const dataBR = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/');
+
+/** Sinais recebidos antes do fechamento, abaixo do nome do cliente na OS paga. */
+function SinaisDaOS({ lista }) {
+  if (!lista?.length) return null;
+  return lista.map((a, i) => (
+    <p key={i} className="text-xs text-slate-500">
+      Adiantamento de <span className="tnum">{brl(a.valor)}</span> em {dataBR(a.recebido_em)}
+    </p>
+  ));
+}
+
+/** Linha de um adiantamento, na data em que o dinheiro entrou. */
+function LinhaAdiantamento({ a, comData }) {
+  return (
+    <tr className="transition hover:bg-maninho-50/60">
+      <td className="td tnum font-semibold text-maninho-600">{a.numero_os}</td>
+      <td className="td">
+        <p className="text-sm font-medium text-slate-800">{a.cliente_nome}</p>
+        <p className="text-xs font-semibold text-ouro-700">
+          Adiantamento recebido em {dataBR(a.recebido_em)}
+        </p>
+      </td>
+      <td className="td">
+        <p className="font-mono text-xs font-semibold text-slate-700">{a.placa}</p>
+        <p className="text-xs text-slate-500">{a.marca} {a.modelo}</p>
+      </td>
+      {comData && (
+        <td className="td text-xs text-slate-500">{dataBR(a.recebido_em).slice(0, 5)}</td>
+      )}
+      <td className="td text-xs text-slate-600">{rotuloForma(a.forma)}</td>
+      <td className="td tnum text-right font-semibold text-slate-800">{brl(a.valor)}</td>
+    </tr>
+  );
+}
+
 /**
- * OSs pagas — toggle Dia/Mês. Dia mostra tabela simples;
+ * OSs pagas e adiantamentos — toggle Dia/Mês. Dia mostra tabela simples;
  * Mês agrupa por dia com totais parciais.
  */
 function OSsRecebidas() {
@@ -133,11 +169,11 @@ function OSsRecebidas() {
     <div className="card anima p-5" style={{ animationDelay: '460ms' }}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="titulo-secao">OSs pagas</h2>
+          <h2 className="titulo-secao">OSs pagas e adiantamentos</h2>
           <p className="mt-0.5 text-xs text-slate-500">
             {modo === 'dia'
-              ? 'Todas as ordens que fecharam pagamento no dia escolhido'
-              : 'Todas as ordens do mês, agrupadas por dia'}
+              ? 'Ordens que fecharam pagamento e adiantamentos recebidos no dia escolhido'
+              : 'Ordens e adiantamentos do mês, agrupados pelo dia em que o dinheiro entrou'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -188,10 +224,11 @@ function OSsRecebidas() {
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
-      {!dados ? (
+      {/* Ao trocar pra Mês, a tela renderiza uma vez com os dados do dia. */}
+      {!dados || (modo === 'mes' && !dados.dias) ? (
         <Skeleton className="h-24" />
-      ) : dados.dados.length === 0 ? (
-        <Vazio titulo={modo === 'dia' ? 'Nenhuma OS paga nesse dia' : 'Nenhuma OS paga neste mês'}
+      ) : dados.dados.length === 0 && dados.adiantamentos.length === 0 ? (
+        <Vazio titulo={modo === 'dia' ? 'Nenhum recebimento nesse dia' : 'Nenhum recebimento neste mês'}
           descricao={modo === 'dia'
             ? 'Escolha outra data ou espere fechar o primeiro pagamento.'
             : 'Ainda não teve pagamento fechado neste mês.'} />
@@ -210,13 +247,14 @@ function OSsRecebidas() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {modo === 'dia' ? dados.dados.map((o) => {
+                {modo === 'dia' ? [...dados.dados.map((o) => {
                   const pago = o.valor_pago ?? o.valor_total;
                   return (
                     <tr key={o.id} className="transition hover:bg-maninho-50/60">
                       <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
                       <td className="td">
                         <p className="text-sm font-medium text-slate-800">{o.cliente_nome}</p>
+                        <SinaisDaOS lista={o.adiantamentos} />
                       </td>
                       <td className="td">
                         <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
@@ -226,10 +264,12 @@ function OSsRecebidas() {
                       <td className="td tnum text-right font-semibold text-slate-800">{brl(pago)}</td>
                     </tr>
                   );
-                }) : dados.dias.flatMap((diaGrupo) => [
+                }), ...dados.adiantamentos.map((a) => <LinhaAdiantamento key={a.id} a={a} />)]
+                : dados.dias.flatMap((diaGrupo) => [
                   <tr key={`h-${diaGrupo.dia}`} className="bg-slate-50/70">
-                    <td colSpan={5} className="td text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      {diaGrupo.dia.split('-').reverse().join('/')} · {diaGrupo.oss.length} OS ·
+                    <td colSpan={6} className="td text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {diaGrupo.dia.split('-').reverse().join('/')} · {diaGrupo.oss.length} OS
+                      {diaGrupo.adiantamentos.length > 0 && ` · ${diaGrupo.adiantamentos.length} adiant.`} ·
                       <span className="tnum ml-2 text-emerald-700">{brl(diaGrupo.total)}</span>
                     </td>
                   </tr>,
@@ -240,6 +280,7 @@ function OSsRecebidas() {
                         <td className="td tnum font-semibold text-maninho-600">{o.numero_os}</td>
                         <td className="td">
                           <p className="text-sm font-medium text-slate-800">{o.cliente_nome}</p>
+                          <SinaisDaOS lista={o.adiantamentos} />
                         </td>
                         <td className="td">
                           <p className="font-mono text-xs font-semibold text-slate-700">{o.placa}</p>
@@ -253,6 +294,7 @@ function OSsRecebidas() {
                       </tr>
                     );
                   }),
+                  ...diaGrupo.adiantamentos.map((a) => <LinhaAdiantamento key={a.id} a={a} comData />),
                 ])}
               </tbody>
             </table>
@@ -270,6 +312,7 @@ function OSsRecebidas() {
               }
               return acc;
             }, {});
+            for (const a of dados.adiantamentos) porForma[a.forma] = (porForma[a.forma] || 0) + a.valor;
             const entradas = Object.entries(porForma).sort((a, b) => b[1] - a[1]);
             if (entradas.length === 0) return null;
             return (
@@ -288,6 +331,8 @@ function OSsRecebidas() {
           <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
             <span className="text-xs text-slate-500">
               {dados.totais.qtd} OS{dados.totais.qtd === 1 ? '' : 's'} paga{dados.totais.qtd === 1 ? '' : 's'}
+              {dados.totais.qtd_adiantamentos > 0
+                && ` · ${dados.totais.qtd_adiantamentos} adiantamento${dados.totais.qtd_adiantamentos === 1 ? '' : 's'}`}
             </span>
             <span className="tnum text-sm">
               <span className="text-slate-500">Total recebido {modo === 'dia' ? 'no dia' : 'no mês'} </span>
@@ -367,7 +412,7 @@ export default function Financeiro() {
   const conteudo = {
     kpi_receita: (
       <Kpi titulo="Receita no período" valor={brl(fluxo.totais.receita)} preset={preset}
-        sub="Ordens de serviço pagas" cor="text-emerald-700" />
+        sub="OSs pagas e adiantamentos" cor="text-emerald-700" />
     ),
     kpi_despesas: (
       <Kpi titulo="Despesas no período" valor={brl(fluxo.totais.despesa)} preset={preset}

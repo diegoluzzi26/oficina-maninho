@@ -28,6 +28,7 @@ const ETAPAS_DEFAULT = [
   ['Em andamento', '#D4A843', 2, 'em_andamento'],
   ['Finalizada', '#283090', 3, 'finalizada'],
   ['Paga', '#10b981', 4, 'paga'],
+  ['Orçamento negado', '#f43f5e', 5, 'negada'],
 ];
 
 // Mesmas categorias default da migration 002 (nomes genéricos).

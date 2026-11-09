@@ -15,6 +15,7 @@ const ITENS = [
   { texto: 'Despesas recorrentes e DRE', recurso: 'gestao' },
   { texto: 'Funcionários', recurso: 'funcionarios' },
   { texto: 'Recursos de IA e suporte prioritário', recurso: 'ia' },
+  { texto: 'Nota fiscal (NFS-e e NF-e)', recurso: 'fiscal' },
 ];
 
 const real = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 });
@@ -30,6 +31,10 @@ export default function Plano() {
       .then(([p, a]) => { setPlanos(p); setAtual(a); })
       .catch((e) => setErro(e.message));
   }, []);
+
+  // O que já vem no plano atual não aparece como adicional a contratar.
+  const recursosDoPlano = planos?.find((p) => p.chave === atual?.plano)?.recursos || [];
+  const adicionais = (atual?.adicionais || []).filter((a) => !recursosDoPlano.includes(a.chave));
 
   return (
     <div className="space-y-5">
@@ -90,13 +95,13 @@ export default function Plano() {
         </div>
       )}
 
-      {atual?.adicionais?.length > 0 && (
+      {adicionais.length > 0 && (
         <div className="space-y-3">
           <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-maninho-800">
             Adicionais
           </h2>
           <div className="grid gap-4 md:grid-cols-3">
-            {atual.adicionais.map((a) => (
+            {adicionais.map((a) => (
               <CardAdicional key={a.chave} adicional={a} planos={planos} />
             ))}
           </div>
@@ -112,10 +117,11 @@ function CardAdicional({ adicional: a, planos }) {
     .map((k) => planos?.find((p) => p.chave === k)?.nome || k)
     .join(' e ');
 
+  const rotuloPlanos = `${a.planos.length > 1 ? 'nos planos' : 'no plano'} ${nomesPlanos}`;
   let situacao;
   if (a.ativo) situacao = 'Contratado';
-  else if (a.contratado) situacao = `Inativo: disponível só nos planos ${nomesPlanos}`;
-  else situacao = `Disponível nos planos ${nomesPlanos}. Para contratar, fale com o suporte.`;
+  else if (a.contratado) situacao = `Inativo: disponível só ${rotuloPlanos}`;
+  else situacao = `Disponível ${rotuloPlanos}. Para contratar, fale com o suporte.`;
 
   return (
     <div className={`card flex flex-col p-5 ${a.ativo ? 'ring-2 ring-maninho-600' : ''}`}>

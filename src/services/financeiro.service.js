@@ -142,15 +142,17 @@ async function evolucaoMensal(filtros) {
 }
 
 /**
- * Fluxo de caixa: receita de OS pagas vs despesas pagas, agrupadas por mês.
- * O escopo do filtro afeta as DESPESAS (oficina/pessoal/ambos). Receita
- * (OSs pagas) só existe pra oficina, então quando escopo='pessoal' a
- * receita fica zerada — o que faz sentido.
+ * Fluxo de caixa: receita (fechamento das OS pagas + adiantamentos, cada um
+ * na data em que entrou) vs despesas pagas, agrupadas por mês. valor_pago da
+ * OS guarda só o restante do fechamento, então somar os dois não duplica.
+ * O escopo do filtro afeta as DESPESAS (oficina/pessoal/ambos). Receita só
+ * existe pra oficina, então quando escopo='pessoal' ela fica zerada.
  */
 async function fluxoCaixa(filtros) {
   const params = [];
   let clauseDesp = '';
   let clauseFat = '';
+  let clauseAdiant = '';
   // Granularidade do agrupamento das barras (a janela do período não muda).
   const TRUNC = { dia: 'day', semana: 'week', mes: 'month' };
   const gran = TRUNC[filtros.granularidade] || 'month';
@@ -158,6 +160,7 @@ async function fluxoCaixa(filtros) {
     params.push(filtros.inicio);
     clauseDesp += ` AND pago_em >= date_trunc('month',$${params.length}::date)`;
     clauseFat  += ` AND paga_em >= date_trunc('month',$${params.length}::date)`;
+    clauseAdiant += ` AND recebido_em >= date_trunc('month',$${params.length}::date)`;
   }
   if (filtros.fim) {
     params.push(filtros.fim);
@@ -166,10 +169,12 @@ async function fluxoCaixa(filtros) {
     // dia 1º — no "Mês atual" isso zerava quase o mês inteiro.
     clauseDesp += ` AND pago_em < (date_trunc('month',$${params.length}::date) + interval '1 month')`;
     clauseFat  += ` AND paga_em < (date_trunc('month',$${params.length}::date) + interval '1 month')`;
+    clauseAdiant += ` AND recebido_em < (date_trunc('month',$${params.length}::date) + interval '1 month')`;
   }
   if (!filtros.inicio && !filtros.fim) {
     clauseDesp = " AND pago_em >= date_trunc('month', now() - interval '12 months')";
     clauseFat  = " AND paga_em >= date_trunc('month', now() - interval '12 months')";
+    clauseAdiant = " AND recebido_em >= date_trunc('month', now() - interval '12 months')";
   }
 
   // Escopo aplicado nas despesas
@@ -179,17 +184,30 @@ async function fluxoCaixa(filtros) {
     params.push(esc);
     escopoClauseDesp = ` AND escopo = $${params.length}`;
   }
-  // Receita vem só de OS pagas — não faz sentido pra escopo='pessoal'
+  // Receita vem só das OS — não faz sentido pra escopo='pessoal'
   const incluiReceita = (esc === 'oficina' || esc === 'ambos');
 
   const { rows } = await db.query(
-    `WITH receita AS (
+    `WITH fechamento AS (
        SELECT date_trunc('${gran}', paga_em)::date AS mes,
               ${incluiReceita ? 'sum(valor_total)::numeric' : '0::numeric'} AS receita,
               ${incluiReceita ? 'count(*)::int' : '0'} AS qtd_os
          FROM vw_faturamento
         WHERE ${incluiReceita ? '1=1' : '1=0'} ${clauseFat}
         GROUP BY 1
+     ),
+     adiantamento AS (
+       SELECT date_trunc('${gran}', recebido_em)::date AS mes,
+              sum(valor)::numeric AS receita
+         FROM os_adiantamentos
+        WHERE ${incluiReceita ? '1=1' : '1=0'} ${clauseAdiant}
+        GROUP BY 1
+     ),
+     receita AS (
+       SELECT COALESCE(f.mes, a.mes) AS mes,
+              COALESCE(f.receita, 0) + COALESCE(a.receita, 0) AS receita,
+              COALESCE(f.qtd_os, 0) AS qtd_os
+         FROM fechamento f FULL OUTER JOIN adiantamento a ON a.mes = f.mes
      ),
      despesa AS (
        SELECT date_trunc('${gran}', pago_em)::date AS mes,
@@ -261,10 +279,47 @@ async function painelFinanceiro(filtros) {
   };
 }
 
+// Sinais dados antes do fechamento, pra exibir junto da OS paga. A data vai
+// como texto pra não sofrer deslocamento de fuso.
+const ADIANTAMENTOS_DA_OS = `
+  (SELECT json_agg(json_build_object(
+            'valor', a.valor, 'forma', a.forma,
+            'recebido_em', to_char(a.recebido_em, 'YYYY-MM-DD'))
+            ORDER BY a.recebido_em, a.criado_em)
+     FROM os_adiantamentos a WHERE a.os_id = o.id) AS adiantamentos`;
+
+/**
+ * Adiantamentos que entraram no caixa no intervalo [inicio, fim). Sem `fim`,
+ * considera só o dia `inicio`. Conta pela data do recebimento, seja qual for
+ * a situação atual da OS.
+ */
+async function adiantamentosEntre(inicio, fim = null) {
+  const { rows } = await db.query(
+    `SELECT a.id, a.valor, a.forma, a.observacoes,
+            to_char(a.recebido_em, 'YYYY-MM-DD') AS recebido_em,
+            o.id AS os_id, o.numero_os,
+            c.nome AS cliente_nome,
+            ca.placa, ca.marca, ca.modelo
+       FROM os_adiantamentos a
+       JOIN ordens_servico o ON o.id = a.os_id
+       JOIN clientes c ON c.id = o.cliente_id
+       JOIN carros  ca ON ca.id = o.carro_id
+      WHERE a.recebido_em >= $1::date
+        AND a.recebido_em < COALESCE($2::date, $1::date + 1)
+      ORDER BY a.recebido_em ASC, a.criado_em ASC`,
+    [inicio, fim],
+  );
+  return rows.map((r) => ({ ...r, valor: Number(r.valor) }));
+}
+
+const numerarAdiantamentos = (lista) =>
+  (lista || []).map((a) => ({ ...a, valor: Number(a.valor) }));
+
 /**
  * OSs PAGAS em um dia específico — pra o dono conferir o que fechou
- * financeiramente naquele dia (data = paga_em).
- * Retorna dados suficientes pra renderizar tabela + total no rodapé.
+ * financeiramente naquele dia (data = paga_em), mais os adiantamentos
+ * recebidos nesse dia. Retorna dados suficientes pra renderizar tabela +
+ * total no rodapé.
  */
 async function osDoDia({ data }) {
   const dia = data || new Date().toISOString().slice(0, 10);
@@ -274,7 +329,8 @@ async function osDoDia({ data }) {
             c.nome AS cliente_nome,
             ca.placa, ca.marca, ca.modelo,
             (SELECT json_agg(json_build_object('forma', p.forma, 'valor', p.valor))
-               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos
+               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos,
+            ${ADIANTAMENTOS_DA_OS}
        FROM ordens_servico o
        JOIN clientes c ON c.id = o.cliente_id
        JOIN carros  ca ON ca.id = o.carro_id
@@ -288,13 +344,18 @@ async function osDoDia({ data }) {
     valor_total: Number(r.valor_total),
     valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
     pagamentos: (r.pagamentos || []).map((p) => ({ ...p, valor: Number(p.valor) })),
+    adiantamentos: numerarAdiantamentos(r.adiantamentos),
   }));
-  const total = dados.reduce((s, d) => s + (d.valor_pago ?? d.valor_total), 0);
+  const adiantamentos = await adiantamentosEntre(dia);
+  const totalAdiant = adiantamentos.reduce((s, a) => s + a.valor, 0);
+  const total = dados.reduce((s, d) => s + (d.valor_pago ?? d.valor_total), 0) + totalAdiant;
   return {
     dia,
     dados,
+    adiantamentos,
     totais: {
       qtd: dados.length,
+      qtd_adiantamentos: adiantamentos.length,
       recebido: Number(total.toFixed(2)),
     },
   };
@@ -314,11 +375,12 @@ async function osDoMes({ ano, mes }) {
   const { rows } = await db.query(
     `SELECT o.id, o.numero_os, o.valor_total, o.valor_pago,
             o.forma_pagamento, o.paga_em, o.aberta_em,
-            o.paga_em::date AS dia,
+            to_char(o.paga_em, 'YYYY-MM-DD') AS dia,
             c.nome AS cliente_nome,
             ca.placa, ca.marca, ca.modelo,
             (SELECT json_agg(json_build_object('forma', p.forma, 'valor', p.valor))
-               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos
+               FROM os_pagamentos p WHERE p.os_id = o.id) AS pagamentos,
+            ${ADIANTAMENTOS_DA_OS}
        FROM ordens_servico o
        JOIN clientes c ON c.id = o.cliente_id
        JOIN carros  ca ON ca.id = o.carro_id
@@ -333,23 +395,38 @@ async function osDoMes({ ano, mes }) {
     valor_total: Number(r.valor_total),
     valor_pago: r.valor_pago == null ? null : Number(r.valor_pago),
     pagamentos: (r.pagamentos || []).map((p) => ({ ...p, valor: Number(p.valor) })),
+    adiantamentos: numerarAdiantamentos(r.adiantamentos),
   }));
+  const adiantamentos = await adiantamentosEntre(inicio, proxMes);
 
   // Agrupa por dia pra facilitar renderização
   const porDia = {};
+  const grupo = (chave) => {
+    if (!porDia[chave]) porDia[chave] = { dia: chave, oss: [], adiantamentos: [], total: 0 };
+    return porDia[chave];
+  };
   for (const os of dados) {
-    const chave = String(os.dia).slice(0, 10);
-    if (!porDia[chave]) porDia[chave] = { dia: chave, oss: [], total: 0 };
-    porDia[chave].oss.push(os);
-    porDia[chave].total += os.valor_pago ?? os.valor_total;
+    const g = grupo(String(os.dia).slice(0, 10));
+    g.oss.push(os);
+    g.total += os.valor_pago ?? os.valor_total;
+  }
+  for (const a of adiantamentos) {
+    const g = grupo(a.recebido_em);
+    g.adiantamentos.push(a);
+    g.total += a.valor;
   }
   const dias = Object.values(porDia).sort((a, b) => a.dia.localeCompare(b.dia));
 
-  const total = dados.reduce((s, o) => s + (o.valor_pago ?? o.valor_total), 0);
+  const total = dados.reduce((s, o) => s + (o.valor_pago ?? o.valor_total), 0)
+    + adiantamentos.reduce((s, a) => s + a.valor, 0);
   return {
     ano: y, mes: m,
-    dados, dias,
-    totais: { qtd: dados.length, recebido: Number(total.toFixed(2)) },
+    dados, dias, adiantamentos,
+    totais: {
+      qtd: dados.length,
+      qtd_adiantamentos: adiantamentos.length,
+      recebido: Number(total.toFixed(2)),
+    },
   };
 }
 
