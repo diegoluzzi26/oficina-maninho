@@ -150,6 +150,51 @@ async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
 }
 
 /**
+ * Envia um PDF com legenda. O log guarda só a legenda e o id da mensagem,
+ * nunca o arquivo em base64.
+ */
+async function enviarDocumento({ telefone, arquivo, nomeArquivo, legenda, cliente_id, os_id }) {
+  if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) {
+    throw new AppError('WhatsApp disponível a partir do plano Profissional', 403);
+  }
+  const e = ensureEnabled();
+
+  const { ok, status, json } = await evolutionRequest(
+    `/message/sendMedia/${e.instance}`,
+    {
+      method: 'POST',
+      body: {
+        number: digitos(telefone),
+        mediatype: 'document',
+        mimetype: 'application/pdf',
+        caption: legenda,
+        media: arquivo.toString('base64'),
+        fileName: nomeArquivo,
+      },
+    },
+  );
+
+  if (!ok) {
+    const motivo = json?.response?.message || json?.message || `HTTP ${status}`;
+    await logMensagem({
+      direction: 'outbound', kind: 'other', status: 'failed',
+      telefone, cliente_id, os_id, body: legenda,
+      payload: { arquivo: nomeArquivo }, erro: { motivo, status },
+    });
+    throw new AppError(`Falha ao enviar WhatsApp: ${motivo}`, status === 500 ? 502 : status);
+  }
+
+  const waId = json?.key?.id || json?.messageId || json?.id || null;
+  const rec = await logMensagem({
+    wa_message_id: waId,
+    direction: 'outbound', kind: 'other', status: 'sent',
+    telefone, cliente_id, os_id, body: legenda,
+    payload: { arquivo: nomeArquivo, key: json?.key || null }, enviado_em: new Date(),
+  });
+  return { id: waId, wa_message_id: waId, registro: rec };
+}
+
+/**
  * Retrocompat: alguns call sites antigos chamavam `enviarTemplate` ou
  * passavam `template` como fallback. Evolution não tem essa diferença;
  * usamos sempre `enviarTexto` com o texto que já vinha montado.
@@ -336,6 +381,7 @@ async function desconectar() {
 module.exports = {
   janelaAberta,
   enviarTexto,
+  enviarDocumento,
   enviarTemplate,
   notificar,
   processarWebhook,

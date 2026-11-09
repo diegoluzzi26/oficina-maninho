@@ -137,6 +137,29 @@ export const api = {
       body: { status, notificar_whatsapp: notificar, ...(pagamento || {}) } }),
   atualizarOS: (id, body) => request(`/os/${id}`, { method: 'PUT', body }),
   excluirOS: (id) => request(`/os/${id}`, { method: 'DELETE' }),
+  enviarOrcamento: (id) => request(`/os/${id}/orcamento/enviar`, { method: 'POST' }),
+  /** PDF exige JWT, então abre via blob na aba já reservada pelo clique. */
+  async abrirOrcamento(id, aba) {
+    const token = getToken();
+    const res = await fetch(`${BASE}/os/${id}/orcamento.pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new ApiError(err.erro || `Erro ${res.status}`, res.status);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    if (aba) {
+      aba.location.href = url;
+    } else {
+      // Bloqueador de pop-up: baixa o PDF em vez de falhar.
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'orcamento.pdf';
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  },
   addServicoOS: (id, body) => request(`/os/${id}/servicos`, { method: 'POST', body }),
   addPecaOS: (id, body) => request(`/os/${id}/pecas`, { method: 'POST', body }),
   atualizarServicoOS: (id, itemId, body) =>
