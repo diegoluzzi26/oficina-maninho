@@ -21,17 +21,26 @@ import { brl, data, dataHora, telefone, rotuloForma } from '../lib/format';
 export default function ImprimirOS() {
   const { id } = useParams();
   const [os, setOS] = useState(null);
+  const [adiantamentos, setAdiantamentos] = useState([]);
   const [erro, setErro] = useState('');
   const oficina = useIdentidadeOficina();
 
   useEffect(() => {
-    api.ordem(id).then(setOS).catch((e) => setErro(e.message));
+    // Carregam juntos: sem os sinais, o recibo acusaria saldo que não existe.
+    Promise.all([api.ordem(id), api.adiantamentosOS(id)])
+      .then(([ordem, sinais]) => { setAdiantamentos(sinais); setOS(ordem); })
+      .catch((e) => setErro(e.message));
   }, [id]);
 
   if (erro) return <div className="p-10 text-rose-700">Erro: {erro}</div>;
   if (!os)  return <div className="p-10 text-slate-500">Carregando…</div>;
 
   const ehPaga = os.status === 'paga';
+  // valor_pago guarda só o fechamento; o recibo mostra tudo que o cliente pagou.
+  const valorFechamento = Number(os.valor_pago ?? os.valor_total);
+  const totalAdiantado = adiantamentos.reduce((s, a) => s + a.valor, 0);
+  const totalRecebido = Number((valorFechamento + totalAdiantado).toFixed(2));
+  const saldoAberto = Number((Number(os.valor_total) - totalRecebido).toFixed(2));
   const itens = [
     ...os.servicos.map((s) => ({ tipo: 'Serviço', descricao: s.nome_servico,
       qtd: s.quantidade, unit: s.valor_unit, total: s.valor_total })),
@@ -153,16 +162,28 @@ export default function ImprimirOS() {
             </div>
             <div>
               <p className="text-[10px] uppercase text-slate-500">Forma</p>
-              <p className="font-semibold">{rotuloForma(os.forma_pagamento)}</p>
+              <p className="font-semibold">
+                {valorFechamento > 0 ? rotuloForma(os.forma_pagamento) : 'Adiantamento'}
+              </p>
             </div>
             <div>
               <p className="text-[10px] uppercase text-slate-500">Valor pago</p>
-              <p className="font-semibold">{brl(os.valor_pago || os.valor_total)}</p>
+              <p className="font-semibold">{brl(totalRecebido)}</p>
             </div>
           </div>
-          {Number(os.valor_pago) < Number(os.valor_total) && (
+          {adiantamentos.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-center text-xs text-slate-600">
+              {adiantamentos.map((a) => (
+                <li key={a.id}>
+                  Inclui adiantamento de {brl(a.valor)} em{' '}
+                  {String(a.recebido_em).slice(0, 10).split('-').reverse().join('/')} ({rotuloForma(a.forma)})
+                </li>
+              ))}
+            </ul>
+          )}
+          {saldoAberto > 0 && (
             <p className="mt-2 text-center text-xs text-rose-700">
-              Pagamento parcial. Saldo em aberto: {brl(os.valor_total - os.valor_pago)}
+              Pagamento parcial. Saldo em aberto: {brl(saldoAberto)}
             </p>
           )}
         </div>
