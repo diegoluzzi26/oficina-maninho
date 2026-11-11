@@ -398,163 +398,350 @@ async function conferirEnvios({ todosPendentes = false } = {}, userId) {
   return r;
 }
 
-// ---------------------------------------------------------------- GERAR
+// ---------------------------------------------------------------- AUTOMAÇÕES
 
 /**
- * Renderiza {nome_cliente}, {modelo_carro}, {placa}, {servico}, {dias_desde}
- * a partir do row bruto vindo do SELECT. Vars ausentes viram string vazia.
+ * Quatro automações fixas (uma regra com `chave` cada):
+ *   revisao     — retornos da agenda (serviços/peças com intervalo no
+ *                 catálogo) entram na fila `antecedencia_dias` antes de vencer
+ *   pos_servico — `intervalo_dias` depois de uma OS paga/finalizada
+ *   reativacao  — cliente sem OS há `intervalo_dias`
+ *   campanha    — só sob demanda (montarCampanha): clientes atendidos nos
+ *                 últimos `intervalo_dias`
+ * Regras sem chave (de antes da unificação) não geram mais nada.
  */
-function renderizar(template, ctx) {
-  return template
-    .replace(/\{nome_cliente\}/g, ctx.nome_cliente || '')
-    .replace(/\{modelo_carro\}/g, ctx.modelo_carro || '')
-    .replace(/\{placa\}/g, ctx.placa || '')
-    .replace(/\{servico\}/g, ctx.servico || '')
-    .replace(/\{dias_desde\}/g, ctx.dias_desde ?? '');
+const AUTOMACOES = ['revisao', 'pos_servico', 'reativacao', 'campanha'];
+
+const VARIAVEIS = ['nome_cliente', 'modelo_carro', 'placa', 'servico', 'dias_desde', 'oficina'];
+
+async function nomeOficina() {
+  const slug = db.slugAtual();
+  if (!slug) return '';
+  const { rows } = await db.pool.query('SELECT nome FROM oficinas WHERE slug = $1', [slug]);
+  return rows[0]?.nome || '';
 }
 
-async function gerarFila({ regra_id } = {}, userId) {
-  const regras = regra_id
-    ? (await db.query('SELECT * FROM followup_regras WHERE id=$1 AND ativo', [regra_id])).rows
-    : (await db.query('SELECT * FROM followup_regras WHERE ativo').then((r) => r.rows));
+/** Troca {variavel} pelo valor; variável ausente vira texto vazio. */
+function renderizar(template, ctx) {
+  return String(template || '').replace(/\{(\w+)\}/g, (m, k) => (
+    VARIAVEIS.includes(k) ? String(ctx[k] ?? '') : m
+  ));
+}
 
+/** Texto e prazos padrão de cada cartão (mesmos da migration 052). */
+const PADRAO_AUTOMACOES = [
+  ['revisao', 'Revisão', 'manutencao', 180, true,
+    'Olá {nome_cliente}! Aqui é da {oficina}.\n\nEstá chegando a hora de {servico} do seu {modelo_carro} ({placa}). Quer agendar? É só responder aqui.'],
+  ['pos_servico', 'Pós-serviço', 'avaliacao', 3, false,
+    'Olá {nome_cliente}! Aqui é da {oficina}. Obrigado pela confiança!\n\nFicou tudo certo com o {modelo_carro}? Se puder, conta pra gente como foi o atendimento.'],
+  ['reativacao', 'Reativação', 'reativacao', 270, false,
+    'Olá {nome_cliente}! Aqui é da {oficina}. Faz um tempo que não te vemos por aqui.\n\nSe o carro precisar de alguma coisa, é só chamar.'],
+  ['campanha', 'Campanha', 'promocao', 545, false,
+    'Olá {nome_cliente}! Aqui é da {oficina}.\n\n'],
+];
+
+/**
+ * Garante os quatro cartões na oficina atual. Oficinas novas nascem do
+ * clone da estrutura, sem dados — sem isto o follow-up delas não gerava nada.
+ */
+async function garantirAutomacoes() {
+  for (const [chave, nome, tipo, dias, ativo, msg] of PADRAO_AUTOMACOES) {
+    await db.query(
+      `INSERT INTO followup_regras (nome, tipo, chave, intervalo_dias, mensagem_template, ativo)
+       SELECT $1, $2::followup_tipo, $3, $4, $5, $6
+        WHERE NOT EXISTS (SELECT 1 FROM followup_regras WHERE chave = $3)
+       ON CONFLICT DO NOTHING`,
+      [nome, tipo, chave, dias, msg, ativo],
+    );
+  }
+}
+
+async function listarAutomacoes() {
+  await garantirAutomacoes();
+  const { rows } = await db.query(
+    `SELECT r.id, r.chave, r.nome, r.tipo, r.ativo, r.intervalo_dias, r.antecedencia_dias,
+            r.mensagem_template, r.atualizado_em,
+            (SELECT count(*)::int FROM followup_fila f
+              WHERE f.regra_id = r.id AND f.criado_em >= now() - interval '30 days') AS gerados_30d
+       FROM followup_regras r
+      WHERE r.chave = ANY($1)`, [AUTOMACOES],
+  );
+  const porChave = Object.fromEntries(rows.map((r) => [r.chave, r]));
+  const catalogo = await db.query(
+    `SELECT (SELECT count(*)::int FROM servicos WHERE intervalo_retorno_meses IS NOT NULL) AS servicos,
+            (SELECT count(*)::int FROM pecas    WHERE intervalo_retorno_meses IS NOT NULL) AS pecas`,
+  );
+  return {
+    automacoes: AUTOMACOES.map((k) => porChave[k]).filter(Boolean),
+    catalogo_com_intervalo: catalogo.rows[0],
+    oficina: await nomeOficina(),
+    variaveis: VARIAVEIS,
+  };
+}
+
+async function atualizarAutomacao(chave, d) {
+  if (!AUTOMACOES.includes(chave)) throw AppError.notFound('Automação não encontrada');
+  await garantirAutomacoes();
+  const campos = []; const params = [];
+  for (const k of ['ativo', 'intervalo_dias', 'antecedencia_dias', 'mensagem_template']) {
+    if (d[k] === undefined) continue;
+    params.push(d[k]);
+    campos.push(`${k} = $${params.length}`);
+  }
+  if (!campos.length) throw new AppError('Nada para atualizar', 422);
+  params.push(chave);
+  const { rows } = await db.query(
+    `UPDATE followup_regras SET ${campos.join(', ')}
+      WHERE chave = $${params.length} RETURNING id`, params,
+  );
+  if (!rows[0]) throw AppError.notFound('Automação não encontrada');
+  return (await listarAutomacoes()).automacoes.find((a) => a.chave === chave);
+}
+
+// ---------------------------------------------------------------- GERAR
+
+/** Candidatos de cada automação, já no formato de inserção. */
+const CANDIDATOS = {
+  // Retornos pendentes vencendo em até `antecedencia_dias` (e não muito
+  // atrasados: o que venceu há mais de 60 dias fica de fora). Pula retorno
+  // que já tem um mais novo do mesmo serviço/peça no mesmo carro — o
+  // cliente já voltou e fez de novo.
+  revisao: (regra) => db.query(
+    `SELECT r.id AS retorno_id, r.cliente_id, c.nome AS nome_cliente,
+            r.carro_id, ca.marca, ca.modelo, ca.placa, r.os_id AS os_origem_id,
+            COALESCE(s.nome, r.nome_servico, r.motivo, 'a revisão') AS servico,
+            (CURRENT_DATE - COALESCE(o.paga_em, o.fechada_em, r.criado_em)::date)::int AS dias_desde
+       FROM retornos r
+       JOIN clientes c       ON c.id = r.cliente_id
+       LEFT JOIN carros ca   ON ca.id = r.carro_id
+       LEFT JOIN servicos s  ON s.id = r.servico_id
+       LEFT JOIN ordens_servico o ON o.id = r.os_id
+      WHERE r.status = 'pendente'
+        AND r.agendado_para <= CURRENT_DATE + ($1::int || ' days')::interval
+        AND r.agendado_para >= CURRENT_DATE - interval '60 days'
+        AND c.telefone IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM followup_fila f WHERE f.retorno_id = r.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM retornos r2
+           WHERE r2.cliente_id = r.cliente_id
+             AND r2.carro_id IS NOT DISTINCT FROM r.carro_id
+             AND COALESCE(r2.servico_id::text, r2.nome_servico) = COALESCE(r.servico_id::text, r.nome_servico)
+             AND r2.criado_em > r.criado_em
+        )
+      ORDER BY r.agendado_para
+      LIMIT 300`, [regra.antecedencia_dias],
+  ),
+
+  pos_servico: (regra) => db.query(
+    `SELECT DISTINCT ON (os.cliente_id)
+            c.id AS cliente_id, c.nome AS nome_cliente,
+            ca.id AS carro_id, ca.marca, ca.modelo, ca.placa,
+            os.id AS os_origem_id, ''::text AS servico,
+            (CURRENT_DATE - COALESCE(os.paga_em, os.fechada_em)::date)::int AS dias_desde
+       FROM ordens_servico os
+       JOIN clientes c ON c.id = os.cliente_id
+       JOIN carros ca  ON ca.id = os.carro_id
+      WHERE os.status IN ('paga','finalizada')
+        AND COALESCE(os.paga_em, os.fechada_em)::date <= CURRENT_DATE - ($1::int || ' days')::interval
+        AND COALESCE(os.paga_em, os.fechada_em)::date >= CURRENT_DATE - (($1::int + 30) || ' days')::interval
+        AND c.telefone IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_fila ff
+           WHERE ff.os_origem_id = os.id AND ff.regra_id = $2
+        )
+      ORDER BY os.cliente_id, COALESCE(os.paga_em, os.fechada_em) DESC`,
+    [regra.intervalo_dias, regra.id],
+  ),
+
+  reativacao: (regra) => db.query(
+    `WITH ultima AS (
+       SELECT o.cliente_id, MAX(COALESCE(o.paga_em, o.fechada_em, o.aberta_em))::date AS ultima_visita
+         FROM ordens_servico o
+        WHERE o.status <> 'negada'
+        GROUP BY o.cliente_id
+     )
+     SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+            NULL::uuid AS carro_id, ''::text AS marca, ''::text AS modelo, ''::text AS placa,
+            NULL::uuid AS os_origem_id, ''::text AS servico,
+            (CURRENT_DATE - u.ultima_visita)::int AS dias_desde
+       FROM clientes c
+       JOIN ultima u ON u.cliente_id = c.id
+      WHERE c.telefone IS NOT NULL
+        AND u.ultima_visita <= CURRENT_DATE - ($1::int || ' days')::interval
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_fila ff
+           WHERE ff.cliente_id = c.id AND ff.tipo = 'reativacao'
+             AND ff.criado_em > u.ultima_visita
+        )
+      LIMIT 300`,
+    [regra.intervalo_dias],
+  ),
+
+  // Campanha: clientes atendidos nos últimos `intervalo_dias`, com o carro
+  // mais recente, sem campanha nos últimos 30 dias.
+  campanha: (regra) => db.query(
+    `SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+            ca.id AS carro_id, COALESCE(ca.marca,'') AS marca, COALESCE(ca.modelo,'') AS modelo,
+            COALESCE(ca.placa,'') AS placa, NULL::uuid AS os_origem_id, ''::text AS servico,
+            0 AS dias_desde
+       FROM clientes c
+       LEFT JOIN LATERAL (
+         SELECT id, marca, modelo, placa FROM carros WHERE cliente_id = c.id
+          ORDER BY criado_em DESC LIMIT 1
+       ) ca ON TRUE
+      WHERE c.telefone IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM ordens_servico o
+           WHERE o.cliente_id = c.id
+             AND o.aberta_em >= now() - ($1::int || ' days')::interval
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_fila ff
+           WHERE ff.cliente_id = c.id AND ff.tipo = 'promocao'
+             AND ff.criado_em > now() - interval '30 days'
+        )
+      ORDER BY c.nome
+      LIMIT 500`,
+    [regra.intervalo_dias],
+  ),
+};
+
+async function inserirDaRegra(regra, candidatos, template, userId) {
+  const oficina = await nomeOficina();
   let gerados = 0;
-
-  for (const regra of regras) {
-    let candidatos = [];
-    if (regra.tipo === 'manutencao' && regra.servico_id) {
-      candidatos = (await db.query(
-        `SELECT DISTINCT ON (c.id, ca.id)
-                c.id AS cliente_id, c.nome AS nome_cliente, c.telefone,
-                ca.id AS carro_id, ca.marca, ca.modelo, ca.placa,
-                os.id AS os_origem_id, oss.nome_servico AS servico,
-                COALESCE(os.paga_em, os.fechada_em)::date AS data_servico,
-                (CURRENT_DATE - COALESCE(os.paga_em, os.fechada_em)::date)::int AS dias_desde
-           FROM clientes c
-           JOIN carros ca         ON ca.cliente_id = c.id
-           JOIN ordens_servico os ON os.carro_id = ca.id AND os.status IN ('paga','finalizada')
-           JOIN os_servicos oss   ON oss.os_id = os.id AND oss.servico_id = $1
-          WHERE COALESCE(os.paga_em, os.fechada_em)::date <= CURRENT_DATE - ($2 || ' days')::interval
-            AND c.telefone IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM followup_fila ff
-               WHERE ff.cliente_id = c.id
-                 AND COALESCE(ff.carro_id::text,'') = COALESCE(ca.id::text,'')
-                 AND ff.regra_id = $3
-                 AND ff.status IN ('pendente','enviado')
-                 AND ff.criado_em > now() - interval '30 days'
-            )
-          ORDER BY c.id, ca.id, COALESCE(os.paga_em, os.fechada_em) DESC`,
-        [regra.servico_id, regra.intervalo_dias, regra.id],
-      )).rows;
-    } else if (regra.tipo === 'reativacao') {
-      candidatos = (await db.query(
-        `WITH ultima AS (
-           SELECT o.cliente_id, MAX(COALESCE(o.paga_em, o.fechada_em))::date AS ultima_visita
-             FROM ordens_servico o
-            WHERE o.status IN ('paga','finalizada')
-            GROUP BY o.cliente_id
-         )
-         SELECT c.id AS cliente_id, c.nome AS nome_cliente, c.telefone,
-                NULL::uuid AS carro_id, ''::text AS marca, ''::text AS modelo, ''::text AS placa,
-                NULL::uuid AS os_origem_id, ''::text AS servico,
-                u.ultima_visita AS data_servico,
-                (CURRENT_DATE - u.ultima_visita)::int AS dias_desde
-           FROM clientes c
-           JOIN ultima u ON u.cliente_id = c.id
-          WHERE c.telefone IS NOT NULL
-            AND u.ultima_visita <= CURRENT_DATE - ($1 || ' days')::interval
-            AND NOT EXISTS (
-              SELECT 1 FROM followup_fila ff
-               WHERE ff.cliente_id = c.id
-                 AND ff.regra_id = $2
-                 AND ff.status IN ('pendente','enviado')
-                 AND ff.criado_em > now() - interval '30 days'
-            )`,
-        [regra.intervalo_dias, regra.id],
-      )).rows;
-    } else if (regra.tipo === 'avaliacao') {
-      // N dias após qualquer OS paga/finalizada. Usa a OS mais recente
-      // do cliente pra gerar 1 follow-up por atendimento.
-      candidatos = (await db.query(
-        `SELECT DISTINCT ON (os.cliente_id)
-                c.id AS cliente_id, c.nome AS nome_cliente, c.telefone,
-                ca.id AS carro_id, ca.marca, ca.modelo, ca.placa,
-                os.id AS os_origem_id, ''::text AS servico,
-                COALESCE(os.paga_em, os.fechada_em)::date AS data_servico,
-                (CURRENT_DATE - COALESCE(os.paga_em, os.fechada_em)::date)::int AS dias_desde
-           FROM ordens_servico os
-           JOIN clientes c ON c.id = os.cliente_id
-           JOIN carros ca  ON ca.id = os.carro_id
-          WHERE os.status IN ('paga','finalizada')
-            AND COALESCE(os.paga_em, os.fechada_em)::date <= CURRENT_DATE - ($1 || ' days')::interval
-            AND COALESCE(os.paga_em, os.fechada_em)::date >= CURRENT_DATE - (($1::int + 30) || ' days')::interval
-            AND c.telefone IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM followup_fila ff
-               WHERE ff.cliente_id = c.id
-                 AND ff.regra_id = $2
-                 AND ff.os_origem_id = os.id
-            )
-          ORDER BY os.cliente_id, COALESCE(os.paga_em, os.fechada_em) DESC`,
-        [regra.intervalo_dias, regra.id],
-      )).rows;
-    } else if (regra.tipo === 'promocao') {
-      // Sugestão: clientes ativos (com OS nos últimos 18 meses) ainda não
-      // contactados por essa regra. O admin refina depois na UI.
-      candidatos = (await db.query(
-        `SELECT DISTINCT c.id AS cliente_id, c.nome AS nome_cliente, c.telefone,
-                (SELECT ca2.id  FROM carros ca2 WHERE ca2.cliente_id=c.id ORDER BY ca2.criado_em DESC LIMIT 1) AS carro_id,
-                COALESCE((SELECT ca2.marca  FROM carros ca2 WHERE ca2.cliente_id=c.id ORDER BY ca2.criado_em DESC LIMIT 1),'') AS marca,
-                COALESCE((SELECT ca2.modelo FROM carros ca2 WHERE ca2.cliente_id=c.id ORDER BY ca2.criado_em DESC LIMIT 1),'') AS modelo,
-                COALESCE((SELECT ca2.placa  FROM carros ca2 WHERE ca2.cliente_id=c.id ORDER BY ca2.criado_em DESC LIMIT 1),'') AS placa,
-                NULL::uuid AS os_origem_id, ''::text AS servico,
-                CURRENT_DATE::date AS data_servico, 0 AS dias_desde
-           FROM clientes c
-          WHERE c.telefone IS NOT NULL
-            AND EXISTS (
-              SELECT 1 FROM ordens_servico o
-               WHERE o.cliente_id = c.id
-                 AND o.aberta_em >= now() - interval '18 months'
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM followup_fila ff
-               WHERE ff.cliente_id = c.id
-                 AND ff.regra_id = $1
-                 AND ff.status <> 'dispensado'
-            )
-          LIMIT 200`,
-        [regra.id],
-      )).rows;
-    }
-
-    for (const cand of candidatos) {
-      const mensagem = renderizar(regra.mensagem_template, {
-        nome_cliente: cand.nome_cliente,
-        modelo_carro: [cand.marca, cand.modelo].filter(Boolean).join(' ').trim(),
-        placa: cand.placa,
-        servico: cand.servico,
-        dias_desde: cand.dias_desde,
-      });
-      try {
-        const inserido = await db.query(
-          `INSERT INTO followup_fila
-             (cliente_id, carro_id, regra_id, os_origem_id, tipo, mensagem, criado_por)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
-           RETURNING id`,
-          [cand.cliente_id, cand.carro_id, regra.id, cand.os_origem_id,
-            regra.tipo, mensagem, userId || null],
-        );
-        await registrarHistorico(inserido.rows[0].id, 'criado_automatico', userId);
-        gerados += 1;
-      } catch (e) {
-        // Duplicado (índice único) → ignora silenciosamente
-        if (!/duplicate|unique/i.test(e.message)) throw e;
-      }
+  for (const cand of candidatos) {
+    const mensagem = renderizar(template, {
+      nome_cliente: cand.nome_cliente,
+      modelo_carro: [cand.marca, cand.modelo].filter(Boolean).join(' ').trim() || 'carro',
+      placa: cand.placa,
+      servico: cand.servico,
+      dias_desde: cand.dias_desde,
+      oficina,
+    });
+    try {
+      const ins = await db.query(
+        `INSERT INTO followup_fila
+           (cliente_id, carro_id, regra_id, os_origem_id, retorno_id, tipo, mensagem, criado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         RETURNING id`,
+        [cand.cliente_id, cand.carro_id || null, regra.id, cand.os_origem_id || null,
+          cand.retorno_id || null, regra.tipo, mensagem, userId || null],
+      );
+      await registrarHistorico(ins.rows[0].id, 'criado_automatico', userId);
+      gerados += 1;
+    } catch (e) {
+      // Índices únicos (mesmo retorno / mesmo cliente+carro+regra pendente).
+      if (!/duplicate|unique/i.test(e.message)) throw e;
     }
   }
+  return gerados;
+}
 
-  return { gerados };
+/**
+ * Gera a fila pelas automações ativas (revisão, pós-serviço, reativação).
+ * Campanha não entra aqui: só sai quando o dono monta (montarCampanha).
+ * Idempotente: rodar de novo não duplica.
+ */
+async function gerarFila({ chave } = {}, userId) {
+  await garantirAutomacoes();
+  const params = [['revisao', 'pos_servico', 'reativacao']];
+  let filtro = '';
+  if (chave) { params.push(chave); filtro = `AND chave = $${params.length}`; }
+  const { rows: regras } = await db.query(
+    `SELECT * FROM followup_regras WHERE ativo AND chave = ANY($1) ${filtro}`, params,
+  );
+  const porAutomacao = {};
+  let gerados = 0;
+  for (const regra of regras) {
+    const { rows } = await CANDIDATOS[regra.chave](regra);
+    const n = await inserirDaRegra(regra, rows, regra.mensagem_template, userId);
+    porAutomacao[regra.chave] = n;
+    gerados += n;
+  }
+  return { gerados, por_automacao: porAutomacao };
+}
+
+/**
+ * Prévia ou criação de uma campanha. `mensagem` sobrescreve o texto do
+ * cartão só nesta campanha. `confirmar=false` só conta o público.
+ */
+async function montarCampanha({ mensagem, confirmar = false } = {}, userId) {
+  await garantirAutomacoes();
+  const { rows } = await db.query(`SELECT * FROM followup_regras WHERE chave = 'campanha'`);
+  const regra = rows[0];
+  if (!regra) throw AppError.notFound('Automação de campanha não encontrada');
+  const texto = (mensagem ?? regra.mensagem_template ?? '').trim();
+  if (confirmar && texto.length < 10) throw new AppError('Escreva a mensagem da campanha', 422);
+  const { rows: publico } = await CANDIDATOS.campanha(regra);
+  if (!confirmar) {
+    return { publico: publico.length, exemplo: publico[0]?.nome_cliente || null };
+  }
+  const gerados = await inserirDaRegra(regra, publico, texto, userId);
+  return { publico: publico.length, gerados };
+}
+
+// ---------------------------------------------------------------- RESPOSTA DO CLIENTE
+
+/**
+ * Mensagem recebida de um cliente: o que estava 'enviado' para ele nos
+ * últimos 30 dias passa para 'respondeu'. Chamado pelo webhook do WhatsApp
+ * (já dentro do contexto da oficina). `telefones` traz as formas possíveis
+ * do número (com e sem o 9).
+ */
+async function registrarRespostaDoCliente(telefones) {
+  const digitos = [...new Set((telefones || []).map((t) => String(t).replace(/\D/g, '')).filter(Boolean))];
+  if (!digitos.length) return 0;
+  const { rows } = await db.query(
+    `UPDATE followup_fila f
+        SET status = 'respondeu', respondido_em = now()
+       FROM clientes c
+      WHERE c.id = f.cliente_id
+        AND regexp_replace(c.telefone, '\\D', '', 'g') = ANY($1)
+        AND f.status = 'enviado'
+        AND f.enviado_em >= now() - interval '30 days'
+      RETURNING f.id`, [digitos],
+  );
+  for (const r of rows) await registrarHistorico(r.id, 'resposta_detectada', null);
+  return rows.length;
+}
+
+// ---------------------------------------------------------------- RESULTADOS
+
+/**
+ * O que o follow-up trouxe de volta, pelos itens ENVIADOS no período:
+ * por automação/tipo e por mês. "Voltou" = cliente abriu OS dentro da
+ * janela (status converteu, ligado à OS). Faturamento = o que essas OS
+ * renderam (pagas).
+ */
+async function resultados({ meses = 6 } = {}) {
+  const m = Math.min(Math.max(Number(meses) || 6, 1), 24);
+  const base = `
+    FROM followup_fila f
+    LEFT JOIN ordens_servico o ON o.id = f.convertido_os_id
+   WHERE f.enviado_em >= date_trunc('month', CURRENT_DATE) - (($1::int - 1) || ' months')::interval`;
+  const cols = `
+    count(*)::int AS enviados,
+    count(*) FILTER (WHERE f.status IN ('respondeu','converteu') OR f.respondido_em IS NOT NULL)::int AS responderam,
+    count(*) FILTER (WHERE f.status = 'converteu')::int AS voltaram,
+    COALESCE(sum(COALESCE(o.valor_pago, o.valor_total)) FILTER (WHERE o.status = 'paga'), 0)::numeric AS faturamento`;
+  const [tot, porTipo, porMes] = await Promise.all([
+    db.query(`SELECT ${cols} ${base}`, [m]),
+    db.query(`SELECT f.tipo, ${cols} ${base} GROUP BY f.tipo`, [m]),
+    db.query(
+      `SELECT to_char(date_trunc('month', f.enviado_em), 'YYYY-MM') AS mes, ${cols} ${base}
+        GROUP BY 1 ORDER BY 1`, [m],
+    ),
+  ]);
+  const num = (r) => ({
+    enviados: r.enviados, responderam: r.responderam, voltaram: r.voltaram,
+    faturamento: Number(r.faturamento),
+  });
+  return {
+    meses: m,
+    total: num(tot.rows[0]),
+    por_tipo: Object.fromEntries(porTipo.rows.map((r) => [r.tipo, num(r)])),
+    por_mes: porMes.rows.map((r) => ({ mes: r.mes, ...num(r) })),
+  };
 }
 
 // ---------------------------------------------------------------- MÉTRICAS
@@ -730,7 +917,9 @@ async function historicoDoCliente(clienteId) {
 module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
-  gerarFila, metricas,
+  gerarFila, metricas, renderizar,
+  listarAutomacoes, atualizarAutomacao, montarCampanha,
+  registrarRespostaDoCliente, resultados,
   enviarAgora, enviarPendentesAgora, estadoLote, conferirEnvios,
   kanban, historicoDoCliente,
 };

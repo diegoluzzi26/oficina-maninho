@@ -64,12 +64,28 @@ router.delete('/fila/:id', requireRole('admin'), validate({ params: v.idParam })
 router.post('/gerar', requireRole('admin'), validate({ body: v.gerar }),
   h(async (req, res) => res.json(await svc.gerarFila(req.body, req.user.id))));
 
+// ---------------------------------------------------------------- AUTOMAÇÕES
+const { z } = require('zod');
+
+router.get('/automacoes',
+  h(async (req, res) => res.json(await svc.listarAutomacoes())));
+
+router.put('/automacoes/:chave', requireRole('admin'),
+  validate({ params: z.object({ chave: v.chaveAutomacao }), body: v.atualizarAutomacao }),
+  h(async (req, res) => res.json(await svc.atualizarAutomacao(req.params.chave, req.body))));
+
+// Campanha: confirmar=false só conta o público; true cria os itens na fila.
+router.post('/campanha', requireRole('admin'), validate({ body: v.campanha }),
+  h(async (req, res) => res.json(await svc.montarCampanha(req.body, req.user.id))));
+
 // ---------------------------------------------------------------- MÉTRICAS
 router.get('/metricas', validate({ query: v.periodoMetricas }),
   h(async (req, res) => res.json(await svc.metricas(req.query))));
 
+router.get('/resultados', validate({ query: v.resultados }),
+  h(async (req, res) => res.json(await svc.resultados(req.query))));
+
 // ---------------------------------------------------------------- KANBAN
-const { z } = require('zod');
 router.get('/kanban',
   validate({ query: z.object({
     tipo: z.enum(['manutencao','reativacao','promocao','avaliacao']).optional(),

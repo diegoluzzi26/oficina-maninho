@@ -354,7 +354,13 @@ async function processarWebhook(body) {
     const messages = Array.isArray(dados) ? dados : [dados];
     for (const msg of messages) {
       const fromMe   = msg?.key?.fromMe || false;
-      const remoteJid = msg?.key?.remoteJid || '';
+      let remoteJid = msg?.key?.remoteJid || '';
+      // Grupos e status não são conversa com cliente.
+      if (/@g\.us$|^status@/.test(remoteJid)) continue;
+      // WhatsApp novo endereça por LID (…@lid); o número real vem à parte.
+      if (remoteJid.endsWith('@lid')) {
+        remoteJid = msg?.key?.senderPn || msg?.key?.remoteJidAlt || '';
+      }
       const numero   = remoteJid.replace(/@.*/, '');
       if (!numero) continue;
       const telefone = numero.startsWith('+') ? numero : `+${numero}`;
@@ -363,8 +369,9 @@ async function processarWebhook(body) {
                     || '';
       const waId     = msg?.key?.id || null;
 
-      // Amarra a cliente_id se o telefone bate
-      const c = await db.query('SELECT id FROM clientes WHERE telefone = $1', [telefone]);
+      // Amarra a cliente_id se o telefone bate (com ou sem o 9).
+      const formas = jidsPossiveis(telefone).map((j) => `+${j.replace(/@.*/, '')}`);
+      const c = await db.query('SELECT id FROM clientes WHERE telefone = ANY($1) LIMIT 1', [formas]);
       const clienteId = c.rows[0]?.id || null;
 
       await logMensagem({
@@ -376,6 +383,16 @@ async function processarWebhook(body) {
         payload: msg,
       });
       resultado.tratado += 1;
+
+      // Cliente respondeu: follow-up 'enviado' vira 'respondeu'. Require
+      // tardio porque followup.service depende deste módulo.
+      if (!fromMe && clienteId) {
+        try {
+          await require('./followup.service').registrarRespostaDoCliente(formas);
+        } catch (err) {
+          console.error('[whatsapp] falha ao registrar resposta no follow-up:', err.message);
+        }
+      }
     }
   }
 
