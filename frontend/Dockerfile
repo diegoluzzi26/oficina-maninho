@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Depois do npm install, pra mudança de versão não invalidar o cache das deps.
+ARG APP_BUILD=
+ARG APP_COMMIT=
 RUN npm run build
 
 # --- serve ---
