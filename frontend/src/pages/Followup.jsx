@@ -338,8 +338,13 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
     respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
   }[item.status];
 
+  // Pendente com envio iniciado: a mensagem foi entregue à Evolution e o
+  // sistema está confirmando se saiu. Não pode ser enviado de novo.
+  const conferindo = item.status === 'pendente' && !!item.envio_iniciado_em;
+
   let tempo = '';
-  if (item.status === 'pendente') tempo = tempoRelativo(item.agendado_para);
+  if (conferindo) tempo = '⏳ enviando…';
+  else if (item.status === 'pendente') tempo = tempoRelativo(item.agendado_para);
   else if (item.status === 'enviado')   tempo = `enviado ${tempoRelativo(item.enviado_em)}`;
   else if (item.status === 'respondeu') tempo = `respondeu ${tempoRelativo(item.respondido_em)}`;
   else if (item.status === 'converteu') tempo = `✅ converteu ${tempoRelativo(item.respondido_em || item.enviado_em)}`;
@@ -383,7 +388,13 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
 
       {/* Ações contextuais por coluna — aparecem no hover */}
       <div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 opacity-0 transition group-hover:opacity-100">
-        {coluna === 'a-fazer' && (
+        {conferindo && (
+          <span className="px-2 py-1 text-[11px] text-slate-500"
+            title="A mensagem já foi entregue ao WhatsApp. O sistema confirma em alguns minutos.">
+            Confirmando envio…
+          </span>
+        )}
+        {coluna === 'a-fazer' && !conferindo && (
           <>
             <button onClick={() => onAcao(item, 'enviar')} disabled={enviando === item.id}
               className="rounded px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">
@@ -435,42 +446,62 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
  * Revisão antes do disparo em lote. Lista os pendentes agendados até hoje
  * com checkbox por item — o admin desmarca quem não deve receber e só então
  * envia os selecionados. Quem está sem telefone aparece marcado em vermelho
- * e não pode ser selecionado.
+ * e não pode ser selecionado; quem já está "enviando" fica de fora.
+ *
+ * O envio roda no servidor, em segundo plano e com intervalo entre as
+ * mensagens: o modal só acompanha o progresso e pode ser fechado.
  */
-function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
+function ModalEnvioLote({ aberto, onFechar }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [itens, setItens] = useState(null);
   const [sel, setSel] = useState(() => new Set());
   const [erro, setErro] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [resultado, setResultado] = useState(null);
+  const [iniciando, setIniciando] = useState(false);
+  const [lote, setLote] = useState(null); // estado do lote no servidor
   const [regras, setRegras] = useState([]);
   const [regraSel, setRegraSel] = useState(''); // '' = todas as regras
+  const [conferindo, setConferindo] = useState(false);
+  const [conferencia, setConferencia] = useState(null);
 
-  // Ao abrir: reseta e carrega a lista de regras pro filtro.
+  // Ao abrir: reseta, carrega regras e vê se já há lote rodando.
   useEffect(() => {
     if (!aberto) return;
-    setRegraSel(''); setResultado(null);
+    setRegraSel(''); setLote(null); setConferencia(null); setErro('');
     api.followupRegras().then(setRegras).catch(() => {});
+    api.followupEnvioLote()
+      .then((e) => { if (e?.em_andamento) setLote(e); })
+      .catch(() => {});
   }, [aberto]);
 
-  // Carrega os pendentes (recarrega quando a regra selecionada muda).
+  // Acompanha o lote enquanto estiver rodando.
   useEffect(() => {
-    if (!aberto) return;
-    setItens(null); setErro(''); setSel(new Set());
+    if (!aberto || !lote?.em_andamento) return undefined;
+    const t = setInterval(() => {
+      api.followupEnvioLote().then((e) => e && setLote(e)).catch(() => {});
+    }, 3000);
+    return () => clearInterval(t);
+  }, [aberto, lote?.em_andamento]);
+
+  // Carrega os pendentes (recarrega quando a regra muda ou após conferir).
+  const carregarItens = useCallback(() => {
+    setItens(null); setSel(new Set());
     api.followupFila({
       status: 'pendente', ate: hoje, por_pagina: 100,
       ...(regraSel ? { regra_id: regraSel } : {}),
     })
       .then((r) => {
         setItens(r.dados);
-        setSel(new Set(r.dados.filter((i) => i.cliente_telefone).map((i) => i.id)));
+        setSel(new Set(r.dados
+          .filter((i) => i.cliente_telefone && !i.envio_iniciado_em)
+          .map((i) => i.id)));
       })
       .catch((e) => setErro(e.message));
-  }, [aberto, regraSel]);
+  }, [regraSel, hoje]);
 
-  const comTelefone = (itens || []).filter((i) => i.cliente_telefone);
-  const todosMarcados = comTelefone.length > 0 && comTelefone.every((i) => sel.has(i.id));
+  useEffect(() => { if (aberto) carregarItens(); }, [aberto, carregarItens]);
+
+  const disponiveis = (itens || []).filter((i) => i.cliente_telefone && !i.envio_iniciado_em);
+  const todosMarcados = disponiveis.length > 0 && disponiveis.every((i) => sel.has(i.id));
 
   function toggle(id) {
     setSel((s) => {
@@ -480,107 +511,165 @@ function ModalEnvioLote({ aberto, onFechar, onConcluido }) {
     });
   }
   function toggleTodos() {
-    setSel(todosMarcados ? new Set() : new Set(comTelefone.map((i) => i.id)));
+    setSel(todosMarcados ? new Set() : new Set(disponiveis.map((i) => i.id)));
   }
 
   async function enviar() {
     const ids = [...sel];
     if (!ids.length) { setErro('Selecione ao menos um follow-up'); return; }
-    setEnviando(true); setErro('');
+    setIniciando(true); setErro('');
     try {
-      const r = await api.enviarFollowupsPendentes(ids, regraSel || undefined);
-      setResultado(r);
+      setLote(await api.enviarFollowupsPendentes(ids, regraSel || undefined));
     } catch (e) { setErro(e.message); }
-    finally { setEnviando(false); }
+    finally { setIniciando(false); }
   }
+
+  async function conferir() {
+    setConferindo(true); setErro(''); setConferencia(null);
+    try {
+      setConferencia(await api.conferirEnviosFollowup(true));
+      carregarItens();
+    } catch (e) { setErro(e.message); }
+    finally { setConferindo(false); }
+  }
+
+  const minutosEstimados = Math.max(1, Math.ceil(sel.size * 12.5 / 60));
 
   return (
     <Modal aberto={aberto} largura="max-w-xl" titulo="Enviar pendentes" onFechar={onFechar}>
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
 
-      {!resultado && (
-        <label className="mb-3 flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          Regra
-          <select className="input" value={regraSel}
-            onChange={(e) => setRegraSel(e.target.value)} disabled={enviando}>
-            <option value="">Todas as regras</option>
-            {regras.map((r) => (
-              <option key={r.id} value={r.id}>
-                {TIPO_META[r.tipo]?.emoji} {r.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {resultado ? (
+      {lote ? (
         <div className="space-y-3">
-          <p className="text-sm text-slate-700">
-            Enviados: <strong>{resultado.enviados}</strong> de {resultado.total}.
-          </p>
-          {resultado.falhas?.length > 0 && (
+          {lote.em_andamento ? (
+            <>
+              <p className="text-sm text-slate-700">
+                Enviando <strong>{lote.processados}</strong> de {lote.total}…
+              </p>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full bg-ouro-500 transition-all"
+                  style={{ width: `${lote.total ? (lote.processados / lote.total) * 100 : 0}%` }} />
+              </div>
+              <p className="text-xs text-slate-500">
+                As mensagens saem uma por vez, com intervalo, para o WhatsApp não bloquear o número.
+                Pode fechar esta janela: o envio continua no servidor.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-700">
+              Concluído: <strong>{lote.enviados}</strong> de {lote.total} enviado(s).
+            </p>
+          )}
+          {lote.incertos > 0 && (
+            <p className="rounded-md bg-ouro-100 p-3 text-xs text-ouro-700">
+              {lote.incertos} mensagem(ns) demoraram para ser confirmadas pelo WhatsApp. Elas
+              ficam como “enviando…” e o sistema confere sozinho em alguns minutos. Não reenvie.
+            </p>
+          )}
+          {lote.falhas?.length > 0 && (
             <div className="rounded-md bg-rose-50 p-3 text-xs text-rose-700">
-              <p className="mb-1 font-semibold">{resultado.falhas.length} falha(s):</p>
+              <p className="mb-1 font-semibold">{lote.falhas.length} falha(s), continuam pendentes:</p>
               <ul className="list-disc space-y-0.5 pl-4">
-                {resultado.falhas.map((f) => <li key={f.id}>{f.motivo}</li>)}
+                {lote.falhas.map((f) => <li key={f.id}>{f.cliente ? `${f.cliente}: ` : ''}{f.motivo}</li>)}
               </ul>
             </div>
           )}
           <div className="flex justify-end border-t border-slate-200 pt-3">
-            <button className="btn-primary" onClick={onConcluido}>Fechar</button>
+            <button className="btn-primary" onClick={onFechar}>Fechar</button>
           </div>
         </div>
-      ) : itens === null ? (
-        <Skeleton className="h-48" />
-      ) : itens.length === 0 ? (
-        <Vazio titulo="Nada pendente"
-          descricao={regraSel
-            ? 'Nenhum follow-up desta regra agendado até hoje pra enviar.'
-            : 'Não há follow-ups agendados até hoje pra enviar.'} />
       ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-500">
-            {itens.length} follow-up(s) agendado(s) até hoje. Revise e desmarque quem não deve receber.
-          </p>
-          <label className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-semibold text-slate-600">
-            <input type="checkbox" checked={todosMarcados} onChange={toggleTodos} />
-            Selecionar todos com telefone ({comTelefone.length})
+        <>
+          <label className="mb-3 flex flex-col gap-1 text-xs font-semibold text-slate-600">
+            Regra
+            <select className="input" value={regraSel}
+              onChange={(e) => setRegraSel(e.target.value)} disabled={iniciando}>
+              <option value="">Todas as regras</option>
+              {regras.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {TIPO_META[r.tipo]?.emoji} {r.nome}
+                </option>
+              ))}
+            </select>
           </label>
-          <ul className="max-h-[50vh] space-y-1.5 overflow-y-auto">
-            {itens.map((i) => {
-              const semTel = !i.cliente_telefone;
-              return (
-                <li key={i.id}
-                  className={`flex gap-2.5 rounded-md border p-2.5 text-sm
-                    ${semTel ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200'}`}>
-                  <input type="checkbox" className="mt-0.5"
-                    checked={sel.has(i.id)} disabled={semTel}
-                    onChange={() => toggle(i.id)} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-semibold text-slate-800">{i.cliente_nome}</span>
-                      <span className="tnum text-[11px] text-slate-400">{data(i.agendado_para)}</span>
-                    </div>
-                    {semTel ? (
-                      <p className="text-[11px] font-semibold text-rose-600">Sem telefone — não pode enviar</p>
-                    ) : (
-                      <p className="tnum font-mono text-[11px] text-maninho-700">{telefone(i.cliente_telefone)}</p>
-                    )}
-                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
-                      {(i.mensagem || '').replace(/\s+/g, ' ').trim()}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
-            <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
-            <button type="button" className="btn-ouro" disabled={enviando || sel.size === 0} onClick={enviar}>
-              {enviando ? <><Spinner className="h-4 w-4" /> Enviando…</> : `🚀 Enviar ${sel.size} selecionado(s)`}
+
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+            <span>Já mandou e ficou como pendente? Confira no WhatsApp antes de reenviar.</span>
+            <button type="button" className="btn-ghost px-2 py-1 text-xs"
+              onClick={conferir} disabled={conferindo}>
+              {conferindo ? <><Spinner className="h-3 w-3" /> Conferindo…</> : '🔎 Conferir no WhatsApp'}
             </button>
+            {conferencia && (
+              <p className="w-full font-semibold text-slate-700">
+                {conferencia.confirmados} de {conferencia.conferidos} já tinham sido enviados e foram
+                marcados como enviados.
+                {conferencia.erros > 0 && ` ${conferencia.erros} não puderam ser conferidos (WhatsApp indisponível).`}
+              </p>
+            )}
           </div>
-        </div>
+
+          {itens === null ? (
+            <Skeleton className="h-48" />
+          ) : itens.length === 0 ? (
+            <Vazio titulo="Nada pendente"
+              descricao={regraSel
+                ? 'Nenhum follow-up desta regra agendado até hoje pra enviar.'
+                : 'Não há follow-ups agendados até hoje pra enviar.'} />
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                {itens.length} follow-up(s) agendado(s) até hoje. Revise e desmarque quem não deve receber.
+              </p>
+              <label className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-semibold text-slate-600">
+                <input type="checkbox" checked={todosMarcados} onChange={toggleTodos} />
+                Selecionar todos que podem receber ({disponiveis.length})
+              </label>
+              <ul className="max-h-[45vh] space-y-1.5 overflow-y-auto">
+                {itens.map((i) => {
+                  const semTel = !i.cliente_telefone;
+                  const enviando = !!i.envio_iniciado_em;
+                  const bloqueado = semTel || enviando;
+                  return (
+                    <li key={i.id}
+                      className={`flex gap-2.5 rounded-md border p-2.5 text-sm
+                        ${semTel ? 'border-rose-200 bg-rose-50/40' : enviando ? 'border-ouro-200 bg-ouro-50/40' : 'border-slate-200'}`}>
+                      <input type="checkbox" className="mt-0.5"
+                        checked={sel.has(i.id)} disabled={bloqueado}
+                        onChange={() => toggle(i.id)} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-semibold text-slate-800">{i.cliente_nome}</span>
+                          <span className="tnum text-[11px] text-slate-400">{data(i.agendado_para)}</span>
+                        </div>
+                        {semTel ? (
+                          <p className="text-[11px] font-semibold text-rose-600">Sem telefone — não pode enviar</p>
+                        ) : enviando ? (
+                          <p className="text-[11px] font-semibold text-ouro-700">Enviando… aguardando confirmação</p>
+                        ) : (
+                          <p className="tnum font-mono text-[11px] text-maninho-700">{telefone(i.cliente_telefone)}</p>
+                        )}
+                        <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                          {(i.mensagem || '').replace(/\s+/g, ' ').trim()}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
+                {sel.size > 0 && (
+                  <span className="mr-auto text-[11px] text-slate-500">
+                    Leva cerca de {minutosEstimados} min (uma mensagem a cada ~10s).
+                  </span>
+                )}
+                <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+                <button type="button" className="btn-ouro" disabled={iniciando || sel.size === 0} onClick={enviar}>
+                  {iniciando ? <><Spinner className="h-4 w-4" /> Iniciando…</> : `🚀 Enviar ${sel.size} selecionado(s)`}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </Modal>
   );
@@ -629,6 +718,24 @@ export default function Followup() {
     const t = setTimeout(carregar, busca ? 300 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  // Lote em segundo plano: enquanto roda, mostra o progresso no botão e
+  // atualiza o Kanban a cada 10s para os cards irem mudando de coluna.
+  const [lote, setLote] = useState(null);
+  const verLote = useCallback(() => {
+    api.followupEnvioLote().then(setLote).catch(() => {});
+  }, []);
+  useEffect(() => { verLote(); }, [verLote]);
+  useEffect(() => {
+    if (!lote?.em_andamento) return undefined;
+    const t = setInterval(() => {
+      api.followupEnvioLote().then((e) => {
+        setLote(e);
+        carregar();
+      }).catch(() => {});
+    }, 10000);
+    return () => clearInterval(t);
+  }, [lote?.em_andamento, carregar]);
 
   // ---------- Drag & drop ----------------------------------------
   function onDragStart(e, item) {
@@ -697,9 +804,8 @@ export default function Followup() {
     setEnviandoId(item.id); setErro('');
     try {
       await api.enviarFollowup(item.id);
-      carregar();
     } catch (e) { setErro(e.message); }
-    finally { setEnviandoId(''); }
+    finally { setEnviandoId(''); carregar(); }
   }
 
   function acao(item, tipo) {
@@ -770,7 +876,9 @@ export default function Followup() {
           )}
           {ehAdmin && (
             <button onClick={() => setLoteAberto(true)} className="btn-ouro">
-              🚀 Enviar pendentes
+              {lote?.em_andamento
+                ? <><Spinner className="h-4 w-4" /> Enviando {lote.processados}/{lote.total}</>
+                : '🚀 Enviar pendentes'}
             </button>
           )}
         </div>
@@ -869,8 +977,8 @@ export default function Followup() {
       <FormManual aberto={manualAberto} onFechar={() => setManualAberto(false)}
         onCriado={() => { setManualAberto(false); carregar(); }} />
 
-      <ModalEnvioLote aberto={loteAberto} onFechar={() => setLoteAberto(false)}
-        onConcluido={() => { setLoteAberto(false); carregar(); }} />
+      <ModalEnvioLote aberto={loteAberto}
+        onFechar={() => { setLoteAberto(false); carregar(); verLote(); }} />
 
       <Confirmar dados={confirmacao} onFechar={() => setConfirmacao(null)} />
     </div>

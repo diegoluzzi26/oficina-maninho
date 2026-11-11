@@ -296,6 +296,10 @@ export const api = {
     method: 'POST',
     body: { ...(ids?.length ? { ids } : {}), ...(regra_id ? { regra_id } : {}) },
   }),
+  followupEnvioLote: () => request('/followup/fila/envio-lote'),
+  conferirEnviosFollowup: (todosPendentes = false) => request('/followup/fila/conferir-envios', {
+    method: 'POST', body: { todosPendentes },
+  }),
   metricasFollowup: (periodo = 30) => request('/followup/metricas', { params: { periodo } }),
   followupKanban: (params) => request('/followup/kanban', { params }),
   followupHistorico: (clienteId) => request(`/followup/historico/${clienteId}`),

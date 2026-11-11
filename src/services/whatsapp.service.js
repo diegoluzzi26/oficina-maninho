@@ -60,7 +60,11 @@ async function evolutionRequest(path, { method = 'GET', body } = {}) {
     return { ok: res.ok, status: res.status, json };
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new AppError('Evolution API não respondeu em 15s', 504);
+      // Ambíguo: a Evolution pode ter enviado e só demorado pra responder.
+      // Quem envia mensagem não deve tratar isso como "não saiu".
+      const e2 = new AppError('Evolution API não respondeu em 15s', 504);
+      e2.envioIncerto = true;
+      throw e2;
     }
     // fetch falhou na camada de rede (container evolution fora, DNS EAI_AGAIN,
     // conexão recusada): devolve 503 com mensagem clara em vez de vazar um
@@ -205,6 +209,52 @@ async function enviarTemplate({ telefone, mensagem, cliente_id, os_id }) {
 
 async function notificar({ telefone, mensagem, cliente_id, os_id }) {
   return enviarTexto({ telefone, mensagem, cliente_id, os_id });
+}
+
+/**
+ * JIDs possíveis de um número. No Brasil, contas antigas de celular ficam
+ * no WhatsApp SEM o 9 depois do DDD, então procura as duas formas.
+ */
+function jidsPossiveis(telefone) {
+  const n = digitos(telefone);
+  const lista = new Set([n]);
+  if (n.startsWith('55')) {
+    if (n.length === 13 && n[4] === '9') lista.add(n.slice(0, 4) + n.slice(5));
+    if (n.length === 12) lista.add(`${n.slice(0, 4)}9${n.slice(4)}`);
+  }
+  return [...lista].map((x) => `${x}@s.whatsapp.net`);
+}
+
+function textoDaMensagem(m) {
+  return m?.message?.conversation
+    || m?.message?.extendedTextMessage?.text
+    || '';
+}
+
+/**
+ * Mensagens que NÓS enviamos para `telefone` a partir de `desde` (Date),
+ * consultadas no banco da própria Evolution. Usado para conferir se um
+ * envio que deu timeout saiu de fato. Retorna [{ id, texto, em: Date }].
+ */
+async function enviadasPara(telefone, desde) {
+  const e = ensureEnabled();
+  const limite = desde instanceof Date ? desde.getTime() / 1000 : 0;
+  const saida = [];
+  for (const remoteJid of jidsPossiveis(telefone)) {
+    const { ok, status, json } = await evolutionRequest(
+      `/chat/findMessages/${e.instance}`,
+      { method: 'POST', body: { where: { key: { remoteJid, fromMe: true } }, offset: 50, page: 1 } },
+    );
+    if (!ok) throw new AppError(`Evolution não listou mensagens (HTTP ${status})`, 502);
+    const registros = json?.messages?.records || json?.records || (Array.isArray(json) ? json : []);
+    for (const m of registros) {
+      if (!m?.key?.fromMe) continue;
+      const ts = Number(m.messageTimestamp) || 0;
+      if (ts < limite) continue;
+      saida.push({ id: m.key.id, texto: textoDaMensagem(m), em: new Date(ts * 1000) });
+    }
+  }
+  return saida;
 }
 
 // ---------------------------------------------------------------------
@@ -384,6 +434,8 @@ module.exports = {
   enviarDocumento,
   enviarTemplate,
   notificar,
+  enviadasPara,
+  jidsPossiveis,
   processarWebhook,
   resolverOficinaDoWebhook,
   garantirInstancia,

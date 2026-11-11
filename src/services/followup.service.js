@@ -133,7 +133,8 @@ async function criarManual(d, userId) {
 }
 
 async function mudarStatus(id, { status, notas, os_id }, userId) {
-  const setExtra = [];
+  // Mudança manual de status resolve qualquer envio "em conferência".
+  const setExtra = ['envio_iniciado_em = NULL'];
   const params = [status];
   if (status === 'enviado') setExtra.push('enviado_em = now()');
   if (status === 'respondeu' || status === 'converteu') {
@@ -150,7 +151,7 @@ async function mudarStatus(id, { status, notas, os_id }, userId) {
   params.push(id);
   const { rows } = await db.query(
     `UPDATE followup_fila SET status=$1
-       ${setExtra.length ? ', ' + setExtra.join(', ') : ''}
+       , ${setExtra.join(', ')}
       WHERE id=$${params.length} RETURNING *`, params,
   );
   if (!rows[0]) throw AppError.notFound('Follow-up não encontrado');
@@ -161,7 +162,7 @@ async function mudarStatus(id, { status, notas, os_id }, userId) {
 async function reagendar(id, { agendado_para, notas }, userId) {
   const { rows } = await db.query(
     `UPDATE followup_fila SET agendado_para=$1::date,
-       notas = COALESCE($2, notas), status='pendente'
+       notas = COALESCE($2, notas), status='pendente', envio_iniciado_em=NULL
       WHERE id=$3 RETURNING *`,
     [agendado_para, notas || null, id],
   );
@@ -187,27 +188,56 @@ async function registrarHistorico(fila_id, acao, usuario_id, notas) {
 
 /**
  * Envia via Evolution API a mensagem já pronta do follow-up.
- * No sucesso, marca como 'enviado' e registra histórico.
- * No fracasso, NÃO muda o status (fica pendente pra retentar).
+ *
+ * Antes de chamar a Evolution, trava o item (`envio_iniciado_em`), para que
+ * dois cliques ou dois lotes nunca mandem a mesma mensagem duas vezes.
+ *  - sucesso                         → 'enviado'
+ *  - Evolution recusou               → solta a trava (pode tentar de novo)
+ *  - Evolution não respondeu a tempo → a mensagem PODE ter saído: mantém a
+ *    trava e `conferirEnvios` confirma na Evolution depois.
  */
 async function enviarAgora(id, userId) {
   const item = await buscarItem(id);
   if (!item.cliente_telefone) {
     throw new AppError('Cliente sem telefone cadastrado', 422);
   }
-  if (item.status === 'enviado' || item.status === 'respondeu' || item.status === 'converteu') {
+  if (item.status !== 'pendente') {
     throw new AppError('Follow-up já foi enviado', 409);
   }
 
-  const resposta = await wa.notificar({
-    telefone: item.cliente_telefone,
-    mensagem: item.mensagem,
-    cliente_id: item.cliente_id,
-  });
+  const trava = await db.query(
+    `UPDATE followup_fila SET envio_iniciado_em = now()
+      WHERE id = $1 AND status = 'pendente' AND envio_iniciado_em IS NULL
+      RETURNING id`, [id],
+  );
+  if (!trava.rowCount) {
+    throw new AppError('Este follow-up já está sendo enviado. Aguarde a confirmação.', 409);
+  }
+
+  let resposta;
+  try {
+    resposta = await wa.notificar({
+      telefone: item.cliente_telefone,
+      mensagem: item.mensagem,
+      cliente_id: item.cliente_id,
+    });
+  } catch (err) {
+    if (err.envioIncerto) {
+      await registrarHistorico(id, 'envio_incerto', userId, err.message);
+      const e = new AppError(
+        'O WhatsApp demorou para responder e a mensagem pode ter saído. '
+        + 'O sistema confere sozinho em alguns minutos; não reenvie.', 504,
+      );
+      e.envioIncerto = true;
+      throw e;
+    }
+    await db.query('UPDATE followup_fila SET envio_iniciado_em = NULL WHERE id = $1', [id]);
+    throw err;
+  }
 
   await db.query(
     `UPDATE followup_fila
-        SET status='enviado', enviado_em=now()
+        SET status='enviado', enviado_em=now(), envio_iniciado_em=NULL
       WHERE id=$1`, [id],
   );
   await registrarHistorico(id, 'enviado_automatico', userId,
@@ -216,19 +246,44 @@ async function enviarAgora(id, userId) {
   return buscarItem(id);
 }
 
+// ---------------------------------------------------------------- LOTE
+
 /**
- * Enfileira envios para os pendentes com agendado_para <= hoje.
- * Se `ids` vier preenchido, restringe a esses itens; se `regra_id` vier,
- * restringe àquela regra. Os dois podem combinar. A trava de "pendente até
- * hoje" continua valendo, então nunca dispara algo futuro, já enviado ou fora
- * do filtro. Sem `ids` nem `regra_id`, mantém o comportamento antigo (todos os
- * pendentes até hoje). Retorna contagem de sucessos e falhas.
+ * Envio em lote roda em SEGUNDO PLANO, uma mensagem por vez com intervalo
+ * (rajada de mensagens é o jeito mais rápido de o WhatsApp bloquear o
+ * número). A tela acompanha por `estadoLote()`. Um lote por oficina.
+ *
+ * Estado em memória: se a api reiniciar no meio, o lote para; os itens já
+ * travados são resolvidos por `conferirEnvios` e os demais seguem pendentes.
+ */
+const lotes = new Map(); // slug -> estado
+
+function intervaloEntreEnvios() {
+  const base = Number(process.env.FOLLOWUP_LOTE_INTERVALO_MS ?? 10000);
+  return base > 0 ? base + Math.floor(Math.random() * (base / 2)) : 0;
+}
+
+const esperar = (ms) => new Promise((r) => { setTimeout(r, ms); });
+
+function estadoLote() {
+  const e = lotes.get(db.slugAtual());
+  return e ? { ...e, falhas: [...e.falhas] } : null;
+}
+
+/**
+ * Inicia o lote com os pendentes até hoje (opcionalmente só `ids` e/ou
+ * `regra_id`). Itens já travados ficam de fora. Retorna o estado inicial;
+ * o envio continua depois que a resposta HTTP já saiu.
  */
 async function enviarPendentesAgora(userId, { ids, regra_id } = {}) {
-  const temSelecao = Array.isArray(ids) && ids.length > 0;
+  const slug = db.slugAtual();
+  if (lotes.get(slug)?.em_andamento) {
+    throw new AppError('Já existe um envio em lote em andamento. Aguarde terminar.', 409);
+  }
+
   const params = [];
   const filtros = [];
-  if (temSelecao) {
+  if (Array.isArray(ids) && ids.length > 0) {
     params.push(ids);
     filtros.push(`AND id = ANY($${params.length}::uuid[])`);
   }
@@ -237,24 +292,110 @@ async function enviarPendentesAgora(userId, { ids, regra_id } = {}) {
     filtros.push(`AND regra_id = $${params.length}`);
   }
   const { rows } = await db.query(
-    `SELECT id FROM followup_fila
+    `SELECT id, cliente_nome FROM vw_followup_fila
       WHERE status='pendente' AND agendado_para <= CURRENT_DATE
+        AND envio_iniciado_em IS NULL
         ${filtros.join(' ')}
       ORDER BY agendado_para ASC, criado_em ASC
       LIMIT 100`, params,
   );
 
-  let enviados = 0;
-  const falhas = [];
-  for (const r of rows) {
+  const estado = {
+    total: rows.length, processados: 0, enviados: 0, incertos: 0, falhas: [],
+    em_andamento: rows.length > 0,
+    iniciado_em: new Date().toISOString(),
+    concluido_em: rows.length ? null : new Date().toISOString(),
+  };
+  lotes.set(slug, estado);
+
+  if (rows.length) {
+    db.runComOficina(slug, async () => {
+      for (let i = 0; i < rows.length; i += 1) {
+        if (i > 0) await esperar(intervaloEntreEnvios());
+        try {
+          await enviarAgora(rows[i].id, userId);
+          estado.enviados += 1;
+        } catch (err) {
+          if (err.envioIncerto) estado.incertos += 1;
+          else estado.falhas.push({ id: rows[i].id, cliente: rows[i].cliente_nome, motivo: err.message });
+        }
+        estado.processados += 1;
+      }
+    }).catch((err) => {
+      console.error(`[followup-lote] ${slug}: falha —`, err.message);
+    }).finally(() => {
+      estado.em_andamento = false;
+      estado.concluido_em = new Date().toISOString();
+    });
+  }
+
+  return estadoLote();
+}
+
+// ---------------------------------------------------------------- CONFERÊNCIA
+
+const normalizarTexto = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Confere na Evolution se mensagens de follow-up saíram e acerta o status.
+ *
+ *  padrão         → itens travados há 2+ min (envio que deu timeout).
+ *                   Achou a mensagem → 'enviado'. Não achou e a trava tem
+ *                   30+ min → solta a trava (volta a ser pendente normal).
+ *  todosPendentes → TODOS os pendentes até hoje, procurando a mensagem
+ *                   desde a criação do item. Acerta envios que saíram antes
+ *                   desta correção e ficaram como pendentes.
+ */
+async function conferirEnvios({ todosPendentes = false } = {}, userId) {
+  const where = todosPendentes
+    ? `status = 'pendente' AND agendado_para <= CURRENT_DATE`
+    : `status = 'pendente' AND envio_iniciado_em IS NOT NULL
+       AND envio_iniciado_em < now() - interval '2 minutes'`;
+  const { rows } = await db.query(
+    `SELECT id, cliente_telefone, mensagem, criado_em, envio_iniciado_em,
+            COALESCE(envio_iniciado_em < now() - interval '30 minutes', FALSE) AS trava_vencida
+       FROM vw_followup_fila
+      WHERE ${where} AND cliente_telefone IS NOT NULL
+      ORDER BY agendado_para ASC, criado_em ASC
+      LIMIT 300`,
+  );
+
+  const r = { conferidos: rows.length, confirmados: 0, liberados: 0, erros: 0 };
+  for (const item of rows) {
+    const desde = item.envio_iniciado_em
+      ? new Date(new Date(item.envio_iniciado_em).getTime() - 5 * 60000)
+      : new Date(item.criado_em);
+    let enviadas;
     try {
-      await enviarAgora(r.id, userId);
-      enviados += 1;
+      enviadas = await wa.enviadasPara(item.cliente_telefone, desde);
     } catch (err) {
-      falhas.push({ id: r.id, motivo: err.message });
+      r.erros += 1;
+      if (r.erros === 1) console.error('[followup-conferir] Evolution:', err.message);
+      continue;
+    }
+    const alvo = normalizarTexto(item.mensagem);
+    const achou = enviadas.find((m) => normalizarTexto(m.texto) === alvo);
+    if (achou) {
+      const up = await db.query(
+        `UPDATE followup_fila
+            SET status='enviado', enviado_em=$2, envio_iniciado_em=NULL
+          WHERE id=$1 AND status='pendente'`, [item.id, achou.em],
+      );
+      if (up.rowCount) {
+        await registrarHistorico(item.id, 'envio_confirmado', userId,
+          achou.id ? `wa_message_id=${achou.id}` : null);
+        r.confirmados += 1;
+      }
+    } else if (item.envio_iniciado_em && item.trava_vencida) {
+      await db.query(
+        `UPDATE followup_fila SET envio_iniciado_em=NULL
+          WHERE id=$1 AND status='pendente'`, [item.id],
+      );
+      await registrarHistorico(item.id, 'envio_nao_confirmado', userId);
+      r.liberados += 1;
     }
   }
-  return { total: rows.length, enviados, falhas };
+  return r;
 }
 
 // ---------------------------------------------------------------- GERAR
@@ -590,6 +731,6 @@ module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
   gerarFila, metricas,
-  enviarAgora, enviarPendentesAgora,
+  enviarAgora, enviarPendentesAgora, estadoLote, conferirEnvios,
   kanban, historicoDoCliente,
 };

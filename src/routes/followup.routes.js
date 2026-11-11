@@ -24,6 +24,10 @@ router.delete('/regras/:id', requireRole('admin'), validate({ params: v.idParam 
 router.get('/fila', validate({ query: v.filtroFila }),
   h(async (req, res) => res.json(await svc.listarFila(req.query))));
 
+// Antes de /fila/:id, senão o Express trata "envio-lote" como id.
+router.get('/fila/envio-lote',
+  h(async (req, res) => res.json(svc.estadoLote())));
+
 router.get('/fila/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarItem(req.params.id))));
 
@@ -42,9 +46,16 @@ router.patch('/fila/:id/reagendar',
 router.post('/fila/:id/enviar', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.enviarAgora(req.params.id, req.user.id))));
 
+// Lote roda em segundo plano: responde 202 na hora e a tela acompanha
+// pelo GET /fila/envio-lote.
 router.post('/fila/enviar-pendentes', requireRole('admin'),
   validate({ body: v.enviarPendentes }),
-  h(async (req, res) => res.json(await svc.enviarPendentesAgora(req.user.id, req.body))));
+  h(async (req, res) => res.status(202).json(await svc.enviarPendentesAgora(req.user.id, req.body))));
+
+// Confere na Evolution quais pendentes já saíram e marca como enviados.
+router.post('/fila/conferir-envios', requireRole('admin'),
+  validate({ body: v.conferirEnvios }),
+  h(async (req, res) => res.json(await svc.conferirEnvios(req.body, req.user.id))));
 
 router.delete('/fila/:id', requireRole('admin'), validate({ params: v.idParam }),
   h(async (req, res) => { await svc.removerItem(req.params.id); res.status(204).end(); }));
