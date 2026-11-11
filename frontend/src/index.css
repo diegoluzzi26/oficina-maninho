@@ -192,6 +192,8 @@
 [data-tema="escuro"] .border-slate-300,
 [data-tema="escuro"] .border-slate-400 { border-color: var(--linha); }
 [data-tema="escuro"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--linha); }
+[data-tema="escuro"] .border-slate-800 { border-color: var(--txt-2); }
+[data-tema="escuro"] .border-ouro-300 { border-color: rgba(255,90,54,.45); }
 [data-tema="escuro"] .ring-slate-200,
 [data-tema="escuro"] .ring-slate-300 { --tw-ring-color: var(--linha); }
 
