@@ -440,7 +440,7 @@ function EtapasKanban() {
 }
 
 const ACOES_REGRA = [
-  { valor: 'criar_retorno', rotulo: 'Agendar um retorno/lembrete' },
+  { valor: 'criar_retorno', rotulo: 'Agendar revisão (entra no follow-up perto da data)' },
   { valor: 'enfileirar_followup', rotulo: 'Enfileirar follow-up (fica pendente)' },
 ];
 const TIPOS_FOLLOWUP = [

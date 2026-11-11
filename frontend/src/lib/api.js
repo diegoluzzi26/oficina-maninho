@@ -290,7 +290,11 @@ export const api = {
   followupMudarStatus: (id, body) => request(`/followup/fila/${id}/status`, { method: 'PATCH', body }),
   followupReagendar: (id, body) => request(`/followup/fila/${id}/reagendar`, { method: 'PATCH', body }),
   removerFollowup: (id) => request(`/followup/fila/${id}`, { method: 'DELETE' }),
-  gerarFollowup: (regra_id) => request('/followup/gerar', { method: 'POST', body: regra_id ? { regra_id } : {} }),
+  gerarFollowup: (chave) => request('/followup/gerar', { method: 'POST', body: chave ? { chave } : {} }),
+  followupAutomacoes: () => request('/followup/automacoes'),
+  atualizarFollowupAutomacao: (chave, body) => request(`/followup/automacoes/${chave}`, { method: 'PUT', body }),
+  followupCampanha: (body) => request('/followup/campanha', { method: 'POST', body }),
+  followupResultados: (meses = 6) => request('/followup/resultados', { params: { meses } }),
   enviarFollowup: (id) => request(`/followup/fila/${id}/enviar`, { method: 'POST', body: {} }),
   enviarFollowupsPendentes: (ids, regra_id) => request('/followup/fila/enviar-pendentes', {
     method: 'POST',

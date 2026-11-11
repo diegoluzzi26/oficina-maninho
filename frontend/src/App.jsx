@@ -14,7 +14,6 @@ import Despesas from './pages/Despesas';
 import Fornecedores from './pages/Fornecedores';
 import Financeiro from './pages/Financeiro';
 import DRE from './pages/DRE';
-import Retornos from './pages/Retornos';
 import Agenda from './pages/Agenda';
 import Configuracoes from './pages/Configuracoes';
 import Pessoal from './pages/Pessoal';
@@ -23,7 +22,6 @@ import Recorrentes from './pages/Recorrentes';
 import ImprimirOS from './pages/ImprimirOS';
 import ImprimirChecklist from './pages/ImprimirChecklist';
 import Followup from './pages/Followup';
-import FollowupRegras from './pages/FollowupRegras';
 import PlataformaOficinas from './pages/PlataformaOficinas';
 import Usuarios from './pages/Usuarios';
 import Plano from './pages/Plano';
@@ -61,12 +59,12 @@ export default function App() {
           <Route path="fornecedores" element={<Fornecedores />} />
           <Route path="financeiro" element={<Financeiro />} />
           <Route path="dre" element={<DRE />} />
-          <Route path="retornos" element={<Retornos />} />
+          <Route path="retornos" element={<Navigate to="/followup?aba=revisoes" replace />} />
           <Route path="agenda" element={<Agenda />} />
           <Route path="servicos" element={<Servicos />} />
           <Route path="assistente" element={<Assistente />} />
           <Route path="followup" element={<Followup />} />
-          <Route path="followup/regras" element={<FollowupRegras />} />
+          <Route path="followup/regras" element={<Navigate to="/followup?aba=automacoes" replace />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="equipe" element={<Usuarios />} />
           <Route path="plano" element={<Plano />} />
