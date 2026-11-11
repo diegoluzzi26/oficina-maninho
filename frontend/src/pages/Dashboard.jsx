@@ -460,7 +460,7 @@ export default function Dashboard() {
                 Retornos agendados a partir de serviços com intervalo configurado no catálogo.
               </p>
             </div>
-            <Link to="/retornos" className="text-xs font-semibold text-maninho-600 hover:underline">
+            <Link to="/followup?aba=revisoes" className="text-xs font-semibold text-maninho-600 hover:underline">
               Ver todos
             </Link>
           </div>

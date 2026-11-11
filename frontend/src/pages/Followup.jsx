@@ -1,12 +1,15 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Wrench, RotateCcw, Megaphone, Star, MessageSquareText, Send, MessageCircle,
-  History, Check, X, Plus, Settings2, RefreshCw, Search, Loader2,
+  History, Check, X, Plus, RefreshCw, Search, Loader2,
 } from 'lucide-react';
 import { api, getUser } from '../lib/api';
 import { data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Confirmar } from '../components/ui';
+import Automacoes from './followup/Automacoes';
+import Revisoes from './followup/Revisoes';
+import Resultados from './followup/Resultados';
 
 /**
  * Follow-up em Kanban.
@@ -291,7 +294,6 @@ function FormManual({ aberto, onFechar, onCriado }) {
               <option value="manutencao">Manutenção</option>
               <option value="reativacao">Reativação</option>
               <option value="avaliacao">Avaliação</option>
-              <option value="livre">Livre</option>
             </select>
           </Campo>
           <Campo label="Agendar para" obrigatorio>
@@ -741,7 +743,62 @@ const COLUNA_PARA_STATUS = {
   'fechado':     'FECHADO_ESCOLHER', // marcador — a UI resolve
 };
 
+const ABAS = [
+  { chave: 'fila',       titulo: 'Fila' },
+  { chave: 'revisoes',   titulo: 'Próximas revisões' },
+  { chave: 'automacoes', titulo: 'Automações' },
+  { chave: 'resultados', titulo: 'Resultados' },
+];
+
+/**
+ * Follow-up: lugar único de contato com o cliente. Abas na URL (?aba=)
+ * para links de outras telas abrirem direto no lugar certo.
+ */
 export default function Followup() {
+  const ehAdmin = getUser()?.role === 'admin';
+  const [params, setParams] = useSearchParams();
+  const aba = ABAS.some((a) => a.chave === params.get('aba')) ? params.get('aba') : 'fila';
+  const [antecedencia, setAntecedencia] = useState(null);
+  const [versaoFila, setVersaoFila] = useState(0);
+
+  useEffect(() => {
+    if (aba !== 'revisoes') return;
+    api.followupAutomacoes()
+      .then((d) => setAntecedencia(d.automacoes.find((a) => a.chave === 'revisao')?.antecedencia_dias ?? null))
+      .catch(() => {});
+  }, [aba]);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
+          Follow-up
+        </h1>
+        <nav className="mt-3 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-slate-200 pb-px" aria-label="Seções do follow-up">
+          {ABAS.map((a) => {
+            const ativa = a.chave === aba;
+            return (
+              <button key={a.chave} type="button" aria-current={ativa ? 'page' : undefined}
+                onClick={() => setParams(a.chave === 'fila' ? {} : { aba: a.chave })}
+                className={`-mb-px whitespace-nowrap border-b-2 px-3 pb-2 pt-1 text-sm font-semibold transition
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500
+                  ${ativa ? 'border-maninho-600 text-maninho-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                {a.titulo}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {aba === 'fila' && <Fila key={versaoFila} />}
+      {aba === 'revisoes' && <Revisoes antecedencia={antecedencia} />}
+      {aba === 'automacoes' && <Automacoes ehAdmin={ehAdmin} onFilaMudou={() => setVersaoFila((v) => v + 1)} />}
+      {aba === 'resultados' && <Resultados />}
+    </div>
+  );
+}
+
+function Fila() {
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
   const [dados, setDados] = useState(null);
@@ -934,24 +991,14 @@ export default function Followup() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
-            Follow-up
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Clientes para chamar no WhatsApp. Arraste o card quando a conversa mudar de etapa.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-[60ch] text-sm text-slate-500">
+          Resposta do cliente e volta à oficina movem o card sozinhos. Arraste quando precisar ajustar.
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           {ehAdmin && (
-            <Link to="/followup/regras" className="btn-ghost" title="Quando e o que mandar automaticamente">
-              <Settings2 className="h-4 w-4" /> Regras
-            </Link>
-          )}
-          {ehAdmin && (
             <button type="button" onClick={gerar} disabled={gerando} className="btn-ghost"
-              title="Procura agora clientes que se encaixam nas regras (também roda sozinho todo dia)">
+              title="Procura agora quem se encaixa nas automações (também roda sozinho todo dia de manhã)">
               {gerando ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
               Atualizar fila
             </button>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, ClipboardList, Users, Receipt, Truck,
-  TrendingUp, Wallet, HardHat, RefreshCw, PhoneCall, MessageCircle,
+  TrendingUp, Wallet, HardHat, RefreshCw, MessageCircle,
   Wrench, Settings, Menu, X, FileText, Building2, UserCog, BadgeCheck, Sparkles,
   FileCheck,
 } from 'lucide-react';
@@ -56,7 +56,6 @@ const MENU = [
   { para: '/pessoal', texto: 'Pessoal', somenteAdmin: true, Icone: Wallet },
   { para: '/funcionarios', texto: 'Funcionários', somenteAdmin: true, recurso: 'funcionarios', Icone: HardHat },
   { para: '/recorrentes', texto: 'Recorrentes', somenteAdmin: true, recurso: 'gestao', Icone: RefreshCw },
-  { para: '/retornos', texto: 'Retornos', recurso: 'followup', Icone: PhoneCall },
   { para: '/followup', texto: 'Follow-up', recurso: 'followup', Icone: MessageCircle },
   { para: '/servicos', texto: 'Catálogo', Icone: Wrench },
   { para: '/notas-fiscais', texto: 'Notas fiscais', recurso: 'fiscal', Icone: FileCheck },
