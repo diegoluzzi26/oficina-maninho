@@ -70,6 +70,14 @@ export const api = {
   // Cadastro self-service da landing: cria a oficina em teste e devolve a sessão.
   cadastro: (dados) => request('/cadastro', { method: 'POST', body: dados }),
 
+  // --- agendamento online do cliente final (público, link do Google) ---
+  agendaPublica: (slug) => request(`/agendar/${slug}`),
+  agendaPublicaHorarios: (slug, data) => request(`/agendar/${slug}/horarios`, { params: { data } }),
+  agendaPublicaAgendar: (slug, dados) => request(`/agendar/${slug}`, { method: 'POST', body: dados }),
+  // Config da página (só admin)
+  configAgendaOnline: () => request('/config/agenda-online'),
+  salvarConfigAgendaOnline: (dados) => request('/config/agenda-online', { method: 'PUT', body: dados }),
+
   // --- usuários da própria oficina (só admin) ---
   usuarios: () => request('/auth/usuarios'),
   minhasPermissoes: () => request('/auth/permissoes'),

@@ -390,6 +390,12 @@ function PainelDia({ dia, agendamentos, onNovo, onEditar, onAcao }) {
                       {horaDe(a.data_agendada)}
                     </span>
                     <span className="text-xs text-slate-500">· {a.duracao_min}min</span>
+                    {a.origem === 'online' && (
+                      <span title="O cliente marcou pelo link de agendamento (Google)"
+                        className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+                        online
+                      </span>
+                    )}
                     {a.status !== 'agendado' && (
                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase
                         ${a.status === 'concluido' ? 'bg-emerald-100 text-emerald-700'
