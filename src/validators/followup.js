@@ -36,8 +36,26 @@ const reagendar = z.object({
   notas: z.string().max(500).optional(),
 });
 
+const chaveAutomacao = z.enum(['revisao', 'pos_servico', 'reativacao', 'campanha']);
+
 const gerar = z.object({
-  regra_id: uuid.optional(),
+  chave: chaveAutomacao.optional(),
+});
+
+const atualizarAutomacao = z.object({
+  ativo: z.boolean().optional(),
+  intervalo_dias: z.coerce.number().int().min(1).max(3650).optional(),
+  antecedencia_dias: z.coerce.number().int().min(0).max(120).optional(),
+  mensagem_template: z.string().trim().min(10, 'Mensagem muito curta').max(2000).optional(),
+});
+
+const campanha = z.object({
+  mensagem: z.string().max(2000).optional(),
+  confirmar: z.boolean().optional(),
+});
+
+const resultados = z.object({
+  meses: z.coerce.number().int().min(1).max(24).optional(),
 });
 
 // Envio em lote: lista opcional de ids e/ou regra_id. Sem nenhum = todos os
@@ -73,5 +91,6 @@ const periodoMetricas = z.object({ periodo: z.coerce.number().int().min(1).max(7
 
 module.exports = {
   regra, atualizarRegra, criarManual, mudarStatus, reagendar, gerar,
+  chaveAutomacao, atualizarAutomacao, campanha, resultados,
   enviarPendentes, conferirEnvios, filtroFila, filtroRegras, idParam, periodoMetricas,
 };
