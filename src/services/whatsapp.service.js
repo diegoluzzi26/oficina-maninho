@@ -115,9 +115,43 @@ function digitos(telefone) {
   return String(telefone || '').replace(/\D/g, '');
 }
 
+/** "5551998887777" → "(51) 99888-7777", para mensagens de erro legíveis. */
+function numeroLegivel(n) {
+  const d = digitos(n).replace(/^55(?=\d{10,11}$)/, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return d;
+}
+
+/**
+ * A Evolution responde 400 com `response.message = [{ exists:false, number }]`
+ * quando o número não tem WhatsApp. Antes esse array virava "[object Object]".
+ */
+function numeroInexistente(json) {
+  const m = json?.response?.message;
+  return Array.isArray(m) && m.some((x) => x && x.exists === false);
+}
+
+function motivoEvolution(json, status) {
+  const m = json?.response?.message ?? json?.message;
+  if (Array.isArray(m)) {
+    const semWa = m.filter((x) => x && x.exists === false);
+    if (semWa.length) {
+      return `o número ${semWa.map((x) => numeroLegivel(x.number || '')).join(', ')} não tem WhatsApp`;
+    }
+    return m.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; ');
+  }
+  if (m && typeof m === 'object') return JSON.stringify(m);
+  return m || `HTTP ${status}`;
+}
+
 /**
  * Envia texto pelo WhatsApp via Evolution.
  * `mensagem` é texto puro — Evolution suporta \n e emoji nativos.
+ *
+ * Celular brasileiro: contas antigas estão no WhatsApp SEM o 9 depois do
+ * DDD (e algumas o contrário). Se a Evolution disser que o número não existe,
+ * tenta a outra forma antes de desistir.
  */
 async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
   // Toda saída passa aqui (rotas, OS, follow-up, relatórios, jobs).
@@ -125,15 +159,21 @@ async function enviarTexto({ telefone, mensagem, cliente_id, os_id }) {
     throw new AppError('WhatsApp disponível a partir do plano Profissional', 403);
   }
   const e = ensureEnabled();
-  const numero = digitos(telefone);
+  const tentativas = jidsPossiveis(telefone).map((j) => j.replace(/@.*/, ''));
 
-  const { ok, status, json } = await evolutionRequest(
-    `/message/sendText/${e.instance}`,
-    { method: 'POST', body: { number: numero, text: mensagem } },
-  );
+  let ok; let status; let json;
+  for (const numero of tentativas) {
+    ({ ok, status, json } = await evolutionRequest(
+      `/message/sendText/${e.instance}`,
+      { method: 'POST', body: { number: numero, text: mensagem } },
+    ));
+    if (ok || !numeroInexistente(json)) break;
+  }
 
   if (!ok) {
-    const motivo = json?.response?.message || json?.message || `HTTP ${status}`;
+    const motivo = numeroInexistente(json)
+      ? `o número ${numeroLegivel(telefone)} não tem WhatsApp (tentado com e sem o 9)`
+      : motivoEvolution(json, status);
     await logMensagem({
       direction: 'outbound', kind: 'text', status: 'failed',
       telefone, cliente_id, os_id, body: mensagem,
@@ -179,7 +219,7 @@ async function enviarDocumento({ telefone, arquivo, nomeArquivo, legenda, client
   );
 
   if (!ok) {
-    const motivo = json?.response?.message || json?.message || `HTTP ${status}`;
+    const motivo = motivoEvolution(json, status);
     await logMensagem({
       direction: 'outbound', kind: 'other', status: 'failed',
       telefone, cliente_id, os_id, body: legenda,
