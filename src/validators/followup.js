@@ -40,18 +40,52 @@ const chaveAutomacao = z.enum(['revisao', 'pos_servico', 'reativacao', 'campanha
 
 const gerar = z.object({
   chave: chaveAutomacao.optional(),
+  id: uuid.optional(),
 });
 
+const gatilho = z.enum(['servico_feito', 'sumido', 'aniversario', 'campanha']);
+
+const filtrosAutomacao = z.object({
+  servico_ids: z.array(uuid).max(50).optional(),
+  peca_ids: z.array(uuid).max(50).optional(),
+  marca: z.string().trim().max(60).optional(),
+  modelo: z.string().trim().max(60).optional(),
+  ano_min: z.coerce.number().int().min(1950).max(2100).optional().nullable(),
+  ano_max: z.coerce.number().int().min(1950).max(2100).optional().nullable(),
+  cambios: z.array(z.enum(['manual', 'automatico', 'cvt', 'automatizado'])).max(4).optional(),
+  visita: z.enum(['qualquer', 'recente', 'sumido']).optional(),
+  visita_dias: z.coerce.number().int().min(1).max(3650).optional(),
+});
+
+const mensagemTemplate = z.string().trim().min(10, 'Mensagem muito curta').max(2000);
+
 const atualizarAutomacao = z.object({
+  nome: z.string().trim().min(2, 'Dê um nome à automação').max(60).optional(),
   ativo: z.boolean().optional(),
+  envio_automatico: z.boolean().optional(),
   intervalo_dias: z.coerce.number().int().min(1).max(3650).optional(),
   antecedencia_dias: z.coerce.number().int().min(0).max(120).optional(),
-  mensagem_template: z.string().trim().min(10, 'Mensagem muito curta').max(2000).optional(),
+  mensagem_template: mensagemTemplate.optional(),
+  filtros: filtrosAutomacao.optional(),
 });
+
+const criarAutomacao = z.object({
+  nome: z.string().trim().min(2, 'Dê um nome à automação').max(60),
+  gatilho,
+  intervalo_dias: z.coerce.number().int().min(1).max(3650).default(30),
+  mensagem_template: mensagemTemplate,
+  filtros: filtrosAutomacao.default({}),
+  ativo: z.boolean().default(true),
+  envio_automatico: z.boolean().default(false),
+});
+
+// Cartão fixo pela chave ou automação própria pelo id.
+const refAutomacao = z.object({ ref: z.union([chaveAutomacao, uuid]) });
 
 const campanha = z.object({
   mensagem: z.string().max(2000).optional(),
   confirmar: z.boolean().optional(),
+  regra_id: uuid.optional(),
 });
 
 const resultados = z.object({
@@ -91,6 +125,6 @@ const periodoMetricas = z.object({ periodo: z.coerce.number().int().min(1).max(7
 
 module.exports = {
   regra, atualizarRegra, criarManual, mudarStatus, reagendar, gerar,
-  chaveAutomacao, atualizarAutomacao, campanha, resultados,
+  chaveAutomacao, atualizarAutomacao, criarAutomacao, refAutomacao, campanha, resultados,
   enviarPendentes, conferirEnvios, filtroFila, filtroRegras, idParam, periodoMetricas,
 };

@@ -47,7 +47,7 @@ async function buscarPorId(id) {
 }
 
 // Campos que o cadastro grava (endereço estruturado é o da nota fiscal).
-const COLUNAS_CLIENTE = ['nome', 'telefone', 'cpf_cnpj', 'email', 'endereco', 'observacoes',
+const COLUNAS_CLIENTE = ['nome', 'telefone', 'cpf_cnpj', 'email', 'endereco', 'observacoes', 'data_nascimento',
   'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio', 'uf', 'codigo_municipio',
   'inscricao_estadual'];
 

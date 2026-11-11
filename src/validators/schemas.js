@@ -71,6 +71,9 @@ const criarCliente = z.object({
   email: z.string().email('E-mail inválido').optional().nullable().or(z.literal('')),
   endereco: z.string().optional().nullable(),
   observacoes: z.string().optional().nullable(),
+  // Usada pela automação de aniversário ('' limpa).
+  data_nascimento: z.string().date('Data de nascimento inválida').optional().nullable()
+    .or(z.literal('').transform(() => null)),
   // Endereço estruturado, exigido na nota fiscal ('' limpa).
   ...enderecoFiscal,
 });

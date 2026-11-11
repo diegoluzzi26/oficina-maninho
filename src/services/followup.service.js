@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const wa = require('./whatsapp.service');
+const assinatura = require('./assinatura.service');
 
 /**
  * Módulo de follow-up ativo com o cliente.
@@ -275,7 +276,7 @@ function estadoLote() {
  * `regra_id`). Itens já travados ficam de fora. Retorna o estado inicial;
  * o envio continua depois que a resposta HTTP já saiu.
  */
-async function enviarPendentesAgora(userId, { ids, regra_id } = {}) {
+async function enviarPendentesAgora(userId, { ids, regra_id, regra_ids } = {}) {
   const slug = db.slugAtual();
   if (lotes.get(slug)?.em_andamento) {
     throw new AppError('Já existe um envio em lote em andamento. Aguarde terminar.', 409);
@@ -290,6 +291,10 @@ async function enviarPendentesAgora(userId, { ids, regra_id } = {}) {
   if (regra_id) {
     params.push(regra_id);
     filtros.push(`AND regra_id = $${params.length}`);
+  }
+  if (Array.isArray(regra_ids)) {
+    params.push(regra_ids);
+    filtros.push(`AND regra_id = ANY($${params.length}::uuid[])`);
   }
   const { rows } = await db.query(
     `SELECT id, cliente_nome FROM vw_followup_fila
@@ -456,46 +461,140 @@ async function garantirAutomacoes() {
   }
 }
 
+/**
+ * Automações criadas pela oficina (regras sem chave, com `gatilho`).
+ * O tipo da fila vem do gatilho: é ele que decide se a mensagem pendente
+ * é dispensada quando o cliente volta antes (revisão/reativação).
+ */
+const GATILHOS = {
+  servico_feito: 'manutencao',
+  sumido: 'reativacao',
+  aniversario: 'promocao',
+  campanha: 'promocao',
+};
+
+const COLUNAS_AUTOMACAO = `
+  r.id, r.chave, r.gatilho, r.nome, r.tipo, r.ativo, r.intervalo_dias, r.antecedencia_dias,
+  r.mensagem_template, r.filtros, r.envio_automatico, r.atualizado_em,
+  (SELECT count(*)::int FROM followup_fila f
+    WHERE f.regra_id = r.id AND f.criado_em >= now() - interval '30 days') AS gerados_30d`;
+
+async function buscarAutomacao(ref) {
+  const porId = /^[0-9a-f-]{36}$/i.test(String(ref));
+  const { rows } = await db.query(
+    `SELECT ${COLUNAS_AUTOMACAO} FROM followup_regras r
+      WHERE ${porId ? 'r.id = $1::uuid' : 'r.chave = $1'}`, [ref],
+  );
+  if (!rows[0]) throw AppError.notFound('Automação não encontrada');
+  return rows[0];
+}
+
 async function listarAutomacoes() {
   await garantirAutomacoes();
   const { rows } = await db.query(
-    `SELECT r.id, r.chave, r.nome, r.tipo, r.ativo, r.intervalo_dias, r.antecedencia_dias,
-            r.mensagem_template, r.atualizado_em,
-            (SELECT count(*)::int FROM followup_fila f
-              WHERE f.regra_id = r.id AND f.criado_em >= now() - interval '30 days') AS gerados_30d
-       FROM followup_regras r
-      WHERE r.chave = ANY($1)`, [AUTOMACOES],
+    `SELECT ${COLUNAS_AUTOMACAO} FROM followup_regras r
+      WHERE r.chave = ANY($1) OR (r.chave IS NULL AND r.gatilho IS NOT NULL)
+      ORDER BY r.criado_em`, [AUTOMACOES],
   );
-  const porChave = Object.fromEntries(rows.map((r) => [r.chave, r]));
-  const catalogo = await db.query(
-    `SELECT (SELECT count(*)::int FROM servicos WHERE intervalo_retorno_meses IS NOT NULL) AS servicos,
-            (SELECT count(*)::int FROM pecas    WHERE intervalo_retorno_meses IS NOT NULL) AS pecas`,
-  );
+  const porChave = Object.fromEntries(rows.filter((r) => r.chave).map((r) => [r.chave, r]));
+  const [catalogo, servicos, pecas] = await Promise.all([
+    db.query(
+      `SELECT (SELECT count(*)::int FROM servicos WHERE intervalo_retorno_meses IS NOT NULL) AS servicos,
+              (SELECT count(*)::int FROM pecas    WHERE intervalo_retorno_meses IS NOT NULL) AS pecas`,
+    ),
+    db.query('SELECT id, nome FROM servicos WHERE ativo ORDER BY nome'),
+    db.query('SELECT id, nome FROM pecas WHERE ativo ORDER BY nome'),
+  ]);
   return {
     automacoes: AUTOMACOES.map((k) => porChave[k]).filter(Boolean),
+    personalizadas: rows.filter((r) => !r.chave),
     catalogo_com_intervalo: catalogo.rows[0],
+    catalogo: { servicos: servicos.rows, pecas: pecas.rows },
     oficina: await nomeOficina(),
     variaveis: VARIAVEIS,
   };
 }
 
-async function atualizarAutomacao(chave, d) {
-  if (!AUTOMACOES.includes(chave)) throw AppError.notFound('Automação não encontrada');
+/** Filtros de carro: valem para qualquer automação própria. */
+function filtrosDeCarro(f = {}) {
+  const out = {};
+  if (f.marca) out.marca = f.marca;
+  if (f.modelo) out.modelo = f.modelo;
+  if (f.ano_min) out.ano_min = f.ano_min;
+  if (f.ano_max) out.ano_max = f.ano_max;
+  if (f.cambios?.length) out.cambios = f.cambios;
+  return out;
+}
+
+/** Só guarda os filtros que o gatilho usa; servico_feito exige ao menos um item. */
+function limparFiltros(gatilho, f = {}) {
+  const carro = filtrosDeCarro(f);
+  if (gatilho === 'servico_feito') {
+    const out = { ...carro, servico_ids: f.servico_ids || [], peca_ids: f.peca_ids || [] };
+    if (!out.servico_ids.length && !out.peca_ids.length) {
+      throw new AppError('Escolha pelo menos um serviço ou peça', 422);
+    }
+    return out;
+  }
+  if (gatilho === 'campanha') {
+    const out = { ...carro };
+    if (f.servico_ids?.length) out.servico_ids = f.servico_ids;
+    if (f.visita && f.visita !== 'qualquer') {
+      out.visita = f.visita;
+      out.visita_dias = f.visita_dias || 180;
+    }
+    return out;
+  }
+  return carro;
+}
+
+async function criarAutomacao(d) {
+  const filtros = limparFiltros(d.gatilho, d.filtros);
+  const { rows } = await db.query(
+    `INSERT INTO followup_regras
+       (nome, tipo, gatilho, intervalo_dias, mensagem_template, filtros, ativo, envio_automatico)
+     VALUES ($1, $2::followup_tipo, $3, $4, $5, $6::jsonb, $7, $8)
+     RETURNING id`,
+    [d.nome, GATILHOS[d.gatilho], d.gatilho, d.intervalo_dias || 30, d.mensagem_template,
+      JSON.stringify(filtros), d.ativo ?? true, d.envio_automatico ?? false],
+  );
+  return buscarAutomacao(rows[0].id);
+}
+
+/** `ref` = chave de um cartão fixo ou id de uma automação própria. */
+async function atualizarAutomacao(ref, d) {
   await garantirAutomacoes();
+  const atual = await buscarAutomacao(ref);
+  const editaveis = ['ativo', 'intervalo_dias', 'antecedencia_dias', 'mensagem_template', 'envio_automatico'];
+  if (atual.gatilho) editaveis.push('nome', 'filtros');
   const campos = []; const params = [];
-  for (const k of ['ativo', 'intervalo_dias', 'antecedencia_dias', 'mensagem_template']) {
+  for (const k of editaveis) {
     if (d[k] === undefined) continue;
-    params.push(d[k]);
-    campos.push(`${k} = $${params.length}`);
+    const valor = k === 'filtros' ? JSON.stringify(limparFiltros(atual.gatilho, d.filtros)) : d[k];
+    params.push(valor);
+    campos.push(`${k} = $${params.length}${k === 'filtros' ? '::jsonb' : ''}`);
   }
   if (!campos.length) throw new AppError('Nada para atualizar', 422);
-  params.push(chave);
-  const { rows } = await db.query(
-    `UPDATE followup_regras SET ${campos.join(', ')}
-      WHERE chave = $${params.length} RETURNING id`, params,
+  params.push(atual.id);
+  await db.query(
+    `UPDATE followup_regras SET ${campos.join(', ')} WHERE id = $${params.length}`, params,
   );
-  if (!rows[0]) throw AppError.notFound('Automação não encontrada');
-  return (await listarAutomacoes()).automacoes.find((a) => a.chave === chave);
+  return buscarAutomacao(atual.id);
+}
+
+/**
+ * Apaga uma automação própria. O que ela já colocou na fila e ainda não
+ * saiu é apagado junto; o que já foi enviado fica no histórico.
+ */
+async function removerAutomacao(id) {
+  const atual = await buscarAutomacao(id);
+  if (!atual.gatilho) throw AppError.notFound('Automação não encontrada'); // cartão fixo: só desliga
+  const { rowCount } = await db.query(
+    `DELETE FROM followup_fila
+      WHERE regra_id = $1 AND status = 'pendente' AND envio_iniciado_em IS NULL`, [atual.id],
+  );
+  await db.query('DELETE FROM followup_regras WHERE id = $1', [atual.id]);
+  return { removida: true, pendentes_apagados: rowCount };
 }
 
 // ---------------------------------------------------------------- GERAR
@@ -606,6 +705,178 @@ const CANDIDATOS = {
   ),
 };
 
+/**
+ * Condições de carro (marca, modelo, ano, câmbio) já com placeholders.
+ * Empurra os valores em `params`. `p` = prefixo da coluna ('' dentro da
+ * lateral de carros, 'ca.' quando o carro vem da OS).
+ */
+function condicoesCarro(f = {}, params, p = '') {
+  const c = [];
+  const add = (v, sql) => { params.push(v); c.push(sql.replace('$?', `$${params.length}`)); };
+  if (f.marca) add(`%${f.marca}%`, `AND ${p}marca ILIKE $?`);
+  if (f.modelo) add(`%${f.modelo}%`, `AND ${p}modelo ILIKE $?`);
+  if (f.ano_min) add(f.ano_min, `AND ${p}ano >= $?`);
+  if (f.ano_max) add(f.ano_max, `AND ${p}ano <= $?`);
+  if (f.cambios?.length) add(f.cambios, `AND ${p}cambio::text = ANY($?::text[])`);
+  return c.join(' ');
+}
+
+/**
+ * Carro do cliente: o mais recente que passa no filtro. Com filtro de
+ * carro, cliente sem carro que bata fica de fora (exigirCarro).
+ */
+const carroDoCliente = (cond = '') => `
+  LEFT JOIN LATERAL (
+    SELECT id, marca, modelo, placa FROM carros
+     WHERE cliente_id = c.id ${cond}
+     ORDER BY criado_em DESC LIMIT 1
+  ) ca ON TRUE`;
+const exigirCarro = (cond) => (cond ? 'AND ca.id IS NOT NULL' : '');
+
+/** Público da campanha com filtros. Devolve { sql, params }. */
+function consultaCampanha(regra) {
+  const f = regra.filtros || {};
+  const params = [regra.id];
+  const condCarro = condicoesCarro(f, params);
+  const where = [exigirCarro(condCarro)];
+  if (f.servico_ids?.length) {
+    params.push(f.servico_ids);
+    where.push(`AND EXISTS (
+      SELECT 1 FROM ordens_servico o JOIN os_servicos s ON s.os_id = o.id
+       WHERE o.cliente_id = c.id AND o.status <> 'negada' AND s.servico_id = ANY($${params.length}::uuid[]))`);
+  }
+  if (f.visita === 'recente' || f.visita === 'sumido') {
+    params.push(f.visita_dias || 180);
+    const ultima = `(SELECT MAX(COALESCE(o.paga_em, o.fechada_em, o.aberta_em)) FROM ordens_servico o
+                      WHERE o.cliente_id = c.id AND o.status <> 'negada')`;
+    where.push(f.visita === 'recente'
+      ? `AND ${ultima} >= now() - ($${params.length}::int || ' days')::interval`
+      : `AND ${ultima} < now() - ($${params.length}::int || ' days')::interval`);
+  }
+  return {
+    sql: `SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+                 ca.id AS carro_id, COALESCE(ca.marca,'') AS marca, COALESCE(ca.modelo,'') AS modelo,
+                 COALESCE(ca.placa,'') AS placa, NULL::uuid AS os_origem_id, ''::text AS servico,
+                 0 AS dias_desde
+            FROM clientes c
+            ${carroDoCliente(condCarro)}
+           WHERE c.ativo AND c.telefone IS NOT NULL
+             ${where.join('\n')}
+             AND NOT EXISTS (
+               SELECT 1 FROM followup_fila ff
+                WHERE ff.cliente_id = c.id AND ff.regra_id = $1
+                  AND ff.criado_em > now() - interval '30 days')
+           ORDER BY c.nome
+           LIMIT 500`,
+    params,
+  };
+}
+
+/** Candidatos das automações próprias, pelo gatilho. */
+const CANDIDATOS_GATILHO = {
+  // OS paga/finalizada há `intervalo_dias` (janela de 30 dias) que teve
+  // algum dos serviços/peças escolhidos. Uma mensagem por OS. O filtro de
+  // carro olha o carro da OS.
+  servico_feito: (regra) => {
+    const f = regra.filtros || {};
+    const params = [regra.intervalo_dias, f.servico_ids || [], f.peca_ids || [], regra.id];
+    const condCarro = condicoesCarro(f, params, 'ca.');
+    return db.query(
+      `SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+              ca.id AS carro_id, ca.marca, ca.modelo, ca.placa,
+              os.id AS os_origem_id,
+              COALESCE((SELECT string_agg(DISTINCT x.nome, ', ') FROM (
+                  SELECT s.nome_servico AS nome FROM os_servicos s
+                   WHERE s.os_id = os.id AND s.servico_id = ANY($2::uuid[])
+                  UNION
+                  SELECT p.descricao FROM os_pecas p
+                   WHERE p.os_id = os.id AND p.peca_id = ANY($3::uuid[])
+                ) x), '') AS servico,
+              (CURRENT_DATE - COALESCE(os.paga_em, os.fechada_em)::date)::int AS dias_desde
+         FROM ordens_servico os
+         JOIN clientes c     ON c.id = os.cliente_id
+         LEFT JOIN carros ca ON ca.id = os.carro_id
+        WHERE os.status IN ('paga','finalizada')
+          AND COALESCE(os.paga_em, os.fechada_em)::date <= CURRENT_DATE - ($1::int || ' days')::interval
+          AND COALESCE(os.paga_em, os.fechada_em)::date >= CURRENT_DATE - (($1::int + 30) || ' days')::interval
+          AND c.telefone IS NOT NULL
+          AND (EXISTS (SELECT 1 FROM os_servicos s WHERE s.os_id = os.id AND s.servico_id = ANY($2::uuid[]))
+            OR EXISTS (SELECT 1 FROM os_pecas p WHERE p.os_id = os.id AND p.peca_id = ANY($3::uuid[])))
+          ${condCarro}
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_fila ff WHERE ff.os_origem_id = os.id AND ff.regra_id = $4)
+        LIMIT 300`,
+      params,
+    );
+  },
+
+  // Igual à Reativação, mas cada automação conta o próprio sumiço: dá para
+  // ter 90 dias com um texto e 1 ano com outro.
+  sumido: (regra) => {
+    const params = [regra.intervalo_dias, regra.id];
+    const condCarro = condicoesCarro(regra.filtros, params);
+    return db.query(
+      `WITH ultima AS (
+         SELECT o.cliente_id, MAX(COALESCE(o.paga_em, o.fechada_em, o.aberta_em))::date AS ultima_visita
+           FROM ordens_servico o
+          WHERE o.status <> 'negada'
+          GROUP BY o.cliente_id
+       )
+       SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+              ca.id AS carro_id, COALESCE(ca.marca,'') AS marca, COALESCE(ca.modelo,'') AS modelo,
+              COALESCE(ca.placa,'') AS placa,
+              NULL::uuid AS os_origem_id, ''::text AS servico,
+              (CURRENT_DATE - u.ultima_visita)::int AS dias_desde
+         FROM clientes c
+         JOIN ultima u ON u.cliente_id = c.id
+         ${carroDoCliente(condCarro)}
+        WHERE c.ativo AND c.telefone IS NOT NULL
+          AND u.ultima_visita <= CURRENT_DATE - ($1::int || ' days')::interval
+          ${exigirCarro(condCarro)}
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_fila ff
+             WHERE ff.cliente_id = c.id AND ff.regra_id = $2
+               AND ff.criado_em > u.ultima_visita
+          )
+        LIMIT 300`,
+      params,
+    );
+  },
+
+  // No dia do aniversário (29/02 cai em 28/02 nos anos comuns).
+  aniversario: (regra) => {
+    const params = [regra.id];
+    const condCarro = condicoesCarro(regra.filtros, params);
+    return db.query(
+      `SELECT c.id AS cliente_id, c.nome AS nome_cliente,
+              ca.id AS carro_id, COALESCE(ca.marca,'') AS marca, COALESCE(ca.modelo,'') AS modelo,
+              COALESCE(ca.placa,'') AS placa,
+              NULL::uuid AS os_origem_id, ''::text AS servico, 0 AS dias_desde
+         FROM clientes c
+         ${carroDoCliente(condCarro)}
+        WHERE c.ativo AND c.telefone IS NOT NULL AND c.data_nascimento IS NOT NULL
+          AND (c.data_nascimento + make_interval(years =>
+                (extract(year FROM CURRENT_DATE) - extract(year FROM c.data_nascimento))::int))::date = CURRENT_DATE
+          ${exigirCarro(condCarro)}
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_fila ff
+             WHERE ff.cliente_id = c.id AND ff.regra_id = $1
+               AND ff.criado_em > now() - interval '300 days'
+          )`,
+      params,
+    );
+  },
+
+  campanha: (regra) => {
+    const { sql, params } = consultaCampanha(regra);
+    return db.query(sql, params);
+  },
+};
+
+const candidatosDa = (regra) => (
+  regra.chave ? CANDIDATOS[regra.chave](regra) : CANDIDATOS_GATILHO[regra.gatilho](regra)
+);
+
 async function inserirDaRegra(regra, candidatos, template, userId) {
   const oficina = await nomeOficina();
   let gerados = 0;
@@ -642,42 +913,73 @@ async function inserirDaRegra(regra, candidatos, template, userId) {
  * Campanha não entra aqui: só sai quando o dono monta (montarCampanha).
  * Idempotente: rodar de novo não duplica.
  */
-async function gerarFila({ chave } = {}, userId) {
+async function gerarFila({ chave, id } = {}, userId) {
   await garantirAutomacoes();
-  const params = [['revisao', 'pos_servico', 'reativacao']];
+  const params = [['revisao', 'pos_servico', 'reativacao'], ['servico_feito', 'sumido', 'aniversario']];
   let filtro = '';
   if (chave) { params.push(chave); filtro = `AND chave = $${params.length}`; }
+  if (id) { params.push(id); filtro = `AND id = $${params.length}`; }
   const { rows: regras } = await db.query(
-    `SELECT * FROM followup_regras WHERE ativo AND chave = ANY($1) ${filtro}`, params,
+    `SELECT * FROM followup_regras
+      WHERE ativo AND (chave = ANY($1) OR (chave IS NULL AND gatilho = ANY($2))) ${filtro}
+      ORDER BY criado_em`, params,
   );
   const porAutomacao = {};
   let gerados = 0;
   for (const regra of regras) {
-    const { rows } = await CANDIDATOS[regra.chave](regra);
+    const { rows } = await candidatosDa(regra);
     const n = await inserirDaRegra(regra, rows, regra.mensagem_template, userId);
-    porAutomacao[regra.chave] = n;
+    porAutomacao[regra.chave || regra.id] = n;
     gerados += n;
   }
   return { gerados, por_automacao: porAutomacao };
 }
 
 /**
- * Prévia ou criação de uma campanha. `mensagem` sobrescreve o texto do
- * cartão só nesta campanha. `confirmar=false` só conta o público.
+ * Manda sozinho o que está pendente das automações com envio automático
+ * ligado (até 100 por vez, com o intervalo do lote; o resto sai no dia
+ * seguinte). Chamado pela geração das 8h. Retorna o estado do lote ou null.
  */
-async function montarCampanha({ mensagem, confirmar = false } = {}, userId) {
+async function enviarAutomaticos() {
+  const { rows } = await db.query(
+    `SELECT id FROM followup_regras
+      WHERE ativo AND envio_automatico AND COALESCE(gatilho, '') <> 'campanha'
+        AND COALESCE(chave, '') <> 'campanha'`,
+  );
+  if (!rows.length) return null;
+  if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) return null;
+  return enviarPendentesAgora(null, { regra_ids: rows.map((r) => r.id) });
+}
+
+/**
+ * Prévia ou criação de uma campanha. Sem `regra_id` é o cartão fixo
+ * Campanha; com `regra_id`, uma campanha própria (público filtrado).
+ * `mensagem` sobrescreve o texto só nesta vez. `confirmar=false` só conta
+ * o público. Com envio automático ligado, já começa a enviar.
+ */
+async function montarCampanha({ mensagem, confirmar = false, regra_id } = {}, userId) {
   await garantirAutomacoes();
-  const { rows } = await db.query(`SELECT * FROM followup_regras WHERE chave = 'campanha'`);
+  const { rows } = regra_id
+    ? await db.query(`SELECT * FROM followup_regras WHERE id = $1 AND gatilho = 'campanha'`, [regra_id])
+    : await db.query(`SELECT * FROM followup_regras WHERE chave = 'campanha'`);
   const regra = rows[0];
-  if (!regra) throw AppError.notFound('Automação de campanha não encontrada');
+  if (!regra) throw AppError.notFound('Campanha não encontrada');
   const texto = (mensagem ?? regra.mensagem_template ?? '').trim();
   if (confirmar && texto.length < 10) throw new AppError('Escreva a mensagem da campanha', 422);
-  const { rows: publico } = await CANDIDATOS.campanha(regra);
+  const { rows: publico } = await candidatosDa(regra);
   if (!confirmar) {
     return { publico: publico.length, exemplo: publico[0]?.nome_cliente || null };
   }
   const gerados = await inserirDaRegra(regra, publico, texto, userId);
-  return { publico: publico.length, gerados };
+  let envio = null;
+  if (regra.envio_automatico && gerados) {
+    try {
+      envio = await enviarPendentesAgora(userId, { regra_id: regra.id });
+    } catch (e) {
+      envio = { erro: e.message };
+    }
+  }
+  return { publico: publico.length, gerados, envio };
 }
 
 // ---------------------------------------------------------------- RESPOSTA DO CLIENTE
@@ -724,12 +1026,23 @@ async function resultados({ meses = 6 } = {}) {
     count(*) FILTER (WHERE f.status IN ('respondeu','converteu') OR f.respondido_em IS NOT NULL)::int AS responderam,
     count(*) FILTER (WHERE f.status = 'converteu')::int AS voltaram,
     COALESCE(sum(COALESCE(o.valor_pago, o.valor_total)) FILTER (WHERE o.status = 'paga'), 0)::numeric AS faturamento`;
-  const [tot, porTipo, porMes] = await Promise.all([
+  const [tot, porTipo, porMes, porAutomacao] = await Promise.all([
     db.query(`SELECT ${cols} ${base}`, [m]),
     db.query(`SELECT f.tipo, ${cols} ${base} GROUP BY f.tipo`, [m]),
     db.query(
       `SELECT to_char(date_trunc('month', f.enviado_em), 'YYYY-MM') AS mes, ${cols} ${base}
         GROUP BY 1 ORDER BY 1`, [m],
+    ),
+    // Por automação. Sem regra = criado à mão ou de automação apagada.
+    db.query(
+      `SELECT f.regra_id, COALESCE(r.nome, 'Manual ou apagada') AS nome, r.chave, r.gatilho,
+              ${cols}
+         FROM followup_fila f
+         LEFT JOIN ordens_servico o ON o.id = f.convertido_os_id
+         LEFT JOIN followup_regras r ON r.id = f.regra_id
+        WHERE f.enviado_em >= date_trunc('month', CURRENT_DATE) - (($1::int - 1) || ' months')::interval
+        GROUP BY f.regra_id, r.nome, r.chave, r.gatilho
+        ORDER BY count(*) DESC`, [m],
     ),
   ]);
   const num = (r) => ({
@@ -741,6 +1054,9 @@ async function resultados({ meses = 6 } = {}) {
     total: num(tot.rows[0]),
     por_tipo: Object.fromEntries(porTipo.rows.map((r) => [r.tipo, num(r)])),
     por_mes: porMes.rows.map((r) => ({ mes: r.mes, ...num(r) })),
+    por_automacao: porAutomacao.rows.map((r) => ({
+      regra_id: r.regra_id, nome: r.nome, chave: r.chave, gatilho: r.gatilho, ...num(r),
+    })),
   };
 }
 
@@ -918,7 +1234,8 @@ module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
   gerarFila, metricas, renderizar,
-  listarAutomacoes, atualizarAutomacao, montarCampanha,
+  listarAutomacoes, atualizarAutomacao, criarAutomacao, removerAutomacao, montarCampanha,
+  enviarAutomaticos,
   registrarRespostaDoCliente, resultados,
   enviarAgora, enviarPendentesAgora, estadoLote, conferirEnvios,
   kanban, historicoDoCliente,
