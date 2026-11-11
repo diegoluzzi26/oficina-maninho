@@ -47,6 +47,25 @@ function agendar() {
   // Dedup por oficina: no máximo uma geração por dia/hora.
   const ultimaPorOficina = new Map();
 
+  // A cada 10 min, confere na Evolution os envios que deram timeout
+  // (itens travados em "enviando"). Só chama a Evolution se houver item.
+  setInterval(async () => {
+    try {
+      await paraCadaOficinaAtiva(async (slug) => {
+        try {
+          const r = await followup.conferirEnvios({}, null);
+          if (r.confirmados || r.liberados) {
+            console.log(`[followup-conferir] ${slug}: ${r.confirmados} confirmado(s), ${r.liberados} liberado(s)`);
+          }
+        } catch (err) {
+          console.error(`[followup-conferir] ${slug}: falha —`, err.message);
+        }
+      });
+    } catch (err) {
+      console.error('[followup-conferir] falha ao listar oficinas:', err.message);
+    }
+  }, 10 * 60 * 1000).unref();
+
   setInterval(async () => {
     const agora = new Date();
     if (agora.getHours() !== HORA_ALVO) return;

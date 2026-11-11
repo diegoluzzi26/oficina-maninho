@@ -49,6 +49,10 @@ const enviarPendentes = z.object({
   regra_id: uuid.optional(),
 });
 
+const conferirEnvios = z.object({
+  todosPendentes: z.boolean().optional(),
+});
+
 const filtroFila = z.object({
   status: status.optional(),
   tipo: tipo.optional(),
@@ -69,5 +73,5 @@ const periodoMetricas = z.object({ periodo: z.coerce.number().int().min(1).max(7
 
 module.exports = {
   regra, atualizarRegra, criarManual, mudarStatus, reagendar, gerar,
-  enviarPendentes, filtroFila, filtroRegras, idParam, periodoMetricas,
+  enviarPendentes, conferirEnvios, filtroFila, filtroRegras, idParam, periodoMetricas,
 };
