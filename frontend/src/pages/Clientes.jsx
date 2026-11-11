@@ -28,7 +28,7 @@ async function buscarCep(cep) {
 
 export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
   const vazio = {
-    nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '',
+    nome: '', telefone: '', cpf_cnpj: '', email: '', endereco: '', observacoes: '', data_nascimento: '',
     ...Object.fromEntries(CAMPOS_ENDERECO.map((c) => [c, ''])),
   };
   const [buscandoCep, setBuscandoCep] = useState(false);
@@ -54,6 +54,7 @@ export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
         email: form.email || null,
         endereco: form.endereco || null,
         observacoes: form.observacoes || null,
+        data_nascimento: form.data_nascimento ? String(form.data_nascimento).slice(0, 10) : null,
         ...Object.fromEntries(CAMPOS_ENDERECO.map((c) => [c, form[c] || ''])),
       };
       const salvo = cliente
@@ -89,10 +90,17 @@ export function FormCliente({ aberto, cliente, onFechar, onSalvo }) {
           </Campo>
         </div>
 
-        <Campo label="E-mail">
-          <input type="email" className="input" value={form.email || ''} onChange={set('email')}
-            placeholder="joao@email.com" />
-        </Campo>
+        <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
+          <Campo label="E-mail">
+            <input type="email" className="input" value={form.email || ''} onChange={set('email')}
+              placeholder="joao@email.com" />
+          </Campo>
+          <Campo label="Data de nascimento" ajuda="Para a mensagem de aniversário">
+            <input type="date" className="input" max={new Date().toISOString().slice(0, 10)}
+              value={form.data_nascimento ? String(form.data_nascimento).slice(0, 10) : ''}
+              onChange={set('data_nascimento')} />
+          </Campo>
+        </div>
 
         <Campo label="Endereço">
           <input className="input" value={form.endereco || ''} onChange={set('endereco')}
