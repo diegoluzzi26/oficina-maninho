@@ -70,9 +70,17 @@ const { z } = require('zod');
 router.get('/automacoes',
   h(async (req, res) => res.json(await svc.listarAutomacoes())));
 
-router.put('/automacoes/:chave', requireRole('admin'),
-  validate({ params: z.object({ chave: v.chaveAutomacao }), body: v.atualizarAutomacao }),
-  h(async (req, res) => res.json(await svc.atualizarAutomacao(req.params.chave, req.body))));
+router.post('/automacoes', requireRole('admin'), validate({ body: v.criarAutomacao }),
+  h(async (req, res) => res.status(201).json(await svc.criarAutomacao(req.body))));
+
+// :ref = chave de cartão fixo (revisao, ...) ou id de automação própria.
+router.put('/automacoes/:ref', requireRole('admin'),
+  validate({ params: v.refAutomacao, body: v.atualizarAutomacao }),
+  h(async (req, res) => res.json(await svc.atualizarAutomacao(req.params.ref, req.body))));
+
+// Só automação própria; cartões fixos não se apagam (se desligam).
+router.delete('/automacoes/:id', requireRole('admin'), validate({ params: v.idParam }),
+  h(async (req, res) => res.json(await svc.removerAutomacao(req.params.id))));
 
 // Campanha: confirmar=false só conta o público; true cria os itens na fila.
 router.post('/campanha', requireRole('admin'), validate({ body: v.campanha }),

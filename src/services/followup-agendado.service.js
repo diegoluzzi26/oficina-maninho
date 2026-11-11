@@ -8,9 +8,9 @@ const followup = require('./followup.service');
  * Geração automática da fila de follow-up.
  *
  * 1x/dia, ~ALERTA_HORA, roda `gerarFila()` em cada oficina ativa — popula
- * os pendentes a partir de TODAS as regras ativas. NÃO dispara WhatsApp:
- * o dono revisa no Kanban e envia manualmente (decisão de produto — evita
- * mandar mensagem pra cliente sem revisão).
+ * os pendentes a partir de TODAS as regras ativas. Só dispara WhatsApp
+ * das automações em que o dono ligou "enviar sozinho"; o resto espera
+ * revisão em Para enviar.
  *
  * Idempotente: `gerarFila` já tem dedup por (cliente, carro, regra) +
  * janela de 30 dias, então rodar de novo não duplica. O dedup em memória
@@ -39,7 +39,16 @@ async function habilitado() {
 async function gerarParaOficinaAtual() {
   if (!(await assinatura.recursoNaOficinaAtual('followup'))) return { pulado: 'plano' };
   if (!(await habilitado())) return { pulado: 'desligado' };
-  return followup.gerarFila({}, null);
+  const r = await followup.gerarFila({}, null);
+  // Automações com "enviar sozinho" ligado: o que está pendente delas sai
+  // agora, em lote (até 100, com intervalo). As demais esperam revisão.
+  try {
+    const lote = await followup.enviarAutomaticos();
+    if (lote) r.envio_automatico = lote.total;
+  } catch (err) {
+    r.envio_automatico_erro = err.message;
+  }
+  return r;
 }
 
 function agendar() {
@@ -80,7 +89,9 @@ function agendar() {
           if (r.pulado) {
             console.log(`[followup-auto] ${slug}: pulado (${r.pulado})`);
           } else {
-            console.log(`[followup-auto] ${slug}: ${r.gerados} pendente(s) gerado(s)`);
+            console.log(`[followup-auto] ${slug}: ${r.gerados} pendente(s) gerado(s)`
+              + (r.envio_automatico ? `, ${r.envio_automatico} saindo sozinho(s)` : '')
+              + (r.envio_automatico_erro ? ` — envio automático falhou: ${r.envio_automatico_erro}` : ''));
           }
         } catch (err) {
           console.error(`[followup-auto] ${slug}: falha —`, err.message);
@@ -91,7 +102,7 @@ function agendar() {
     }
   }, 10 * 60 * 1000).unref();
 
-  console.log(`[followup-auto] geração da fila às ${HORA_ALVO}h — por oficina (só gera, não envia)`);
+  console.log(`[followup-auto] geração da fila às ${HORA_ALVO}h — por oficina (envia sozinho só onde estiver ligado)`);
 }
 
 module.exports = { agendar, gerarParaOficinaAtual };
