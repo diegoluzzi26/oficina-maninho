@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wrench, Star, RotateCcw, Megaphone } from 'lucide-react';
+import { Wrench, Star, RotateCcw, Megaphone, ClipboardCheck, UserX, Cake, Send } from 'lucide-react';
 import { api } from '../../lib/api';
 import { brl, mesCurto } from '../../lib/format';
 import { Skeleton, Alerta, Vazio } from '../../components/ui';
@@ -10,12 +10,11 @@ import { Skeleton, Alerta, Vazio } from '../../components/ui';
  * faturamento = o que essas OS renderam depois de pagas.
  */
 
-const TIPOS = [
-  ['manutencao', 'Revisão', Wrench],
-  ['avaliacao', 'Pós-serviço', Star],
-  ['reativacao', 'Reativação', RotateCcw],
-  ['promocao', 'Campanha', Megaphone],
-];
+// Ícone pela chave do cartão fixo ou pelo gatilho da automação própria.
+const ICONES = {
+  revisao: Wrench, pos_servico: Star, reativacao: RotateCcw, campanha: Megaphone,
+  servico_feito: ClipboardCheck, sumido: UserX, aniversario: Cake,
+};
 
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
@@ -76,12 +75,12 @@ export default function Resultados() {
           </div>
 
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Por tipo de follow-up</h2>
+            <h2 className="mb-2 text-sm font-semibold text-slate-700">Por automação</h2>
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="border-b border-slate-200 text-left text-xs text-slate-500">
                   <tr>
-                    <th className="px-4 py-2 font-semibold">Tipo</th>
+                    <th className="px-4 py-2 font-semibold">Automação</th>
                     <th className="px-4 py-2 text-right font-semibold">Enviadas</th>
                     <th className="px-4 py-2 text-right font-semibold">Responderam</th>
                     <th className="px-4 py-2 text-right font-semibold">Voltaram</th>
@@ -89,10 +88,11 @@ export default function Resultados() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {TIPOS.map(([k, nome, Icone]) => {
-                    const r = dados.por_tipo[k] || { enviados: 0, responderam: 0, voltaram: 0, faturamento: 0 };
+                  {(dados.por_automacao || []).map((r) => {
+                    const Icone = ICONES[r.chave || r.gatilho] || Send;
+                    const nome = r.nome;
                     return (
-                      <tr key={k} className={r.enviados ? '' : 'text-slate-400'}>
+                      <tr key={r.regra_id || 'manual'}>
                         <td className="px-4 py-2.5">
                           <span className="inline-flex items-center gap-2 font-medium text-slate-700">
                             <Icone className="h-4 w-4 text-slate-400" aria-hidden="true" /> {nome}
