@@ -174,3 +174,47 @@ test('"Conferir no WhatsApp" acerta pendentes que já tinham saído', async () =
   assert.equal((await item(jaSaiu)).status, 'enviado');
   assert.equal((await item(naoSaiu)).status, 'pendente');
 });
+
+// ---------------------------------------------------------------- número sem/com o 9
+
+test('número sem WhatsApp com o 9: tenta sem o 9 e envia', async () => {
+  const fresh = require('../src/services/whatsapp.service');
+  const config = require('../src/services/config.service');
+  const assinatura = require('../src/services/assinatura.service');
+  const orig = { fetch: global.fetch, cfg: config.whatsapp, rec: assinatura.recursoNaOficinaAtual };
+  config.whatsapp = () => ({ enabled: true, url: 'http://evo', apiKey: 'k', instance: 'ta' });
+  assinatura.recursoNaOficinaAtual = async () => true;
+  const numeros = [];
+  const resp = (status, body) => ({ ok: status < 300, status, json: async () => body });
+  try {
+    // Só existe a forma sem o 9.
+    global.fetch = async (_url, opt) => {
+      const { number } = JSON.parse(opt.body);
+      numeros.push(number);
+      return number === '555199990001'
+        ? resp(201, { key: { id: `OK-${Date.now()}` } })
+        : resp(400, { status: 400, response: { message: [{ jid: `${number}@s.whatsapp.net`, exists: false, number }] } });
+    };
+    const r = await naOficinaA(() => fresh.enviarTexto({ telefone: '+5551999990001', mensagem: 'oi' }));
+    assert.ok(r.wa_message_id);
+    assert.deepEqual(numeros, ['5551999990001', '555199990001']);
+
+    // Nenhuma forma existe: erro legível, sem "[object Object]".
+    global.fetch = async (_url, opt) => {
+      const { number } = JSON.parse(opt.body);
+      return resp(400, { status: 400, response: { message: [{ exists: false, number }] } });
+    };
+    await assert.rejects(
+      naOficinaA(() => fresh.enviarTexto({ telefone: '+5551999990001', mensagem: 'oi' })),
+      (err) => {
+        assert.match(err.message, /\(51\) 99999-0001 não tem WhatsApp/);
+        assert.doesNotMatch(err.message, /object Object/);
+        return true;
+      },
+    );
+  } finally {
+    global.fetch = orig.fetch;
+    config.whatsapp = orig.cfg;
+    assinatura.recursoNaOficinaAtual = orig.rec;
+  }
+});
