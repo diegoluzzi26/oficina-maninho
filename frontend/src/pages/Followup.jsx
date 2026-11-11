@@ -1,63 +1,94 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Wrench, RotateCcw, Megaphone, Star, MessageSquareText, Send, MessageCircle,
+  History, Check, X, Plus, Settings2, RefreshCw, Search, Loader2,
+} from 'lucide-react';
 import { api, getUser } from '../lib/api';
 import { data, telefone } from '../lib/format';
 import { Skeleton, Alerta, Vazio, Modal, Campo, Spinner, Confirmar } from '../components/ui';
 
 /**
  * Follow-up em Kanban.
- * 4 colunas por STATUS + chips coloridos por TIPO no topo.
- * Card de cada follow-up tem borda esquerda colorida do tipo e um
- * botão "Histórico" que abre modal com todas as interações do cliente.
+ *
+ * A tela responde "quem eu chamo hoje?". O topo de cada coluna é um funil
+ * (número grande + o que ele significa); os cards ficam neutros e a única
+ * cor forte é a de atraso. "Para enviar" vem separado por urgência.
  */
 
 const TIPO_META = {
-  manutencao: { emoji: '🔧', label: 'Manutenção', cor: 'azul' },
-  reativacao: { emoji: '💤', label: 'Reativação', cor: 'ouro' },
-  promocao:   { emoji: '📢', label: 'Promoção',   cor: 'verde' },
-  avaliacao:  { emoji: '⭐', label: 'Avaliação',  cor: 'rosa' },
+  manutencao: { Icone: Wrench,            label: 'Manutenção' },
+  reativacao: { Icone: RotateCcw,         label: 'Reativação' },
+  promocao:   { Icone: Megaphone,         label: 'Promoção' },
+  avaliacao:  { Icone: Star,              label: 'Avaliação' },
+  livre:      { Icone: MessageSquareText, label: 'Livre' },
 };
 
 const COLUNAS = [
-  { chave: 'a-fazer',     titulo: 'A fazer',             marcador: 'bg-slate-400' },
-  { chave: 'enviado',     titulo: 'Enviado · Aguardando', marcador: 'bg-maninho-600' },
-  { chave: 'em-conversa', titulo: 'Em conversa',         marcador: 'bg-ouro-500' },
-  { chave: 'fechado',     titulo: 'Fechado',             marcador: 'bg-emerald-500' },
+  { chave: 'a-fazer',     titulo: 'Para enviar' },
+  { chave: 'enviado',     titulo: 'Aguardando resposta' },
+  { chave: 'em-conversa', titulo: 'Em conversa' },
+  { chave: 'fechado',     titulo: 'Fechados' },
 ];
 
-const EVENTO_META = {
-  enviado:    { simbolo: '📤', bg: 'bg-maninho-100 text-maninho-700' },
-  respondeu:  { simbolo: '💬', bg: 'bg-ouro-100 text-ouro-700' },
-  converteu:  { simbolo: '✅', bg: 'bg-emerald-100 text-emerald-700' },
-  dispensado: { simbolo: '✕',  bg: 'bg-slate-100 text-slate-500' },
-  criado:     { simbolo: '⏱',  bg: 'bg-slate-100 text-slate-500' },
+const COLUNA_DO_STATUS = {
+  pendente: 'a-fazer', enviado: 'enviado',
+  respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
 };
 
-function bordaTipo(tipo) {
-  const m = { azul: 'border-l-maninho-600', ouro: 'border-l-ouro-500',
-    verde: 'border-l-emerald-500', rosa: 'border-l-rose-500' }[TIPO_META[tipo]?.cor];
-  return m || 'border-l-slate-300';
-}
-function chipTipo(tipo) {
-  const cor = TIPO_META[tipo]?.cor;
-  return {
-    azul:  'bg-maninho-50 text-maninho-700',
-    ouro:  'bg-ouro-100 text-ouro-700',
-    verde: 'bg-emerald-50 text-emerald-700',
-    rosa:  'bg-rose-50 text-rose-700',
-  }[cor] || 'bg-slate-100 text-slate-600';
+const EVENTO_META = {
+  enviado:    { Icone: Send,          bg: 'bg-maninho-100 text-maninho-700' },
+  respondeu:  { Icone: MessageCircle, bg: 'bg-ouro-100 text-ouro-700' },
+  converteu:  { Icone: Check,         bg: 'bg-emerald-100 text-emerald-700' },
+  dispensado: { Icone: X,             bg: 'bg-slate-100 text-slate-500' },
+  criado:     { Icone: History,       bg: 'bg-slate-100 text-slate-500' },
+};
+
+const ROTULO_STATUS = {
+  pendente: 'pendente', enviado: 'enviado', respondeu: 'respondeu',
+  converteu: 'virou serviço', dispensado: 'dispensado',
+};
+
+function diasAte(iso) {
+  if (!iso) return 0;
+  const alvo = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return Math.round((alvo - hoje) / 86400000);
 }
 
 function tempoRelativo(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  const hoje = new Date();
-  const dias = Math.round((hoje - d) / 86400000);
+  const dias = Math.round((new Date() - new Date(iso)) / 86400000);
   if (dias === 0) return 'hoje';
   if (dias === 1) return 'ontem';
   if (dias > 1) return `há ${dias} dias`;
   if (dias === -1) return 'amanhã';
   return `em ${-dias} dias`;
+}
+
+/** Urgência de um pendente pelo dia agendado. */
+function urgencia(item) {
+  const d = diasAte(item.agendado_para);
+  if (d < 0) return { grupo: 'atrasados', texto: d === -1 ? 'atrasado 1 dia' : `atrasado ${-d} dias` };
+  if (d === 0) return { grupo: 'hoje', texto: 'hoje' };
+  return { grupo: 'proximos', texto: d === 1 ? 'amanhã' : `em ${d} dias` };
+}
+
+const GRUPOS_PENDENTES = [
+  { chave: 'atrasados', titulo: 'Atrasados' },
+  { chave: 'hoje',      titulo: 'Para hoje' },
+  { chave: 'proximos',  titulo: 'Próximos dias' },
+];
+
+function TipoTag({ tipo }) {
+  const m = TIPO_META[tipo] || TIPO_META.livre;
+  const { Icone } = m;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+      <Icone className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      {m.label}
+    </span>
+  );
 }
 
 // ------------------------------------------------------------------ Modal Histórico
@@ -94,17 +125,18 @@ function ModalHistorico({ clienteId, onFechar }) {
             {dados.historico.map((h) => {
               const evento = h.status === 'pendente' ? 'criado' : h.status;
               const meta = EVENTO_META[evento] || EVENTO_META.criado;
-              const tipo = TIPO_META[h.tipo];
+              const tipo = TIPO_META[h.tipo] || TIPO_META.livre;
               const quando = h.respondido_em || h.enviado_em || h.criado_em;
+              const { Icone } = meta;
               return (
                 <li key={h.id} className="flex gap-3 rounded-md bg-slate-50 p-3">
-                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm ${meta.bg}`}>
-                    {meta.simbolo}
+                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${meta.bg}`}>
+                    <Icone className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline justify-between gap-1">
                       <p className="text-sm font-semibold text-slate-800">
-                        {tipo?.emoji} {tipo?.label} · {h.status}
+                        {tipo.label}: {ROTULO_STATUS[h.status] || h.status}
                       </p>
                       {h.convertido_os_numero && (
                         <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
@@ -113,8 +145,8 @@ function ModalHistorico({ clienteId, onFechar }) {
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {data(quando)} · {tempoRelativo(quando)}
-                      {h.regra_nome && ` · ${h.regra_nome}`}
+                      {data(quando)} ({tempoRelativo(quando)})
+                      {h.regra_nome && `, regra “${h.regra_nome}”`}
                     </p>
                     {h.mensagem && (
                       <p className="mt-1.5 whitespace-pre-wrap rounded bg-white p-2 text-xs text-slate-600">
@@ -132,7 +164,6 @@ function ModalHistorico({ clienteId, onFechar }) {
   );
 }
 
-// ------------------------------------------------------------------ Card
 
 // ------------------------------------------------------------------ Form Manual (com IA)
 
@@ -331,112 +362,136 @@ function FormManual({ aberto, onFechar, onCriado }) {
   );
 }
 
-function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd }) {
-  const tipo = TIPO_META[item.tipo];
-  const coluna = {
-    pendente: 'a-fazer', enviado: 'enviado',
-    respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
-  }[item.status];
+// ------------------------------------------------------------------ Card
 
+const BTN_ICONE = 'grid h-7 w-7 place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500';
+const BTN_TEXTO = 'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500 disabled:opacity-50';
+
+function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd }) {
+  const coluna = COLUNA_DO_STATUS[item.status];
   // Pendente com envio iniciado: a mensagem foi entregue à Evolution e o
   // sistema está confirmando se saiu. Não pode ser enviado de novo.
   const conferindo = item.status === 'pendente' && !!item.envio_iniciado_em;
+  const urg = item.status === 'pendente' ? urgencia(item) : null;
+  const atrasado = urg?.grupo === 'atrasados';
 
-  let tempo = '';
-  if (conferindo) tempo = '⏳ enviando…';
-  else if (item.status === 'pendente') tempo = tempoRelativo(item.agendado_para);
-  else if (item.status === 'enviado')   tempo = `enviado ${tempoRelativo(item.enviado_em)}`;
-  else if (item.status === 'respondeu') tempo = `respondeu ${tempoRelativo(item.respondido_em)}`;
-  else if (item.status === 'converteu') tempo = `✅ converteu ${tempoRelativo(item.respondido_em || item.enviado_em)}`;
-  else if (item.status === 'dispensado') tempo = '✕ dispensado';
+  let quando = '';
+  if (conferindo) quando = 'enviando…';
+  else if (urg) quando = urg.texto;
+  else if (item.status === 'enviado')   quando = `enviado ${tempoRelativo(item.enviado_em)}`;
+  else if (item.status === 'respondeu') quando = `respondeu ${tempoRelativo(item.respondido_em)}`;
 
-  // Prévia da mensagem — 2 linhas
   const previa = (item.mensagem || '').replace(/\s+/g, ' ').trim();
+  const carro = [item.marca, item.modelo].filter(Boolean).join(' ');
 
   return (
-    <div draggable
+    <article draggable
       onDragStart={(e) => onDragStart(e, item)}
       onDragEnd={onDragEnd}
-      className={`group relative cursor-grab rounded-md border border-slate-200 border-l-[3px] bg-white p-2.5 shadow-sm transition hover:-translate-y-px hover:shadow-md active:cursor-grabbing ${bordaTipo(item.tipo)}`}>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${chipTipo(item.tipo)}`}>
-          {tipo?.emoji} {tipo?.label}
+      className={`cursor-grab rounded-lg border bg-white p-3 active:cursor-grabbing
+        ${atrasado ? 'border-ouro-300' : 'border-slate-200'}`}>
+      <header className="flex items-baseline justify-between gap-2">
+        <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-slate-800">
+          {item.cliente_nome}
+        </h3>
+        <span className={`shrink-0 text-[11px] font-semibold tabular-nums
+          ${atrasado ? 'text-ouro-600' : conferindo ? 'text-maninho-700' : 'text-slate-400'}`}>
+          {conferindo && <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden="true" />}
+          {quando}
         </span>
-        <span className="tnum text-[11px] font-medium text-slate-400">{tempo}</span>
-      </div>
-      <p className="text-sm font-semibold leading-tight text-slate-800">{item.cliente_nome}</p>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
-        {item.placa && (
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-700">
-            {item.placa}
-          </span>
-        )}
-        {(item.marca || item.modelo) && (
-          <span className="truncate">{item.marca} {item.modelo}</span>
-        )}
-      </div>
-      {item.cliente_telefone && (
-        <p className="tnum mt-1 font-mono text-[11px] font-semibold text-maninho-700">
-          {telefone(item.cliente_telefone)}
-        </p>
-      )}
-      {previa && (
-        <p className="mt-1.5 line-clamp-2 rounded bg-slate-50 px-2 py-1 text-[11px] leading-snug text-slate-600">
-          {previa}
+      </header>
+
+      {(item.placa || carro) && (
+        <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-500">
+          {item.placa && (
+            <span className="rounded border border-slate-300 px-1 font-mono text-[11px] font-semibold tracking-wide text-slate-700">
+              {item.placa}
+            </span>
+          )}
+          <span className="truncate">{carro}</span>
         </p>
       )}
 
-      {/* Ações contextuais por coluna — aparecem no hover */}
-      <div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 opacity-0 transition group-hover:opacity-100">
-        {conferindo && (
-          <span className="px-2 py-1 text-[11px] text-slate-500"
-            title="A mensagem já foi entregue ao WhatsApp. O sistema confirma em alguns minutos.">
-            Confirmando envio…
-          </span>
-        )}
-        {coluna === 'a-fazer' && !conferindo && (
-          <>
-            <button onClick={() => onAcao(item, 'enviar')} disabled={enviando === item.id}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">
-              {enviando === item.id ? '⌛' : '🚀 Enviar'}
-            </button>
-            <button onClick={() => onAcao(item, 'wa')}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
-              title="Abrir no WhatsApp Web">
-              📱
-            </button>
-          </>
-        )}
-        {coluna === 'enviado' && (
-          <>
-            <button onClick={() => onAcao(item, 'respondeu')}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-ouro-700 hover:bg-ouro-50">
-              💬 Respondeu
-            </button>
-            <button onClick={() => onAcao(item, 'dispensar')}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
-              Dispensar
-            </button>
-          </>
-        )}
-        {coluna === 'em-conversa' && (
-          <>
-            <button onClick={() => onAcao(item, 'converteu')}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">
-              ✅ Converteu
-            </button>
-            <button onClick={() => onAcao(item, 'dispensar')}
-              className="rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
-              Dispensar
-            </button>
-          </>
-        )}
-        <button onClick={() => onHistorico(item.cliente_id)}
-          className="ml-auto rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
-          Histórico
-        </button>
+      {previa && (
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500">{previa}</p>
+      )}
+
+      <footer className="mt-2.5 flex flex-wrap items-center gap-x-1 gap-y-1.5">
+        <TipoTag tipo={item.tipo} />
+        <div className="ml-auto flex items-center gap-0.5">
+          {coluna === 'a-fazer' && !conferindo && (
+            <>
+              <button type="button" onClick={() => onAcao(item, 'wa')} className={BTN_ICONE}
+                title="Abrir a conversa no WhatsApp" aria-label={`Abrir WhatsApp de ${item.cliente_nome}`}>
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => onAcao(item, 'enviar')}
+                disabled={enviando === item.id || !item.cliente_telefone}
+                title={item.cliente_telefone ? `Enviar para ${telefone(item.cliente_telefone)}` : 'Cliente sem telefone'}
+                className={`${BTN_TEXTO} bg-ouro-500 text-white hover:bg-ouro-600`}>
+                {enviando === item.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Send className="h-3.5 w-3.5" />}
+                Enviar
+              </button>
+            </>
+          )}
+          {coluna === 'enviado' && (
+            <>
+              <button type="button" onClick={() => onAcao(item, 'dispensar')} className={`${BTN_TEXTO} text-slate-500 hover:bg-slate-100`}>
+                Dispensar
+              </button>
+              <button type="button" onClick={() => onAcao(item, 'respondeu')}
+                className={`${BTN_TEXTO} border border-slate-200 text-slate-700 hover:bg-slate-50`}>
+                Respondeu
+              </button>
+            </>
+          )}
+          {coluna === 'em-conversa' && (
+            <>
+              <button type="button" onClick={() => onAcao(item, 'dispensar')} className={`${BTN_TEXTO} text-slate-500 hover:bg-slate-100`}>
+                Não fechou
+              </button>
+              <button type="button" onClick={() => onAcao(item, 'converteu')}
+                className={`${BTN_TEXTO} bg-emerald-600 text-white hover:bg-emerald-700`}>
+                <Check className="h-3.5 w-3.5" /> Virou serviço
+              </button>
+            </>
+          )}
+          <button type="button" onClick={() => onHistorico(item.cliente_id)} className={BTN_ICONE}
+            title="Histórico de contatos" aria-label={`Histórico de ${item.cliente_nome}`}>
+            <History className="h-4 w-4" />
+          </button>
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+/** Linha compacta da coluna Fechados: só quem, como terminou e quando. */
+function LinhaFechada({ item, onHistorico, onDragStart, onDragEnd }) {
+  const converteu = item.status === 'converteu';
+  return (
+    <li draggable
+      onDragStart={(e) => onDragStart(e, item)}
+      onDragEnd={onDragEnd}
+      className="flex cursor-grab items-center gap-2.5 py-2 active:cursor-grabbing">
+      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full
+        ${converteu ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+        title={converteu ? 'Virou serviço' : 'Dispensado'}>
+        {converteu ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-700">{item.cliente_nome}</p>
+        <p className="text-[11px] text-slate-400">
+          {converteu ? 'virou serviço' : 'dispensado'} {tempoRelativo(item.respondido_em || item.enviado_em || item.criado_em)}
+        </p>
       </div>
-    </div>
+      <button type="button" onClick={() => onHistorico(item.cliente_id)} className={BTN_ICONE}
+        aria-label={`Histórico de ${item.cliente_nome}`} title="Histórico de contatos">
+        <History className="h-4 w-4" />
+      </button>
+    </li>
   );
 }
 
@@ -587,7 +642,7 @@ function ModalEnvioLote({ aberto, onFechar }) {
               <option value="">Todas as regras</option>
               {regras.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {TIPO_META[r.tipo]?.emoji} {r.nome}
+                  {r.nome}
                 </option>
               ))}
             </select>
@@ -690,6 +745,7 @@ export default function Followup() {
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
   const [dados, setDados] = useState(null);
+  const [metricas, setMetricas] = useState(null);
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
@@ -712,6 +768,7 @@ export default function Followup() {
     api.followupKanban(params)
       .then(setDados)
       .catch((e) => setErro(e.message));
+    api.metricasFollowup(30).then(setMetricas).catch(() => {});
   }, [tipoFiltro, busca]);
 
   useEffect(() => {
@@ -851,120 +908,168 @@ export default function Followup() {
 
   const c = dados?.contagens || { todos: 0, manutencao: 0, reativacao: 0, promocao: 0, avaliacao: 0 };
 
+  // Para enviar, separado por urgência; e os números do funil.
+  const pendentes = useMemo(() => {
+    const g = { atrasados: [], hoje: [], proximos: [] };
+    for (const item of dados?.colunas?.['a-fazer'] || []) g[urgencia(item).grupo].push(item);
+    return g;
+  }, [dados]);
+  const prontosHoje = [...pendentes.atrasados, ...pendentes.hoje]
+    .filter((i) => i.cliente_telefone && !i.envio_iniciado_em).length;
+  const fechados = dados?.colunas?.fechado || [];
+  const viraramServico = fechados.filter((i) => i.status === 'converteu').length;
+
+  const detalheColuna = {
+    'a-fazer': pendentes.atrasados.length
+      ? { texto: `${pendentes.atrasados.length} atrasado${pendentes.atrasados.length > 1 ? 's' : ''}`, alerta: true }
+      : { texto: pendentes.hoje.length ? `${pendentes.hoje.length} para hoje` : 'nada para hoje' },
+    enviado: { texto: metricas?.enviados ? `${metricas.taxa_resposta}% respondem (30 dias)` : 'sem envios em 30 dias' },
+    'em-conversa': { texto: 'responderam, falta fechar' },
+    fechado: { texto: `${viraramServico} virou serviço` },
+  };
+
+  const cardProps = {
+    enviando: enviandoId, onAcao: acao, onHistorico: setHistoricoId, onDragStart, onDragEnd,
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">
             Follow-up
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Arraste os cards entre colunas pra mudar o status
+            Clientes para chamar no WhatsApp. Arraste o card quando a conversa mudar de etapa.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setManualAberto(true)} className="btn-ghost">
-            + Manual
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
           {ehAdmin && (
-            <Link to="/followup/regras" className="btn-ghost">⚙ Regras</Link>
+            <Link to="/followup/regras" className="btn-ghost" title="Quando e o que mandar automaticamente">
+              <Settings2 className="h-4 w-4" /> Regras
+            </Link>
           )}
           {ehAdmin && (
-            <button onClick={gerar} disabled={gerando} className="btn-primary">
-              {gerando ? <><Spinner className="h-4 w-4" /> Gerando…</> : '⚡ Gerar fila'}
+            <button type="button" onClick={gerar} disabled={gerando} className="btn-ghost"
+              title="Procura agora clientes que se encaixam nas regras (também roda sozinho todo dia)">
+              {gerando ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar fila
             </button>
           )}
+          <button type="button" onClick={() => setManualAberto(true)} className="btn-ghost">
+            <Plus className="h-4 w-4" /> Novo follow-up
+          </button>
           {ehAdmin && (
-            <button onClick={() => setLoteAberto(true)} className="btn-ouro">
+            <button type="button" onClick={() => setLoteAberto(true)} className="btn-ouro">
               {lote?.em_andamento
-                ? <><Spinner className="h-4 w-4" /> Enviando {lote.processados}/{lote.total}</>
-                : '🚀 Enviar pendentes'}
+                ? <><Spinner className="h-4 w-4" /> Enviando {lote.processados} de {lote.total}</>
+                : <><Send className="h-4 w-4" /> {prontosHoje ? `Enviar ${prontosHoje} de hoje` : 'Enviar pendentes'}</>}
             </button>
           )}
         </div>
       </div>
 
-      {/* Chips de filtro por tipo */}
       <div className="flex flex-wrap items-center gap-2">
-        {[
-          ['todos',      'Todos',        ''],
-          ['manutencao', 'Manutenção',   '🔧'],
-          ['reativacao', 'Reativação',   '💤'],
-          ['promocao',   'Promoção',     '📢'],
-          ['avaliacao',  'Avaliação',    '⭐'],
-        ].map(([k, label, emoji]) => (
-          <button key={k} onClick={() => setTipoFiltro(k)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition
-              ${tipoFiltro === k
-                ? (k === 'todos' ? 'border-slate-800 bg-slate-800 text-white'
-                   : k === 'manutencao' ? 'border-maninho-600 bg-maninho-50 text-maninho-700'
-                   : k === 'reativacao' ? 'border-ouro-500 bg-ouro-100 text-ouro-700'
-                   : k === 'promocao'   ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                   : 'border-rose-500 bg-rose-50 text-rose-700')
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>
-            <span>{emoji} {label}</span>
-            <span className={`tnum rounded px-1.5 py-0.5 text-[10px] font-bold
-              ${tipoFiltro === k ? 'bg-black/15' : 'bg-slate-100'}`}>
-              {c[k] || 0}
-            </span>
-          </button>
-        ))}
-        <input className="input ml-auto max-w-xs" placeholder="Buscar cliente ou placa…"
-          value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por tipo">
+          {[['todos', 'Todos'], ...Object.entries(TIPO_META)
+            .filter(([k]) => k !== 'livre')
+            .map(([k, m]) => [k, m.label])].map(([k, label]) => {
+            const ativo = tipoFiltro === k;
+            const Icone = TIPO_META[k]?.Icone;
+            return (
+              <button key={k} type="button" onClick={() => setTipoFiltro(k)} aria-pressed={ativo}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500
+                  ${ativo
+                    ? 'border-maninho-600 bg-maninho-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                {Icone && <Icone className="h-3.5 w-3.5" aria-hidden="true" />}
+                {label}
+                <span className={`tabular-nums ${ativo ? 'text-white/75' : 'text-slate-400'}`}>{c[k] || 0}</span>
+              </button>
+            );
+          })}
+        </div>
+        <label className="relative ml-auto w-full sm:w-64">
+          <span className="sr-only">Buscar cliente ou placa</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input className="input pl-9" placeholder="Buscar cliente ou placa"
+            value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </label>
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
       {msgOk && <Alerta tipo="ok" onFechar={() => setMsgOk('')}>{msgOk}</Alerta>}
 
-      {/* Kanban */}
       {!dados ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {COLUNAS.map((c) => <Skeleton key={c.chave} className="h-64" />)}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr]">
+          {COLUNAS.map((col) => <Skeleton key={col.chave} className="h-72" />)}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr]">
           {COLUNAS.map((col) => {
             const cards = dados.colunas[col.chave] || [];
             const alvo = colunaAlvo === col.chave;
+            const det = detalheColuna[col.chave];
             return (
-              <div key={col.chave}
+              <section key={col.chave} aria-label={col.titulo}
                 onDragOver={(e) => onDragOverColuna(e, col.chave)}
                 onDragLeave={() => colunaAlvo === col.chave && setColunaAlvo(null)}
                 onDrop={(e) => onDropColuna(e, col.chave)}
-                className={`flex flex-col rounded-lg p-2 transition
-                  ${alvo
-                    ? 'bg-maninho-100 ring-2 ring-maninho-500'
-                    : 'bg-slate-100/70'}`}>
-                <div className="mb-2 flex items-center justify-between border-b border-slate-200 px-1 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${col.marcador}`} />
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                      {col.titulo}
-                    </p>
+                className={`flex min-h-[18rem] flex-col rounded-xl transition
+                  ${alvo ? 'bg-maninho-50 ring-2 ring-maninho-500' : ''}`}>
+                {/* Funil: o número da etapa é o título da coluna */}
+                <header className="border-t-2 border-slate-800 px-1 pb-3 pt-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-display text-[40px] font-semibold leading-none tabular-nums text-slate-800">
+                      {cards.length}
+                    </span>
+                    <h2 className="text-sm font-semibold text-slate-700">{col.titulo}</h2>
                   </div>
-                  <span className="tnum rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                    {cards.length}
-                  </span>
-                </div>
+                  <p className={`mt-1 text-xs ${det.alerta ? 'font-semibold text-ouro-600' : 'text-slate-500'}`}>
+                    {det.texto}
+                  </p>
+                </header>
 
                 {cards.length === 0 ? (
-                  <p className={`rounded border border-dashed py-6 text-center text-[11px]
+                  <p className={`rounded-lg border border-dashed px-3 py-8 text-center text-xs
                     ${alvo ? 'border-maninho-500 text-maninho-700' : 'border-slate-300 text-slate-400'}`}>
-                    {alvo ? 'Solte aqui' : 'Sem itens'}
+                    {alvo ? 'Solte aqui' : {
+                      'a-fazer': 'Ninguém para chamar agora.',
+                      enviado: 'Nenhuma mensagem aguardando resposta.',
+                      'em-conversa': 'Quem responder aparece aqui.',
+                      fechado: 'Conversas encerradas aparecem aqui.',
+                    }[col.chave]}
                   </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {cards.map((item) => (
-                      <CardFollowup key={item.id} item={item}
-                        enviando={enviandoId}
-                        onAcao={acao}
-                        onHistorico={setHistoricoId}
-                        onDragStart={onDragStart}
-                        onDragEnd={onDragEnd} />
+                ) : col.chave === 'a-fazer' ? (
+                  <div className="space-y-4">
+                    {GRUPOS_PENDENTES.filter((g) => pendentes[g.chave].length).map((g) => (
+                      <div key={g.chave}>
+                        <h3 className={`mb-1.5 px-1 text-xs font-semibold
+                          ${g.chave === 'atrasados' ? 'text-ouro-600' : 'text-slate-500'}`}>
+                          {g.titulo} ({pendentes[g.chave].length})
+                        </h3>
+                        <div className="space-y-2">
+                          {pendentes[g.chave].map((item) => (
+                            <CardFollowup key={item.id} item={item} {...cardProps} />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
+                ) : col.chave === 'fechado' ? (
+                  <ul className="divide-y divide-slate-100 px-1">
+                    {cards.map((item) => (
+                      <LinhaFechada key={item.id} item={item} onHistorico={setHistoricoId}
+                        onDragStart={onDragStart} onDragEnd={onDragEnd} />
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="space-y-2">
+                    {cards.map((item) => <CardFollowup key={item.id} item={item} {...cardProps} />)}
+                  </div>
                 )}
-              </div>
+              </section>
             );
           })}
         </div>
