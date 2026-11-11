@@ -82,7 +82,14 @@ services:
     command: sh -c "node scripts/migrate.js && node src/server.js"
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # Número do build e SHA vêm do git do servidor (o .git não entra no
+      # contexto do Docker). Quem preenche é o deploy/deploy.sh; sem ele,
+      # a versão cai pro package.json puro.
+      args:
+        APP_BUILD: ${APP_BUILD:-}
+        APP_COMMIT: ${APP_COMMIT:-}
     container_name: oficina-web
     restart: unless-stopped
     depends_on:

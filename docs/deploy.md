@@ -24,9 +24,9 @@ Containers (ver `docker-compose.yml` + `docker-compose.prod.yml`):
 
 > O frontend é buildado **dentro** do container `web` (`npm run build` no
 > Dockerfile). O `dist/` versionado é só conveniência — o `--build`
-> regenera. Por isso o indicador de versão usa `package.json` + data do
-> build (ver mais abaixo), e **não** o SHA do git (o `.git` não entra no
-> contexto de build do Docker).
+> regenera. Como o `.git` não entra no contexto de build do Docker, o
+> `deploy/deploy.sh` lê o número do build e o SHA no servidor e passa como
+> build args (ver mais abaixo).
 
 ## Deploy normal
 
@@ -46,8 +46,15 @@ cd frontend && npm run build && cd ..
 ### 2. No servidor — puxar e subir
 
 ```bash
-cd /opt/oficina && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+cd /opt/oficina && sh deploy/deploy.sh
 ```
+
+O script faz o `git pull`, calcula a versão (número de commits do `HEAD`
++ SHA) e roda o `docker compose ... up -d --build` com os dois arquivos.
+Equivale ao comando antigo
+`git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`,
+só que com a versão certa — rodando o comando antigo direto, o rodapé
+volta a mostrar só o `package.json` (ex.: `v1.1.0`).
 
 **Sempre os dois arquivos `-f`.** O `docker-compose.prod.yml` é um
 *overlay*: ele só sobrescreve campos (ex.: `ports: !override []`). O
@@ -72,13 +79,15 @@ Abre o sistema, dá **Ctrl+Shift+R** (hard refresh, pra furar o cache do
 navegador) e olha o rodapé da barra lateral:
 
 ```
-v1.1.0 · 13/10/26
+v1.1.182 · 11/11/26
 ```
 
-A **data** é a do build e muda a cada deploy. Se bater com hoje, a versão
-nova está no ar. (Passa o mouse em cima pra ver data e hora completas.)
-O número da versão vem de `frontend/package.json` — suba ele a cada
-release com significado.
+O último número é o **build** (quantidade de commits do `main`) e sobe a
+cada deploy com código novo; a **data** é a do build. Se o número bater
+com o `git rev-list --count HEAD` que o script imprimiu, a versão nova
+está no ar. (Passa o mouse em cima pra ver commit, data e hora.)
+O `1.1` vem de `frontend/package.json` — suba o major/minor quando quiser
+marcar uma release com significado; o patch do package.json é ignorado.
 
 ## Regras
 
