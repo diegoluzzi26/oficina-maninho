@@ -74,4 +74,32 @@ router.put('/whatsapp', validate({ body: putBody }), h(async (req, res) => {
   res.json(estadoAtual());
 }));
 
+// ---------------------------------------------------------------------
+// Agendamento online (página pública /agendar/<slug>)
+// ---------------------------------------------------------------------
+const agendaOnline = require('../services/agenda-online.service');
+
+const hora = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM');
+const horaOuVazio = z.union([hora, z.literal('')]);
+const agendaBody = z.object({
+  ativo: z.boolean().optional(),
+  dias: z.array(z.number().int().min(0).max(6)).min(1, 'Escolha pelo menos um dia').optional(),
+  inicio: hora.optional(),
+  fim: hora.optional(),
+  sabado_fim: horaOuVazio.optional(),
+  almoco_inicio: horaOuVazio.optional(),
+  almoco_fim: horaOuVazio.optional(),
+  intervalo: z.coerce.number().int().min(15).max(240).optional(),
+  vagas: z.coerce.number().int().min(1).max(20).optional(),
+  antecedencia_h: z.coerce.number().int().min(0).max(168).optional(),
+  dias_max: z.coerce.number().int().min(1).max(90).optional(),
+  mensagem: z.string().trim().max(300).optional(),
+});
+
+router.get('/agenda-online', h(async (_req, res) => res.json(agendaOnline.lerConfig())));
+
+router.put('/agenda-online', validate({ body: agendaBody }), h(async (req, res) => {
+  res.json(await agendaOnline.salvarConfig(req.body, req.user.id));
+}));
+
 module.exports = router;

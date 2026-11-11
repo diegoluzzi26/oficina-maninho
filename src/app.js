@@ -60,6 +60,9 @@ app.use('/api/visitas', require('./routes/visitas.routes'));
 // Cadastro self-service da landing (público, com limite por IP e por dia).
 app.use('/api/cadastro', require('./routes/cadastro.routes'));
 
+// Agendamento online do cliente final (link do Perfil da Empresa no Google).
+app.use('/api/agendar', require('./routes/agenda-publica.routes'));
+
 // Lista pública de oficinas (só o dropdown do login)
 app.use('/api/oficinas', require('./routes/oficinas.routes'));
 

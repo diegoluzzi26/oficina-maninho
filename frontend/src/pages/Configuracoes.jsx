@@ -3,12 +3,14 @@ import { api, getUser, getToken, setSession } from '../lib/api';
 import { Alerta, Campo, Modal, Skeleton, Spinner, Vazio } from '../components/ui';
 import IdentidadeVisual from '../components/IdentidadeVisual';
 import ConfigFiscal from '../components/ConfigFiscal';
+import ConfigAgendaOnline from '../components/ConfigAgendaOnline';
 import { publicarIdentidade } from '../lib/oficina';
 
 const ABAS = [
   { id: 'geral', texto: 'Geral' },
   { id: 'identidade', texto: 'Identidade visual' },
   { id: 'fiscal', texto: 'Fiscal' },
+  { id: 'agenda-online', texto: 'Agendamento online' },
 ];
 
 /** Barra de abas da página. */
@@ -872,6 +874,15 @@ export default function Configuracoes() {
       <div className="space-y-5">
         {cabecalho}
         <ConfigFiscal />
+      </div>
+    );
+  }
+
+  if (aba === 'agenda-online') {
+    return (
+      <div className="space-y-5">
+        {cabecalho}
+        <ConfigAgendaOnline />
       </div>
     );
   }

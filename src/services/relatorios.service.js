@@ -117,12 +117,18 @@ async function clientesRecorrentes(filtros) {
 /** Mês atual vs anterior, para o card de comparativo do dashboard. */
 async function comparativoMensal() {
   const { rows } = await db.query(
-    `WITH meses AS (
-       SELECT date_trunc('month', paga_em) AS mes,
-              sum(valor_total)::numeric    AS faturamento,
-              count(*)::int                AS qtd_os
+    `WITH entradas AS (
+       SELECT date_trunc('month', paga_em) AS mes, valor_total AS valor, 1 AS os
          FROM vw_faturamento
         WHERE paga_em >= date_trunc('month', now()) - interval '1 month'
+       UNION ALL
+       SELECT date_trunc('month', recebido_em), valor, 0
+         FROM os_adiantamentos
+        WHERE recebido_em >= date_trunc('month', now()) - interval '1 month'
+     ),
+     meses AS (
+       SELECT mes, sum(valor)::numeric AS faturamento, sum(os)::int AS qtd_os
+         FROM entradas
         GROUP BY 1
      )
      SELECT
@@ -161,15 +167,22 @@ async function painelMes({ ano, mes } = {}) {
   const inicio = `${y}-${String(m).padStart(2, '0')}-01`;
   const proxMes = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 
-  const [fatQ, despQ, pipelineQ, formaQ, servicosQ, marcasQ, modelosQ, comparativoQ] = await Promise.all([
+  const [fatQ, adiantQ, despQ, pipelineQ, formaQ, servicosQ, marcasQ, modelosQ, comparativoQ] = await Promise.all([
     db.query(
       `SELECT COALESCE(sum(valor_total),0)::numeric     AS receita,
               COALESCE(sum(desconto_dado),0)::numeric   AS desconto_total,
               count(*)::int                             AS qtd_os,
-              COALESCE(avg(valor_total),0)::numeric     AS ticket_medio,
+              COALESCE(avg(valor_cobrado - desconto_dado),0)::numeric AS ticket_medio,
               count(DISTINCT cliente_id)::int           AS clientes
          FROM vw_faturamento
         WHERE paga_em >= $1::date AND paga_em < $2::date`, [inicio, proxMes],
+    ),
+    // Adiantamentos entram na receita do mês em que o dinheiro entrou,
+    // mesma regra do fluxo de caixa. valor_total da view só tem o fechamento.
+    db.query(
+      `SELECT COALESCE(sum(valor),0)::numeric AS total
+         FROM os_adiantamentos
+        WHERE recebido_em >= $1::date AND recebido_em < $2::date`, [inicio, proxMes],
     ),
     db.query(
       `SELECT COALESCE(sum(valor_pago), sum(valor))::numeric AS despesa
@@ -184,11 +197,18 @@ async function painelMes({ ano, mes } = {}) {
         GROUP BY status`,
     ),
     db.query(
-      `SELECT forma_pagamento AS forma, count(*)::int AS qtd,
-              COALESCE(sum(valor_pago),0)::numeric AS total
-         FROM ordens_servico
-        WHERE status = 'paga' AND paga_em >= $1::date AND paga_em < $2::date
-        GROUP BY forma_pagamento
+      `SELECT forma, count(*)::int AS qtd, sum(valor)::numeric AS total
+         FROM (
+           SELECT forma_pagamento AS forma, valor_pago AS valor
+             FROM ordens_servico
+            WHERE status = 'paga' AND paga_em >= $1::date AND paga_em < $2::date
+           UNION ALL
+           SELECT forma, valor
+             FROM os_adiantamentos
+            WHERE recebido_em >= $1::date AND recebido_em < $2::date
+         ) e
+        GROUP BY forma
+       HAVING sum(valor) > 0
         ORDER BY total DESC`, [inicio, proxMes],
     ),
     db.query(
@@ -234,7 +254,7 @@ async function painelMes({ ano, mes } = {}) {
     comparativoMensal(),
   ]);
 
-  const receita = Number(fatQ.rows[0].receita);
+  const receita = Number((Number(fatQ.rows[0].receita) + Number(adiantQ.rows[0].total)).toFixed(2));
   const despesa = Number(despQ.rows[0].despesa || 0);
 
   // Projeção linear: extrapola o ritmo atual pro fechamento do mês.
@@ -280,8 +300,8 @@ async function painelMes({ ano, mes } = {}) {
 
 /**
  * OSs que tiveram desconto num mês — o detalhe por trás do KPI "Desconto
- * dado" do Painel. Desconto = valor cobrado − valor pago (mesma conta da
- * vw_faturamento), datado por paga_em (quando o dinheiro entrou).
+ * dado" do Painel. Desconto = valor cobrado − pago − adiantamentos (mesma
+ * conta da vw_faturamento), datado por paga_em (quando o dinheiro entrou).
  */
 async function descontosDoMes({ ano, mes } = {}) {
   const hoje = new Date();
@@ -304,7 +324,8 @@ async function descontosDoMes({ ano, mes } = {}) {
   const dados = rows.map((r) => ({
     ...r,
     valor_cobrado: Number(r.valor_cobrado),
-    valor_pago: Number(r.valor_pago),
+    // Inclui os adiantamentos: a coluna da view só tem o valor do fechamento.
+    valor_pago: Number((Number(r.valor_cobrado) - Number(r.desconto_dado)).toFixed(2)),
     desconto_dado: Number(r.desconto_dado),
   }));
   const total = dados.reduce((s, d) => s + d.desconto_dado, 0);

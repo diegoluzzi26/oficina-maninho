@@ -4,6 +4,7 @@ import { temPermissao, telaInicial } from './lib/permissoes';
 import Layout, { SemAcesso } from './components/Layout';
 import Login from './pages/Login';
 import Cadastro from './pages/Cadastro';
+import AgendarOnline from './pages/AgendarOnline';
 import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import Ordens from './pages/Ordens';
@@ -43,6 +44,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/cadastro" element={<Cadastro />} />
+        <Route path="/agendar/:slug" element={<AgendarOnline />} />
         {/* Views "papel" — sem Layout, pra não vir cabeçalho colorido na impressão */}
         <Route path="/os/:id/imprimir"
           element={<Protegida><ImprimirOS /></Protegida>} />
