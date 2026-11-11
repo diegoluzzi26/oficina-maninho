@@ -364,7 +364,9 @@ function PainelDia({ dia, agendamentos, onNovo, onEditar, onAcao }) {
         <div>
           <p className="label">Dia selecionado</p>
           <h3 className="font-display text-lg font-semibold text-maninho-800">
-            {new Date(dia).toLocaleDateString('pt-BR',
+            {/* Meio-dia local: 'AAAA-MM-DD' puro é lido como meia-noite UTC,
+                que no Brasil cai no dia anterior. */}
+            {new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR',
               { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
           </h3>
         </div>
