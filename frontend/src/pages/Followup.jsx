@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Wrench, RotateCcw, Megaphone, Star, MessageSquareText, Send, MessageCircle,
-  History, Check, X, Plus, RefreshCw, Search, Loader2,
+  History, Check, X, Plus, RefreshCw, Search, Loader2, MoreHorizontal, Trash2, PhoneOff,
+  ArrowDownUp, ListChecks,
 } from 'lucide-react';
 import { api, getUser } from '../lib/api';
 import { data, telefone } from '../lib/format';
@@ -83,13 +84,14 @@ const GRUPOS_PENDENTES = [
   { chave: 'proximos',  titulo: 'Próximos dias' },
 ];
 
-function TipoTag({ tipo }) {
+/** Tipo do follow-up; com automação, mostra o nome dela. */
+function TipoTag({ tipo, nome }) {
   const m = TIPO_META[tipo] || TIPO_META.livre;
   const { Icone } = m;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
-      <Icone className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-      {m.label}
+    <span className="inline-flex max-w-[11rem] items-center gap-1 text-[11px] font-medium text-slate-500" title={nome || m.label}>
+      <Icone className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+      <span className="truncate">{nome || m.label}</span>
     </span>
   );
 }
@@ -369,13 +371,84 @@ function FormManual({ aberto, onFechar, onCriado }) {
 const BTN_ICONE = 'grid h-7 w-7 place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500';
 const BTN_TEXTO = 'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500 disabled:opacity-50';
 
-function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd }) {
+/** Pendente que não tem como sair: sem telefone, sem WhatsApp ou envio que falhou. */
+function problemaDo(item) {
+  if (item.status !== 'pendente') return null;
+  if (!item.cliente_telefone) return { titulo: 'Sem telefone', motivo: 'Cliente sem telefone no cadastro.' };
+  if (item.problema === 'sem_whatsapp') return { titulo: 'Sem WhatsApp', motivo: 'Este número não tem WhatsApp.' };
+  if (item.problema === 'falha_envio') {
+    const motivo = String(item.problema_motivo || 'O envio falhou.').replace(/^Falha ao enviar WhatsApp:\s*/i, '');
+    return {
+      titulo: /não tem WhatsApp/i.test(motivo) ? 'Sem WhatsApp' : 'Envio falhou',
+      motivo: motivo.charAt(0).toUpperCase() + motivo.slice(1),
+    };
+  }
+  return null;
+}
+
+/** Data que vale para ordenar: quando o card chegou na coluna em que está. */
+function dataDoCard(item) {
+  if (item.status === 'respondeu') return item.respondido_em || item.enviado_em || item.criado_em;
+  if (item.status === 'enviado') return item.enviado_em || item.criado_em;
+  if (item.status === 'converteu' || item.status === 'dispensado') {
+    return item.respondido_em || item.enviado_em || item.criado_em;
+  }
+  return item.criado_em;
+}
+
+/** Menu "mais ações" do card. Fecha com clique fora ou Esc. */
+function MenuCard({ itens, rotulo }) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const fora = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false); };
+    const esc = (e) => { if (e.key === 'Escape') setAberto(false); };
+    document.addEventListener('mousedown', fora);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', fora); document.removeEventListener('keydown', esc); };
+  }, [aberto]);
+  const visiveis = itens.filter(Boolean);
+  if (!visiveis.length) return null;
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" className={BTN_ICONE} aria-haspopup="menu" aria-expanded={aberto}
+        aria-label={rotulo} title="Mais ações" onClick={() => setAberto((v) => !v)}>
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {aberto && (
+        <div role="menu" className="absolute right-0 top-8 z-20 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {visiveis.map(({ rotulo: r, Icone, onClick, perigo }) => (
+            <button key={r} type="button" role="menuitem"
+              onClick={() => { setAberto(false); onClick(); }}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition
+                ${perigo ? 'text-rose-700 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}>
+              <Icone className="h-4 w-4" aria-hidden="true" /> {r}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Selecao({ marcado, onChange, nome }) {
+  return (
+    <input type="checkbox" checked={marcado} onChange={onChange}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={`Selecionar ${nome}`}
+      className="h-4 w-4 shrink-0 cursor-pointer rounded accent-maninho-600" />
+  );
+}
+
+function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd, ehAdmin, selecionando, marcado, onMarcar }) {
   const coluna = COLUNA_DO_STATUS[item.status];
   // Pendente com envio iniciado: a mensagem foi entregue à Evolution e o
   // sistema está confirmando se saiu. Não pode ser enviado de novo.
   const conferindo = item.status === 'pendente' && !!item.envio_iniciado_em;
   const urg = item.status === 'pendente' ? urgencia(item) : null;
   const atrasado = urg?.grupo === 'atrasados';
+  const problema = conferindo ? null : problemaDo(item);
 
   let quando = '';
   if (conferindo) quando = 'enviando…';
@@ -385,15 +458,30 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
 
   const previa = (item.mensagem || '').replace(/\s+/g, ' ').trim();
   const carro = [item.marca, item.modelo].filter(Boolean).join(' ');
+  const borda = problema ? 'border-l-rose-500' : atrasado ? 'border-l-ouro-500' : 'border-l-transparent';
+
+  const menu = [
+    coluna === 'a-fazer' && !conferindo && item.cliente_telefone && {
+      rotulo: 'Abrir no WhatsApp', Icone: MessageCircle, onClick: () => onAcao(item, 'wa'),
+    },
+    { rotulo: 'Histórico do cliente', Icone: History, onClick: () => onHistorico(item.cliente_id) },
+    !conferindo && ['pendente', 'enviado', 'respondeu'].includes(item.status) && {
+      rotulo: 'Dispensar', Icone: X, onClick: () => onAcao(item, 'dispensar'),
+    },
+    ehAdmin && !conferindo && { rotulo: 'Excluir card', Icone: Trash2, onClick: () => onAcao(item, 'excluir'), perigo: true },
+  ];
 
   return (
-    <article draggable
+    <article draggable={!selecionando}
       onDragStart={(e) => onDragStart(e, item)}
       onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-lg border bg-white p-3 active:cursor-grabbing
-        ${atrasado ? 'border-ouro-300' : 'border-slate-200'}`}>
-      <header className="flex items-baseline justify-between gap-2">
-        <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-slate-800">
+      onClick={selecionando ? onMarcar : undefined}
+      className={`rounded-lg border border-l-[3px] bg-white p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition
+        ${selecionando ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}
+        ${marcado ? 'border-maninho-500 ring-2 ring-maninho-200' : 'border-slate-200'} ${borda}`}>
+      <header className="flex items-start gap-2">
+        {selecionando && <Selecao marcado={marcado} onChange={onMarcar} nome={item.cliente_nome} />}
+        <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight text-slate-800">
           {item.cliente_nome}
         </h3>
         <span className={`shrink-0 text-[11px] font-semibold tabular-nums
@@ -403,96 +491,93 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
         </span>
       </header>
 
-      {(item.placa || carro) && (
-        <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-500">
-          {item.placa && (
-            <span className="rounded border border-slate-300 px-1 font-mono text-[11px] font-semibold tracking-wide text-slate-700">
-              {item.placa}
-            </span>
-          )}
-          <span className="truncate">{carro}</span>
-        </p>
-      )}
+      <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-500">
+        {item.placa && (
+          <span className="rounded border border-slate-300 px-1 font-mono text-[11px] font-semibold tracking-wide text-slate-700">
+            {item.placa}
+          </span>
+        )}
+        {carro && <span className="truncate">{carro}</span>}
+      </p>
 
       {previa && (
         <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500">{previa}</p>
       )}
 
-      <footer className="mt-2.5 flex flex-wrap items-center gap-x-1 gap-y-1.5">
-        <TipoTag tipo={item.tipo} />
-        <div className="ml-auto flex items-center gap-0.5">
-          {coluna === 'a-fazer' && !conferindo && (
-            <>
-              <button type="button" onClick={() => onAcao(item, 'wa')} className={BTN_ICONE}
-                title="Abrir a conversa no WhatsApp" aria-label={`Abrir WhatsApp de ${item.cliente_nome}`}>
-                <MessageCircle className="h-4 w-4" />
+      {problema && (
+        <div className="mt-2.5 flex items-start gap-2 rounded-md bg-rose-50 px-2.5 py-2 text-xs text-rose-800">
+          <PhoneOff className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1"><span className="font-semibold">{problema.titulo}.</span> {problema.motivo}</p>
+        </div>
+      )}
+
+      <footer className="mt-2.5 flex items-center gap-1">
+        <span className="mr-auto min-w-0"><TipoTag tipo={item.tipo} nome={item.regra_nome} /></span>
+        {!selecionando && (<>
+          {coluna === 'a-fazer' && !conferindo && (problema ? (
+            ehAdmin && (
+              <button type="button" onClick={() => onAcao(item, 'excluir')}
+                className={`${BTN_TEXTO} border border-rose-200 text-rose-700 hover:bg-rose-50`}>
+                <Trash2 className="h-3.5 w-3.5" /> Excluir
               </button>
-              <button type="button" onClick={() => onAcao(item, 'enviar')}
-                disabled={enviando === item.id || !item.cliente_telefone}
-                title={item.cliente_telefone ? `Enviar para ${telefone(item.cliente_telefone)}` : 'Cliente sem telefone'}
-                className={`${BTN_TEXTO} bg-ouro-500 text-white hover:bg-ouro-600`}>
-                {enviando === item.id
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Send className="h-3.5 w-3.5" />}
-                Enviar
-              </button>
-            </>
-          )}
+            )
+          ) : (
+            <button type="button" onClick={() => onAcao(item, 'enviar')} disabled={enviando === item.id}
+              title={`Enviar para ${telefone(item.cliente_telefone)}`}
+              className={`${BTN_TEXTO} bg-ouro-500 text-white hover:bg-ouro-600`}>
+              {enviando === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Enviar
+            </button>
+          ))}
           {coluna === 'enviado' && (
-            <>
-              <button type="button" onClick={() => onAcao(item, 'dispensar')} className={`${BTN_TEXTO} text-slate-500 hover:bg-slate-100`}>
-                Dispensar
-              </button>
-              <button type="button" onClick={() => onAcao(item, 'respondeu')}
-                className={`${BTN_TEXTO} border border-slate-200 text-slate-700 hover:bg-slate-50`}>
-                Respondeu
-              </button>
-            </>
+            <button type="button" onClick={() => onAcao(item, 'respondeu')}
+              className={`${BTN_TEXTO} border border-slate-200 text-slate-700 hover:bg-slate-50`}>
+              <MessageCircle className="h-3.5 w-3.5" /> Respondeu
+            </button>
           )}
           {coluna === 'em-conversa' && (
-            <>
-              <button type="button" onClick={() => onAcao(item, 'dispensar')} className={`${BTN_TEXTO} text-slate-500 hover:bg-slate-100`}>
-                Não fechou
-              </button>
-              <button type="button" onClick={() => onAcao(item, 'converteu')}
-                className={`${BTN_TEXTO} bg-emerald-600 text-white hover:bg-emerald-700`}>
-                <Check className="h-3.5 w-3.5" /> Virou serviço
-              </button>
-            </>
+            <button type="button" onClick={() => onAcao(item, 'converteu')}
+              className={`${BTN_TEXTO} bg-emerald-600 text-white hover:bg-emerald-700`}>
+              <Check className="h-3.5 w-3.5" /> Virou serviço
+            </button>
           )}
-          <button type="button" onClick={() => onHistorico(item.cliente_id)} className={BTN_ICONE}
-            title="Histórico de contatos" aria-label={`Histórico de ${item.cliente_nome}`}>
-            <History className="h-4 w-4" />
-          </button>
-        </div>
+          <MenuCard itens={menu} rotulo={`Mais ações para ${item.cliente_nome}`} />
+        </>)}
       </footer>
     </article>
   );
 }
 
 /** Linha compacta da coluna Fechados: só quem, como terminou e quando. */
-function LinhaFechada({ item, onHistorico, onDragStart, onDragEnd }) {
+function LinhaFechada({ item, onHistorico, onDragStart, onDragEnd, onAcao, ehAdmin, selecionando, marcado, onMarcar }) {
   const converteu = item.status === 'converteu';
   return (
-    <li draggable
+    <li draggable={!selecionando}
       onDragStart={(e) => onDragStart(e, item)}
       onDragEnd={onDragEnd}
-      className="flex cursor-grab items-center gap-2.5 py-2 active:cursor-grabbing">
-      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full
-        ${converteu ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-        title={converteu ? 'Virou serviço' : 'Dispensado'}>
-        {converteu ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-      </span>
+      onClick={selecionando ? onMarcar : undefined}
+      className={`flex items-center gap-2.5 py-2 ${selecionando ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}>
+      {selecionando ? (
+        <Selecao marcado={marcado} onChange={onMarcar} nome={item.cliente_nome} />
+      ) : (
+        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full
+          ${converteu ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+          title={converteu ? 'Virou serviço' : 'Dispensado'}>
+          {converteu ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-slate-700">{item.cliente_nome}</p>
         <p className="text-[11px] text-slate-400">
-          {converteu ? 'virou serviço' : 'dispensado'} {tempoRelativo(item.respondido_em || item.enviado_em || item.criado_em)}
+          {converteu ? 'virou serviço' : 'dispensado'} {tempoRelativo(dataDoCard(item))}
         </p>
       </div>
-      <button type="button" onClick={() => onHistorico(item.cliente_id)} className={BTN_ICONE}
-        aria-label={`Histórico de ${item.cliente_nome}`} title="Histórico de contatos">
-        <History className="h-4 w-4" />
-      </button>
+      {!selecionando && (
+        <MenuCard rotulo={`Mais ações para ${item.cliente_nome}`} itens={[
+          { rotulo: 'Histórico do cliente', Icone: History, onClick: () => onHistorico(item.cliente_id) },
+          ehAdmin && { rotulo: 'Excluir card', Icone: Trash2, onClick: () => onAcao(item, 'excluir'), perigo: true },
+        ]} />
+      )}
     </li>
   );
 }
@@ -798,6 +883,25 @@ export default function Followup() {
   );
 }
 
+const ORDENS = [
+  ['urgencia', 'Por urgência'],
+  ['recentes', 'Mais recentes primeiro'],
+  ['antigos', 'Mais antigos primeiro'],
+];
+
+function lerOrdem() {
+  try {
+    const o = localStorage.getItem('followup.ordem');
+    return ORDENS.some(([k]) => k === o) ? o : 'urgencia';
+  } catch { return 'urgencia'; }
+}
+
+function ordenar(lista, ordem) {
+  if (ordem === 'urgencia') return lista;
+  const sinal = ordem === 'recentes' ? -1 : 1;
+  return [...lista].sort((a, b) => sinal * (new Date(dataDoCard(a)) - new Date(dataDoCard(b))));
+}
+
 function Fila() {
   const usuario = getUser();
   const ehAdmin = usuario?.role === 'admin';
@@ -805,14 +909,20 @@ function Fila() {
   const [metricas, setMetricas] = useState(null);
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [busca, setBusca] = useState('');
+  const [ordem, setOrdem] = useState(lerOrdem);
+  const [soProblemas, setSoProblemas] = useState(false);
   const [erro, setErro] = useState('');
   const [msgOk, setMsgOk] = useState('');
   const [confirmacao, setConfirmacao] = useState(null);
   const [enviandoId, setEnviandoId] = useState('');
   const [gerando, setGerando] = useState(false);
+  const [verificando, setVerificando] = useState(false);
   const [loteAberto, setLoteAberto] = useState(false);
   const [historicoId, setHistoricoId] = useState(null);
   const [manualAberto, setManualAberto] = useState(false);
+  // Seleção para excluir/dispensar vários
+  const [selecionando, setSelecionando] = useState(false);
+  const [sel, setSel] = useState(() => new Set());
   // Drag & drop
   const [arrastando, setArrastando] = useState(null); // item sendo arrastado
   const [colunaAlvo, setColunaAlvo] = useState(null); // qual coluna está sob o cursor
@@ -832,6 +942,11 @@ function Fila() {
     const t = setTimeout(carregar, busca ? 300 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
+
+  function mudarOrdem(o) {
+    setOrdem(o);
+    try { localStorage.setItem('followup.ordem', o); } catch { /* sem storage: vale só nesta visita */ }
+  }
 
   // Lote em segundo plano: enquanto roda, mostra o progresso no botão e
   // atualiza o Kanban a cada 10s para os cards irem mudando de coluna.
@@ -863,6 +978,7 @@ function Fila() {
     setColunaAlvo(null);
   }
   function onDragOverColuna(e, colunaChave) {
+    if (selecionando) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (colunaAlvo !== colunaChave) setColunaAlvo(colunaChave);
@@ -873,30 +989,24 @@ function Fila() {
     const item = arrastando;
     setArrastando(null);
     if (!item) return;
-
-    // Se soltou na mesma coluna, nada a fazer
-    const colunaAtual = {
-      pendente: 'a-fazer', enviado: 'enviado',
-      respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
-    }[item.status];
-    if (colunaAtual === colunaChave) return;
+    if (COLUNA_DO_STATUS[item.status] === colunaChave) return;
 
     const novoStatus = COLUNA_PARA_STATUS[colunaChave];
-    // Fechado: pergunta se converteu ou dispensou (três botões).
+    // Fechado: pergunta se converteu ou dispensou.
     if (novoStatus === 'FECHADO_ESCOLHER') {
       setConfirmacao({
-        titulo: `Fechar follow-up — ${item.cliente_nome}`,
+        titulo: `Fechar follow-up: ${item.cliente_nome}`,
         mensagem: 'Como este follow-up terminou?',
         acoes: (fechar) => (
           <>
             <button className="btn-ghost" onClick={fechar}>Cancelar</button>
             <button className="btn bg-slate-200 text-slate-700 hover:bg-slate-300"
               onClick={() => { fechar(); mudarStatusItem(item.id, 'dispensado'); }}>
-              ✕ Dispensou
+              Dispensado
             </button>
             <button className="btn-primary"
               onClick={() => { fechar(); mudarStatusItem(item.id, 'converteu'); }}>
-              ✅ Converteu
+              Virou serviço
             </button>
           </>
         ),
@@ -922,21 +1032,45 @@ function Fila() {
     finally { setEnviandoId(''); carregar(); }
   }
 
+  async function emLote(ids, acaoLote) {
+    setErro(''); setMsgOk('');
+    try {
+      const r = await api.followupEmLote(ids, acaoLote);
+      const n = r.afetados;
+      setMsgOk(`${n} card${n === 1 ? '' : 's'} ${acaoLote === 'excluir' ? (n === 1 ? 'excluído' : 'excluídos') : (n === 1 ? 'dispensado' : 'dispensados')}.`);
+      setSel(new Set()); setSelecionando(false);
+      carregar();
+    } catch (e) { setErro(e.message); }
+  }
+
+  function confirmarLote(ids, acaoLote) {
+    const n = ids.length;
+    const excluir = acaoLote === 'excluir';
+    setConfirmacao({
+      titulo: excluir ? `Excluir ${n} card${n === 1 ? '' : 's'}` : `Dispensar ${n} card${n === 1 ? '' : 's'}`,
+      mensagem: excluir
+        ? 'Os cards somem da fila e do histórico do follow-up. Não dá para desfazer.'
+        : 'Os cards vão para Fechados como dispensados. O histórico fica guardado.',
+      rotulo: excluir ? 'Excluir' : 'Dispensar',
+      tom: excluir ? 'perigo' : 'primary',
+      onConfirmar: () => emLote(ids, acaoLote),
+    });
+  }
+
   function acao(item, tipo) {
     setErro('');
     if (tipo === 'enviar') {
       if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
       setConfirmacao({
         titulo: 'Enviar follow-up',
-        mensagem: `Enviar a mensagem automaticamente pelo WhatsApp para `
-          + `${item.cliente_nome} (${telefone(item.cliente_telefone)})?`,
-        rotulo: '🚀 Enviar',
+        mensagem: `Enviar a mensagem pelo WhatsApp para ${item.cliente_nome} (${telefone(item.cliente_telefone)})?`,
+        rotulo: 'Enviar',
+        tom: 'ouro',
         onConfirmar: () => enviarItem(item),
       });
       return;
     }
     if (tipo === 'wa') {
-      if (!item.cliente_telefone) { setErro('Cliente sem telefone'); return; }
       const num = String(item.cliente_telefone).replace(/\D/g, '');
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(item.mensagem)}`, '_blank');
       setConfirmacao({
@@ -945,6 +1079,15 @@ function Fila() {
           + 'marque este follow-up como enviado.',
         rotulo: 'Marcar como enviado',
         onConfirmar: () => mudarStatusItem(item.id, 'enviado'),
+      });
+      return;
+    }
+    if (tipo === 'excluir') {
+      setConfirmacao({
+        titulo: 'Excluir card',
+        mensagem: `O card de ${item.cliente_nome} sai da fila e do histórico do follow-up. Não dá para desfazer.`,
+        rotulo: 'Excluir', tom: 'perigo',
+        onConfirmar: () => emLote([item.id], 'excluir'),
       });
       return;
     }
@@ -957,22 +1100,47 @@ function Fila() {
     setGerando(true); setErro(''); setMsgOk('');
     try {
       const r = await api.gerarFollowup();
-      setMsgOk(`${r.gerados} follow-up(s) gerado(s).`);
+      setMsgOk(r.gerados ? `${r.gerados} cliente${r.gerados === 1 ? '' : 's'} entraram na fila.` : 'Ninguém novo para chamar agora.');
       carregar();
     } catch (e) { setErro(e.message); }
     finally { setGerando(false); }
   }
 
+  async function verificar() {
+    setVerificando(true); setErro(''); setMsgOk('');
+    try {
+      const r = await api.verificarNumerosFollowup();
+      if (r.sem_whatsapp) {
+        setMsgOk(`${r.sem_whatsapp} cliente${r.sem_whatsapp === 1 ? ' não tem' : 's não têm'} WhatsApp. Eles estão em "Não dá para enviar".`);
+        setSoProblemas(true);
+      } else {
+        setMsgOk(`Todos os ${r.com_whatsapp} números pendentes têm WhatsApp.`);
+      }
+      carregar();
+    } catch (e) { setErro(e.message); }
+    finally { setVerificando(false); }
+  }
+
+  function marcar(id) {
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
   const c = dados?.contagens || { todos: 0, manutencao: 0, reativacao: 0, promocao: 0, avaliacao: 0 };
 
   // Para enviar, separado por urgência; e os números do funil.
+  const aFazer = dados?.colunas?.['a-fazer'] || [];
+  const comProblema = aFazer.filter((i) => !i.envio_iniciado_em && problemaDo(i));
   const pendentes = useMemo(() => {
     const g = { atrasados: [], hoje: [], proximos: [] };
     for (const item of dados?.colunas?.['a-fazer'] || []) g[urgencia(item).grupo].push(item);
     return g;
   }, [dados]);
   const prontosHoje = [...pendentes.atrasados, ...pendentes.hoje]
-    .filter((i) => i.cliente_telefone && !i.envio_iniciado_em).length;
+    .filter((i) => !i.envio_iniciado_em && !problemaDo(i)).length;
   const fechados = dados?.colunas?.fechado || [];
   const viraramServico = fechados.filter((i) => i.status === 'converteu').length;
 
@@ -985,17 +1153,27 @@ function Fila() {
     fechado: { texto: `${viraramServico} virou serviço` },
   };
 
-  const cardProps = {
-    enviando: enviandoId, onAcao: acao, onHistorico: setHistoricoId, onDragStart, onDragEnd,
-  };
+  const cardProps = (item) => ({
+    item, enviando: enviandoId, onAcao: acao, onHistorico: setHistoricoId, onDragStart, onDragEnd, ehAdmin,
+    selecionando, marcado: sel.has(item.id), onMarcar: () => marcar(item.id),
+  });
+
+  const listaProblemas = ordenar(comProblema, ordem === 'urgencia' ? 'recentes' : ordem);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[60ch] text-sm text-slate-500">
           Resposta do cliente e volta à oficina movem o card sozinhos. Arraste quando precisar ajustar.
         </p>
         <div className="flex flex-wrap items-center gap-2">
+          {ehAdmin && (
+            <button type="button" onClick={verificar} disabled={verificando} className="btn-ghost"
+              title="Pergunta ao WhatsApp quais clientes da fila têm conta. Quem não tem fica marcado.">
+              {verificando ? <Spinner className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
+              Verificar números
+            </button>
+          )}
           {ehAdmin && (
             <button type="button" onClick={gerar} disabled={gerando} className="btn-ghost"
               title="Procura agora quem se encaixa nas automações (também roda sozinho todo dia de manhã)">
@@ -1016,15 +1194,15 @@ function Fila() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por tipo">
           {[['todos', 'Todos'], ...Object.entries(TIPO_META)
             .filter(([k]) => k !== 'livre')
             .map(([k, m]) => [k, m.label])].map(([k, label]) => {
-            const ativo = tipoFiltro === k;
+            const ativo = tipoFiltro === k && !soProblemas;
             const Icone = TIPO_META[k]?.Icone;
             return (
-              <button key={k} type="button" onClick={() => setTipoFiltro(k)} aria-pressed={ativo}
+              <button key={k} type="button" onClick={() => { setTipoFiltro(k); setSoProblemas(false); }} aria-pressed={ativo}
                 className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500
                   ${ativo
@@ -1036,26 +1214,83 @@ function Fila() {
               </button>
             );
           })}
+          {comProblema.length > 0 && (
+            <button type="button" onClick={() => setSoProblemas((v) => !v)} aria-pressed={soProblemas}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500
+                ${soProblemas
+                  ? 'border-rose-600 bg-rose-600 text-white'
+                  : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300'}`}>
+              <PhoneOff className="h-3.5 w-3.5" aria-hidden="true" />
+              Não dá para enviar
+              <span className={`tabular-nums ${soProblemas ? 'text-white/80' : 'text-rose-500'}`}>{comProblema.length}</span>
+            </button>
+          )}
         </div>
-        <label className="relative ml-auto w-full sm:w-64">
-          <span className="sr-only">Buscar cliente ou placa</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="input pl-9" placeholder="Buscar cliente ou placa"
-            value={busca} onChange={(e) => setBusca(e.target.value)} />
-        </label>
+        <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">
+            <ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Ordenar</span>
+            <select className="input h-8 w-auto py-0 pl-2 pr-8 text-xs" value={ordem}
+              onChange={(e) => mudarOrdem(e.target.value)}>
+              {ORDENS.map(([k, r]) => <option key={k} value={k}>{r}</option>)}
+            </select>
+          </label>
+          <label className="relative order-first basis-full sm:order-none sm:basis-auto sm:w-56">
+            <span className="sr-only">Buscar cliente ou placa</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input className="input h-8 pl-9 text-sm" placeholder="Buscar cliente ou placa"
+              value={busca} onChange={(e) => setBusca(e.target.value)} />
+          </label>
+          {ehAdmin && (
+            <button type="button" aria-pressed={selecionando}
+              onClick={() => { setSelecionando((v) => !v); setSel(new Set()); }}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maninho-500
+                ${selecionando ? 'border-maninho-600 bg-maninho-50 text-maninho-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+              <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+              {selecionando ? 'Cancelar seleção' : 'Selecionar'}
+            </button>
+          )}
+        </div>
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
       {msgOk && <Alerta tipo="ok" onFechar={() => setMsgOk('')}>{msgOk}</Alerta>}
 
       {!dados ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr]">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUNAS.map((col) => <Skeleton key={col.chave} className="h-72" />)}
         </div>
+      ) : soProblemas ? (
+        <section aria-label="Não dá para enviar" className="rounded-xl border border-rose-200 bg-rose-50/40 p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-lg font-semibold text-slate-800">
+                Não dá para enviar ({comProblema.length})
+              </h2>
+              <p className="text-sm text-slate-500">
+                Sem telefone, sem WhatsApp ou o envio falhou. Corrija o telefone no cadastro do cliente ou exclua o card.
+              </p>
+            </div>
+            {ehAdmin && comProblema.length > 0 && (
+              <button type="button" className="btn bg-rose-600 text-white shadow-sm hover:bg-rose-700"
+                onClick={() => confirmarLote(comProblema.map((i) => i.id), 'excluir')}>
+                <Trash2 className="h-4 w-4" /> Excluir todos ({comProblema.length})
+              </button>
+            )}
+          </div>
+          {comProblema.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">Nenhum card com problema.</p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {listaProblemas.map((item) => <CardFollowup key={item.id} {...cardProps(item)} />)}
+            </div>
+          )}
+        </section>
       ) : (
-        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr]">
+        <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-4">
           {COLUNAS.map((col) => {
-            const cards = dados.colunas[col.chave] || [];
+            const cards = ordenar(dados.colunas[col.chave] || [], ordem);
             const alvo = colunaAlvo === col.chave;
             const det = detalheColuna[col.chave];
             return (
@@ -1063,62 +1298,96 @@ function Fila() {
                 onDragOver={(e) => onDragOverColuna(e, col.chave)}
                 onDragLeave={() => colunaAlvo === col.chave && setColunaAlvo(null)}
                 onDrop={(e) => onDropColuna(e, col.chave)}
-                className={`flex min-h-[18rem] flex-col rounded-xl transition
-                  ${alvo ? 'bg-maninho-50 ring-2 ring-maninho-500' : ''}`}>
+                className={`flex flex-col rounded-xl border bg-slate-50 transition
+                  ${alvo ? 'border-maninho-500 bg-maninho-50 ring-2 ring-maninho-500' : 'border-slate-200'}`}>
                 {/* Funil: o número da etapa é o título da coluna */}
-                <header className="border-t-2 border-slate-800 px-1 pb-3 pt-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-display text-[40px] font-semibold leading-none tabular-nums text-slate-800">
-                      {cards.length}
-                    </span>
-                    <h2 className="text-sm font-semibold text-slate-700">{col.titulo}</h2>
+                <header className="flex items-end gap-2 border-b border-slate-200 px-3 pb-2.5 pt-3">
+                  <span className="font-display text-[34px] font-semibold leading-none tabular-nums text-slate-800">
+                    {cards.length}
+                  </span>
+                  <div className="min-w-0 pb-0.5">
+                    <h2 className="text-sm font-semibold leading-tight text-slate-700">{col.titulo}</h2>
+                    <p className={`text-xs leading-tight ${det.alerta ? 'font-semibold text-ouro-600' : 'text-slate-500'}`}>
+                      {det.texto}
+                    </p>
                   </div>
-                  <p className={`mt-1 text-xs ${det.alerta ? 'font-semibold text-ouro-600' : 'text-slate-500'}`}>
-                    {det.texto}
-                  </p>
                 </header>
-
-                {cards.length === 0 ? (
-                  <p className={`rounded-lg border border-dashed px-3 py-8 text-center text-xs
-                    ${alvo ? 'border-maninho-500 text-maninho-700' : 'border-slate-300 text-slate-400'}`}>
-                    {alvo ? 'Solte aqui' : {
-                      'a-fazer': 'Ninguém para chamar agora.',
-                      enviado: 'Nenhuma mensagem aguardando resposta.',
-                      'em-conversa': 'Quem responder aparece aqui.',
-                      fechado: 'Conversas encerradas aparecem aqui.',
-                    }[col.chave]}
-                  </p>
-                ) : col.chave === 'a-fazer' ? (
-                  <div className="space-y-4">
-                    {GRUPOS_PENDENTES.filter((g) => pendentes[g.chave].length).map((g) => (
-                      <div key={g.chave}>
-                        <h3 className={`mb-1.5 px-1 text-xs font-semibold
-                          ${g.chave === 'atrasados' ? 'text-ouro-600' : 'text-slate-500'}`}>
-                          {g.titulo} ({pendentes[g.chave].length})
-                        </h3>
-                        <div className="space-y-2">
-                          {pendentes[g.chave].map((item) => (
-                            <CardFollowup key={item.id} item={item} {...cardProps} />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : col.chave === 'fechado' ? (
-                  <ul className="divide-y divide-slate-100 px-1">
-                    {cards.map((item) => (
-                      <LinhaFechada key={item.id} item={item} onHistorico={setHistoricoId}
-                        onDragStart={onDragStart} onDragEnd={onDragEnd} />
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="space-y-2">
-                    {cards.map((item) => <CardFollowup key={item.id} item={item} {...cardProps} />)}
+                {selecionando && cards.length > 0 && (
+                  <div className="border-b border-slate-200 px-3 py-1.5 text-right">
+                    <button type="button" className="text-xs font-semibold text-maninho-700 hover:underline"
+                      onClick={() => setSel((s) => {
+                        const n = new Set(s);
+                        const todos = cards.every((i) => n.has(i.id));
+                        for (const i of cards) { if (todos) n.delete(i.id); else n.add(i.id); }
+                        return n;
+                      })}>
+                      {cards.every((i) => sel.has(i.id)) ? 'Desmarcar todos' : 'Marcar todos'}
+                    </button>
                   </div>
                 )}
+
+                <div className="max-h-[calc(100vh-17rem)] min-h-[12rem] overflow-y-auto p-2">
+                  {cards.length === 0 ? (
+                    <p className={`rounded-lg border border-dashed px-3 py-8 text-center text-xs
+                      ${alvo ? 'border-maninho-500 text-maninho-700' : 'border-slate-300 text-slate-400'}`}>
+                      {alvo ? 'Solte aqui' : {
+                        'a-fazer': 'Ninguém para chamar agora.',
+                        enviado: 'Nenhuma mensagem aguardando resposta.',
+                        'em-conversa': 'Quem responder aparece aqui.',
+                        fechado: 'Conversas encerradas aparecem aqui.',
+                      }[col.chave]}
+                    </p>
+                  ) : col.chave === 'a-fazer' && ordem === 'urgencia' ? (
+                    <div className="space-y-3">
+                      {GRUPOS_PENDENTES.filter((g) => pendentes[g.chave].length).map((g) => (
+                        <div key={g.chave}>
+                          <h3 className={`mb-1.5 px-1 text-xs font-semibold
+                            ${g.chave === 'atrasados' ? 'text-ouro-600' : 'text-slate-500'}`}>
+                            {g.titulo} ({pendentes[g.chave].length})
+                          </h3>
+                          <div className="space-y-2">
+                            {pendentes[g.chave].map((item) => (
+                              <CardFollowup key={item.id} {...cardProps(item)} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : col.chave === 'fechado' ? (
+                    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white px-2">
+                      {cards.map((item) => <LinhaFechada key={item.id} {...cardProps(item)} />)}
+                    </ul>
+                  ) : (
+                    <div className="space-y-2">
+                      {cards.map((item) => <CardFollowup key={item.id} {...cardProps(item)} />)}
+                    </div>
+                  )}
+                </div>
               </section>
             );
           })}
+        </div>
+      )}
+
+      {selecionando && (
+        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-xl">
+            <span className="text-sm font-semibold text-slate-700">
+              {sel.size ? `${sel.size} selecionado${sel.size === 1 ? '' : 's'}` : 'Toque nos cards para selecionar'}
+            </span>
+            <button type="button" className="btn-ghost h-9" disabled={!sel.size}
+              onClick={() => confirmarLote([...sel], 'dispensar')}>
+              <X className="h-4 w-4" /> Dispensar
+            </button>
+            <button type="button" className="btn h-9 bg-rose-600 text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+              disabled={!sel.size} onClick={() => confirmarLote([...sel], 'excluir')}>
+              <Trash2 className="h-4 w-4" /> Excluir
+            </button>
+            <button type="button" className="h-9 px-2 text-sm font-semibold text-slate-500 hover:text-slate-800"
+              onClick={() => { setSelecionando(false); setSel(new Set()); }}>
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 
