@@ -89,7 +89,7 @@ function TipoTag({ tipo, nome }) {
   const m = TIPO_META[tipo] || TIPO_META.livre;
   const { Icone } = m;
   return (
-    <span className="inline-flex max-w-[11rem] items-center gap-1 text-[11px] font-medium text-slate-500" title={nome || m.label}>
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1 text-[11px] font-medium text-slate-500" title={nome || m.label}>
       <Icone className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
       <span className="truncate">{nome || m.label}</span>
     </span>
@@ -512,8 +512,8 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
       )}
 
       <footer className="mt-2.5 flex items-center gap-1">
-        <span className="mr-auto min-w-0"><TipoTag tipo={item.tipo} nome={item.regra_nome} /></span>
-        {!selecionando && (<>
+        <span className="flex min-w-0 flex-1"><TipoTag tipo={item.tipo} nome={item.regra_nome} /></span>
+        {!selecionando && (<div className="flex shrink-0 items-center gap-1">
           {coluna === 'a-fazer' && !conferindo && (problema ? (
             ehAdmin && (
               <button type="button" onClick={() => onAcao(item, 'excluir')}
@@ -542,7 +542,7 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
             </button>
           )}
           <MenuCard itens={menu} rotulo={`Mais ações para ${item.cliente_nome}`} />
-        </>)}
+        </div>)}
       </footer>
     </article>
   );
