@@ -172,6 +172,54 @@ async function reagendar(id, { agendado_para, notas }, userId) {
   return buscarItem(id);
 }
 
+/**
+ * Excluir ou dispensar vários de uma vez. Item no meio do envio
+ * (envio_iniciado_em) fica de fora: ainda não se sabe se saiu.
+ */
+async function acaoEmLote({ ids, acao }, userId) {
+  if (acao === 'excluir') {
+    const { rowCount } = await db.query(
+      `DELETE FROM followup_fila WHERE id = ANY($1::uuid[]) AND envio_iniciado_em IS NULL`, [ids],
+    );
+    return { afetados: rowCount };
+  }
+  const { rows } = await db.query(
+    `UPDATE followup_fila SET status = 'dispensado', envio_iniciado_em = NULL
+      WHERE id = ANY($1::uuid[]) AND envio_iniciado_em IS NULL
+        AND status IN ('pendente', 'enviado', 'respondeu')
+      RETURNING id`, [ids],
+  );
+  for (const r of rows) await registrarHistorico(r.id, 'dispensado', userId, 'Dispensado em lote');
+  return { afetados: rows.length };
+}
+
+/**
+ * Pergunta ao WhatsApp quais pendentes têm conta. Quem não tem fica
+ * marcado no card ('sem_whatsapp'); quem tem limpa uma marca antiga.
+ */
+async function verificarNumeros(userId) {
+  const { rows } = await db.query(
+    `SELECT id, cliente_telefone FROM vw_followup_fila
+      WHERE status = 'pendente' AND envio_iniciado_em IS NULL AND cliente_telefone IS NOT NULL
+      LIMIT 500`,
+  );
+  const resultado = await wa.quemTemWhatsApp(rows.map((r) => r.cliente_telefone));
+  let semWhatsapp = 0; let comWhatsapp = 0; let semResposta = 0;
+  for (const r of rows) {
+    const tem = resultado.get(r.cliente_telefone);
+    if (tem === undefined) { semResposta += 1; continue; }
+    if (tem) {
+      comWhatsapp += 1;
+      await registrarHistorico(r.id, 'whatsapp_ok', userId, null);
+    } else {
+      semWhatsapp += 1;
+      await registrarHistorico(r.id, 'sem_whatsapp', userId,
+        'Este número não tem WhatsApp (verificado com e sem o 9)');
+    }
+  }
+  return { verificados: rows.length, com_whatsapp: comWhatsapp, sem_whatsapp: semWhatsapp, sem_resposta: semResposta };
+}
+
 async function removerItem(id) {
   const { rowCount } = await db.query('DELETE FROM followup_fila WHERE id=$1', [id]);
   if (!rowCount) throw AppError.notFound('Follow-up não encontrado');
@@ -233,6 +281,8 @@ async function enviarAgora(id, userId) {
       throw e;
     }
     await db.query('UPDATE followup_fila SET envio_iniciado_em = NULL WHERE id = $1', [id]);
+    // Fica no card: a Fila mostra o motivo e oferece excluir.
+    await registrarHistorico(id, 'falha_envio', userId, String(err.message || '').slice(0, 300));
     throw err;
   }
 
@@ -1146,7 +1196,21 @@ async function kanban({ tipo, busca } = {}) {
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const { rows } = await db.query(
-    `SELECT * FROM vw_followup_fila ${clause}
+    `SELECT * FROM (
+       SELECT v.*,
+              -- Último sinal sobre o envio de um pendente. Falha ou número
+              -- sem WhatsApp só vale se nada mais novo (reagendar, número
+              -- confirmado) veio depois.
+              CASE WHEN ult.acao IN ('falha_envio', 'sem_whatsapp') THEN ult.acao END AS problema,
+              CASE WHEN ult.acao IN ('falha_envio', 'sem_whatsapp') THEN ult.notas END AS problema_motivo
+         FROM vw_followup_fila v
+         LEFT JOIN LATERAL (
+           SELECT h.acao, h.notas FROM followup_historico h
+            WHERE h.fila_id = v.id
+              AND h.acao IN ('falha_envio', 'sem_whatsapp', 'whatsapp_ok', 'reagendado')
+            ORDER BY h.criado_em DESC LIMIT 1
+         ) ult ON v.status = 'pendente'
+     ) x ${clause}
       ORDER BY
         CASE status
           WHEN 'pendente' THEN 1 WHEN 'enviado' THEN 2
@@ -1233,6 +1297,7 @@ async function historicoDoCliente(clienteId) {
 module.exports = {
   listarRegras, criarRegra, atualizarRegra, removerRegra,
   listarFila, buscarItem, criarManual, mudarStatus, reagendar, removerItem,
+  acaoEmLote, verificarNumeros,
   gerarFila, metricas, renderizar,
   listarAutomacoes, atualizarAutomacao, criarAutomacao, removerAutomacao, montarCampanha,
   enviarAutomaticos,

@@ -265,6 +265,39 @@ function jidsPossiveis(telefone) {
   return [...lista].map((x) => `${x}@s.whatsapp.net`);
 }
 
+/**
+ * Pergunta à Evolution quais telefones têm WhatsApp (com e sem o 9).
+ * Retorna Map telefone -> true/false. Telefone que a Evolution não
+ * respondeu fica de fora do Map (não dá para afirmar nada).
+ */
+async function quemTemWhatsApp(telefones) {
+  if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) {
+    throw new AppError('WhatsApp disponível a partir do plano Profissional', 403);
+  }
+  const e = ensureEnabled();
+  const unicos = [...new Set((telefones || []).filter(Boolean))];
+  const formas = new Map(unicos.map((t) => [t, jidsPossiveis(t).map((j) => j.replace(/@.*/, ''))]));
+  const existe = new Map(); // dígitos -> bool
+  const todos = [...new Set([...formas.values()].flat())];
+  for (let i = 0; i < todos.length; i += 50) {
+    const lote = todos.slice(i, i + 50);
+    const { ok, status, json } = await evolutionRequest(
+      `/chat/whatsappNumbers/${e.instance}`, { method: 'POST', body: { numbers: lote } },
+    );
+    if (!ok) throw new AppError(`Não deu para verificar os números: ${motivoEvolution(json, status)}`, 502);
+    for (const r of Array.isArray(json) ? json : []) {
+      const d = digitos(r.number || r.jid || '');
+      if (d) existe.set(d, Boolean(r.exists));
+    }
+  }
+  const out = new Map();
+  for (const [tel, fs] of formas) {
+    const respostas = fs.filter((f) => existe.has(f)).map((f) => existe.get(f));
+    if (respostas.length) out.set(tel, respostas.some(Boolean));
+  }
+  return out;
+}
+
 function textoDaMensagem(m) {
   return m?.message?.conversation
     || m?.message?.extendedTextMessage?.text
@@ -492,6 +525,7 @@ module.exports = {
   enviarTemplate,
   notificar,
   enviadasPara,
+  quemTemWhatsApp,
   jidsPossiveis,
   processarWebhook,
   resolverOficinaDoWebhook,

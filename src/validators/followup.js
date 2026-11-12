@@ -101,6 +101,11 @@ const enviarPendentes = z.object({
   regra_id: uuid.optional(),
 });
 
+const acaoEmLote = z.object({
+  ids: z.array(uuid).min(1, 'Selecione ao menos um').max(500),
+  acao: z.enum(['excluir', 'dispensar']),
+});
+
 const conferirEnvios = z.object({
   todosPendentes: z.boolean().optional(),
 });
@@ -126,5 +131,5 @@ const periodoMetricas = z.object({ periodo: z.coerce.number().int().min(1).max(7
 module.exports = {
   regra, atualizarRegra, criarManual, mudarStatus, reagendar, gerar,
   chaveAutomacao, atualizarAutomacao, criarAutomacao, refAutomacao, campanha, resultados,
-  enviarPendentes, conferirEnvios, filtroFila, filtroRegras, idParam, periodoMetricas,
+  enviarPendentes, conferirEnvios, acaoEmLote, filtroFila, filtroRegras, idParam, periodoMetricas,
 };
