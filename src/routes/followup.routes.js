@@ -57,6 +57,14 @@ router.post('/fila/conferir-envios', requireRole('admin'),
   validate({ body: v.conferirEnvios }),
   h(async (req, res) => res.json(await svc.conferirEnvios(req.body, req.user.id))));
 
+// Excluir ou dispensar vários cards de uma vez.
+router.post('/fila/em-lote', requireRole('admin'), validate({ body: v.acaoEmLote }),
+  h(async (req, res) => res.json(await svc.acaoEmLote(req.body, req.user.id))));
+
+// Pergunta ao WhatsApp quais pendentes têm conta; quem não tem fica marcado.
+router.post('/fila/verificar-numeros', requireRole('admin'),
+  h(async (req, res) => res.json(await svc.verificarNumeros(req.user.id))));
+
 router.delete('/fila/:id', requireRole('admin'), validate({ params: v.idParam }),
   h(async (req, res) => { await svc.removerItem(req.params.id); res.status(204).end(); }));
 
