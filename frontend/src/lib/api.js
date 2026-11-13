@@ -304,6 +304,7 @@ export const api = {
     body: { ...(ids?.length ? { ids } : {}), ...(regra_id ? { regra_id } : {}) },
   }),
   followupEnvioLote: () => request('/followup/fila/envio-lote'),
+  cancelarFollowupEnvioLote: () => request('/followup/fila/envio-lote/cancelar', { method: 'POST', body: {} }),
   followupEmLote: (ids, acao) => request('/followup/fila/em-lote', { method: 'POST', body: { ids, acao } }),
   verificarNumerosFollowup: () => request('/followup/fila/verificar-numeros', { method: 'POST', body: {} }),
   conferirEnviosFollowup: (todosPendentes = false) => request('/followup/fila/conferir-envios', {
