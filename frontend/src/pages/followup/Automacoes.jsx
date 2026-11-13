@@ -242,6 +242,12 @@ function ModalCampanha({ alvo, onFechar, ctx, onCriada }) {
   );
 }
 
+/** " 3 cards da fila ganharam o texto novo." (vazio quando nenhum mudou) */
+function textoAtualizados(n) {
+  if (!n) return '';
+  return n === 1 ? ' 1 card da fila ganhou o texto novo.' : ` ${n} cards da fila ganharam o texto novo.`;
+}
+
 function Cartao({ a, info, ctx, ehAdmin, onSalvo, onCampanha }) {
   const meta = CARTOES[a.chave];
   const { Icone } = meta;
@@ -259,10 +265,11 @@ function Cartao({ a, info, ctx, ehAdmin, onSalvo, onCampanha }) {
   async function salvar(campos) {
     setSalvando(true); setErro('');
     try {
-      onSalvo(await api.atualizarFollowupAutomacao(a.chave, campos));
+      const salvo = await api.atualizarFollowupAutomacao(a.chave, campos);
+      onSalvo(salvo);
       if (!('ativo' in campos) && !('envio_automatico' in campos)) {
-        setSalvoAgora(true);
-        setTimeout(() => setSalvoAgora(false), 2000);
+        setSalvoAgora(`Salvo.${textoAtualizados(salvo.mensagens_atualizadas)}`);
+        setTimeout(() => setSalvoAgora(false), salvo.mensagens_atualizadas ? 5000 : 2000);
       }
     } catch (e) { setErro(e.message); }
     finally { setSalvando(false); }
@@ -324,7 +331,7 @@ function Cartao({ a, info, ctx, ehAdmin, onSalvo, onCampanha }) {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {salvoAgora && (
               <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                <Check className="h-3.5 w-3.5" /> Salvo
+                <Check className="h-3.5 w-3.5" /> {salvoAgora}
               </span>
             )}
             {mudou && (
@@ -735,6 +742,7 @@ export default function Automacoes({ ehAdmin, onFilaMudou }) {
   }, []);
 
   function aoSalvarFixa(atualizado) {
+    if (atualizado.mensagens_atualizadas) onFilaMudou?.();
     setDados((d) => ({ ...d, automacoes: d.automacoes.map((a) => (a.chave === atualizado.chave ? atualizado : a)) }));
   }
 
@@ -851,7 +859,8 @@ export default function Automacoes({ ehAdmin, onFilaMudou }) {
         onSalva={(a, nova) => {
           setEditor(null);
           aoSalvarPropria(a, nova);
-          setMsgOk(nova ? `Automação "${a.nome}" criada.` : 'Automação salva.');
+          setMsgOk(nova ? `Automação "${a.nome}" criada.` : `Automação salva.${textoAtualizados(a.mensagens_atualizadas)}`);
+          if (a.mensagens_atualizadas) onFilaMudou?.();
         }} />
 
       <Confirmar dados={confirmar} onFechar={() => setConfirmar(null)} />
