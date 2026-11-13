@@ -52,6 +52,10 @@ router.post('/fila/enviar-pendentes', requireRole('admin'),
   validate({ body: v.enviarPendentes }),
   h(async (req, res) => res.status(202).json(await svc.enviarPendentesAgora(req.user.id, req.body))));
 
+// Para o lote em andamento; o que não saiu continua pendente.
+router.post('/fila/envio-lote/cancelar', requireRole('admin'),
+  h(async (req, res) => res.json(svc.cancelarLote())));
+
 // Confere na Evolution quais pendentes já saíram e marca como enviados.
 router.post('/fila/conferir-envios', requireRole('admin'),
   validate({ body: v.conferirEnvios }),

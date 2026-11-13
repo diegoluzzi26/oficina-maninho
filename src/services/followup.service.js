@@ -316,9 +316,28 @@ function intervaloEntreEnvios() {
 
 const esperar = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
+// Espera o intervalo entre envios, mas sai antes se o lote for cancelado.
+async function esperarSemCancelar(ms, estado) {
+  const fim = Date.now() + ms;
+  while (!estado.cancelado && Date.now() < fim) {
+    await esperar(Math.min(250, fim - Date.now()));
+  }
+}
+
 function estadoLote() {
   const e = lotes.get(db.slugAtual());
   return e ? { ...e, falhas: [...e.falhas] } : null;
+}
+
+/**
+ * Para o lote em andamento. A mensagem que já está saindo termina; as
+ * próximas não saem e continuam pendentes na fila.
+ */
+function cancelarLote() {
+  const e = lotes.get(db.slugAtual());
+  if (!e?.em_andamento) throw new AppError('Nenhum envio em andamento.', 409);
+  e.cancelado = true;
+  return estadoLote();
 }
 
 /**
@@ -357,7 +376,7 @@ async function enviarPendentesAgora(userId, { ids, regra_id, regra_ids } = {}) {
 
   const estado = {
     total: rows.length, processados: 0, enviados: 0, incertos: 0, falhas: [],
-    em_andamento: rows.length > 0,
+    em_andamento: rows.length > 0, cancelado: false,
     iniciado_em: new Date().toISOString(),
     concluido_em: rows.length ? null : new Date().toISOString(),
   };
@@ -366,7 +385,8 @@ async function enviarPendentesAgora(userId, { ids, regra_id, regra_ids } = {}) {
   if (rows.length) {
     db.runComOficina(slug, async () => {
       for (let i = 0; i < rows.length; i += 1) {
-        if (i > 0) await esperar(intervaloEntreEnvios());
+        if (i > 0) await esperarSemCancelar(intervaloEntreEnvios(), estado);
+        if (estado.cancelado) break;
         try {
           await enviarAgora(rows[i].id, userId);
           estado.enviados += 1;
@@ -1302,6 +1322,6 @@ module.exports = {
   listarAutomacoes, atualizarAutomacao, criarAutomacao, removerAutomacao, montarCampanha,
   enviarAutomaticos,
   registrarRespostaDoCliente, resultados,
-  enviarAgora, enviarPendentesAgora, estadoLote, conferirEnvios,
+  enviarAgora, enviarPendentesAgora, estadoLote, cancelarLote, conferirEnvios,
   kanban, historicoDoCliente,
 };

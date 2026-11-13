@@ -668,6 +668,14 @@ function ModalEnvioLote({ aberto, onFechar }) {
     finally { setIniciando(false); }
   }
 
+  const [parando, setParando] = useState(false);
+  async function parar() {
+    setParando(true); setErro('');
+    try { setLote(await api.cancelarFollowupEnvioLote()); }
+    catch (e) { setErro(e.message); }
+    finally { setParando(false); }
+  }
+
   async function conferir() {
     setConferindo(true); setErro(''); setConferencia(null);
     try {
@@ -688,7 +696,9 @@ function ModalEnvioLote({ aberto, onFechar }) {
           {lote.em_andamento ? (
             <>
               <p className="text-sm text-slate-700">
-                Enviando <strong>{lote.processados}</strong> de {lote.total}…
+                {lote.cancelado
+                  ? <>Parando… termina só a mensagem que já está saindo.</>
+                  : <>Enviando <strong>{lote.processados}</strong> de {lote.total}…</>}
               </p>
               <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full bg-ouro-500 transition-all"
@@ -699,6 +709,15 @@ function ModalEnvioLote({ aberto, onFechar }) {
                 Pode fechar esta janela: o envio continua no servidor.
               </p>
             </>
+          ) : lote.cancelado ? (
+            <p className="text-sm text-slate-700">
+              Envio parado: <strong>{lote.enviados}</strong> de {lote.total} enviado(s).
+              {lote.total - lote.processados > 0 && (
+                <> {lote.total - lote.processados === 1
+                  ? 'O outro continua pendente na fila.'
+                  : `Os outros ${lote.total - lote.processados} continuam pendentes na fila.`}</>
+              )}
+            </p>
           ) : (
             <p className="text-sm text-slate-700">
               Concluído: <strong>{lote.enviados}</strong> de {lote.total} enviado(s).
@@ -718,7 +737,13 @@ function ModalEnvioLote({ aberto, onFechar }) {
               </ul>
             </div>
           )}
-          <div className="flex justify-end border-t border-slate-200 pt-3">
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+            {lote.em_andamento && !lote.cancelado && (
+              <button type="button" onClick={parar} disabled={parando}
+                className="btn-ghost text-rose-700 hover:bg-rose-50">
+                {parando ? <Spinner className="h-4 w-4" /> : <X className="h-4 w-4" />} Parar envio
+              </button>
+            )}
             <button className="btn-primary" onClick={onFechar}>Fechar</button>
           </div>
         </div>
