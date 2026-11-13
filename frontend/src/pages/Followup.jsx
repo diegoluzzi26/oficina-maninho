@@ -511,8 +511,10 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
         </div>
       )}
 
-      <footer className="mt-2.5 flex items-center gap-1">
-        <span className="flex min-w-0 flex-1"><TipoTag tipo={item.tipo} nome={item.regra_nome} /></span>
+      {/* flex-wrap: se o nome da automação não couber ao lado dos botões,
+          os botões descem de linha em vez de ficar por cima do texto. */}
+      <footer className="mt-2.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
+        <span className="mr-auto flex min-w-0 max-w-full"><TipoTag tipo={item.tipo} nome={item.regra_nome} /></span>
         {!selecionando && (<div className="flex shrink-0 items-center gap-1">
           {coluna === 'a-fazer' && !conferindo && (problema ? (
             ehAdmin && (
