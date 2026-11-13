@@ -649,7 +649,76 @@ async function atualizarAutomacao(ref, d) {
   await db.query(
     `UPDATE followup_regras SET ${campos.join(', ')} WHERE id = $${params.length}`, params,
   );
-  return buscarAutomacao(atual.id);
+  const salva = await buscarAutomacao(atual.id);
+  if (d.mensagem_template !== undefined && d.mensagem_template !== atual.mensagem_template) {
+    salva.mensagens_atualizadas = await remontarPendentes(salva);
+  }
+  return salva;
+}
+
+/**
+ * Mensagem nova da automação vale também para o que ela já pôs na fila e
+ * ainda não saiu. Remonta o texto de cada card pendente (não iniciado) com
+ * os dados atuais do cliente, do carro e do serviço. Retorna quantos mudaram.
+ */
+async function remontarPendentes(regra) {
+  const f = regra.filtros || {};
+  const semDias = regra.chave === 'campanha' || ['campanha', 'aniversario'].includes(regra.gatilho);
+  const { rows } = await db.query(
+    `SELECT ff.id, ff.mensagem, c.nome AS nome_cliente,
+            COALESCE(ca.marca,'') AS marca, COALESCE(ca.modelo,'') AS modelo, COALESCE(ca.placa,'') AS placa,
+            CASE
+              WHEN ff.retorno_id IS NOT NULL THEN COALESCE(s.nome, r.nome_servico, r.motivo, 'a revisão')
+              WHEN ff.os_origem_id IS NOT NULL AND $2::text = 'servico_feito' THEN COALESCE((
+                SELECT string_agg(DISTINCT x.nome, ', ') FROM (
+                  SELECT os_s.nome_servico AS nome FROM os_servicos os_s
+                   WHERE os_s.os_id = ff.os_origem_id AND os_s.servico_id = ANY($3::uuid[])
+                  UNION
+                  SELECT os_p.descricao FROM os_pecas os_p
+                   WHERE os_p.os_id = ff.os_origem_id AND os_p.peca_id = ANY($4::uuid[])
+                ) x), '')
+              ELSE ''
+            END AS servico,
+            CASE
+              WHEN $5::boolean THEN 0
+              WHEN ff.retorno_id IS NOT NULL THEN
+                (CURRENT_DATE - COALESCE(ro.paga_em, ro.fechada_em, r.criado_em)::date)::int
+              WHEN ff.os_origem_id IS NOT NULL THEN
+                (CURRENT_DATE - COALESCE(oo.paga_em, oo.fechada_em, oo.aberta_em)::date)::int
+              ELSE (SELECT (CURRENT_DATE - MAX(COALESCE(o.paga_em, o.fechada_em, o.aberta_em))::date)::int
+                      FROM ordens_servico o WHERE o.cliente_id = ff.cliente_id AND o.status <> 'negada')
+            END AS dias_desde
+       FROM followup_fila ff
+       JOIN clientes c ON c.id = ff.cliente_id
+       LEFT JOIN carros ca ON ca.id = ff.carro_id
+       LEFT JOIN retornos r ON r.id = ff.retorno_id
+       LEFT JOIN servicos s ON s.id = r.servico_id
+       LEFT JOIN ordens_servico ro ON ro.id = r.os_id
+       LEFT JOIN ordens_servico oo ON oo.id = ff.os_origem_id
+      WHERE ff.regra_id = $1 AND ff.status = 'pendente' AND ff.envio_iniciado_em IS NULL`,
+    [regra.id, regra.gatilho || '', f.servico_ids || [], f.peca_ids || [], semDias],
+  );
+  if (!rows.length) return 0;
+  const oficina = await nomeOficina();
+  let n = 0;
+  for (const it of rows) {
+    const mensagem = renderizar(regra.mensagem_template, {
+      nome_cliente: it.nome_cliente,
+      modelo_carro: [it.marca, it.modelo].filter(Boolean).join(' ').trim() || 'carro',
+      placa: it.placa,
+      servico: it.servico,
+      dias_desde: it.dias_desde,
+      oficina,
+    });
+    if (mensagem === it.mensagem) continue;
+    // A trava de envio é conferida de novo: se começou a sair agora, não mexe.
+    const up = await db.query(
+      `UPDATE followup_fila SET mensagem = $2
+        WHERE id = $1 AND status = 'pendente' AND envio_iniciado_em IS NULL`, [it.id, mensagem],
+    );
+    n += up.rowCount;
+  }
+  return n;
 }
 
 /**
