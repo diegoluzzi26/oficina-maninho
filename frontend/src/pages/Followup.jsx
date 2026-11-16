@@ -40,6 +40,11 @@ const COLUNA_DO_STATUS = {
   respondeu: 'em-conversa', converteu: 'fechado', dispensado: 'fechado',
 };
 
+/** Igual ao backend: pedido de avaliação enviado já fica em Fechados. */
+const avaliacaoEncerrada = (item) =>
+  item.tipo === 'avaliacao' && (item.status === 'enviado' || item.status === 'respondeu');
+const colunaDo = (item) => (avaliacaoEncerrada(item) ? 'fechado' : COLUNA_DO_STATUS[item.status]);
+
 const EVENTO_META = {
   enviado:    { Icone: Send,          bg: 'bg-maninho-100 text-maninho-700' },
   respondeu:  { Icone: MessageCircle, bg: 'bg-ouro-100 text-ouro-700' },
@@ -442,7 +447,7 @@ function Selecao({ marcado, onChange, nome }) {
 }
 
 function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDragEnd, ehAdmin, selecionando, marcado, onMarcar }) {
-  const coluna = COLUNA_DO_STATUS[item.status];
+  const coluna = colunaDo(item);
   // Pendente com envio iniciado: a mensagem foi entregue à Evolution e o
   // sistema está confirmando se saiu. Não pode ser enviado de novo.
   const conferindo = item.status === 'pendente' && !!item.envio_iniciado_em;
@@ -553,6 +558,12 @@ function CardFollowup({ item, onAcao, onHistorico, enviando, onDragStart, onDrag
 /** Linha compacta da coluna Fechados: só quem, como terminou e quando. */
 function LinhaFechada({ item, onHistorico, onDragStart, onDragEnd, onAcao, ehAdmin, selecionando, marcado, onMarcar }) {
   const converteu = item.status === 'converteu';
+  const avaliacao = avaliacaoEncerrada(item);
+  const estilo = converteu ? 'bg-emerald-100 text-emerald-700'
+    : avaliacao ? 'bg-maninho-100 text-maninho-700' : 'bg-slate-100 text-slate-500';
+  const rotulo = converteu ? 'virou serviço'
+    : avaliacao ? (item.status === 'respondeu' ? 'avaliação pedida, respondeu' : 'avaliação pedida') : 'dispensado';
+  const Icone = converteu ? Check : avaliacao ? Send : X;
   return (
     <li draggable={!selecionando}
       onDragStart={(e) => onDragStart(e, item)}
@@ -562,16 +573,15 @@ function LinhaFechada({ item, onHistorico, onDragStart, onDragEnd, onAcao, ehAdm
       {selecionando ? (
         <Selecao marcado={marcado} onChange={onMarcar} nome={item.cliente_nome} />
       ) : (
-        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full
-          ${converteu ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-          title={converteu ? 'Virou serviço' : 'Dispensado'}>
-          {converteu ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${estilo}`}
+          title={rotulo.charAt(0).toUpperCase() + rotulo.slice(1)}>
+          <Icone className="h-3.5 w-3.5" />
         </span>
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-slate-700">{item.cliente_nome}</p>
         <p className="text-[11px] text-slate-400">
-          {converteu ? 'virou serviço' : 'dispensado'} {tempoRelativo(dataDoCard(item))}
+          {rotulo} {tempoRelativo(dataDoCard(item))}
         </p>
       </div>
       {!selecionando && (
@@ -1016,7 +1026,7 @@ function Fila() {
     const item = arrastando;
     setArrastando(null);
     if (!item) return;
-    if (COLUNA_DO_STATUS[item.status] === colunaChave) return;
+    if (colunaDo(item) === colunaChave) return;
 
     const novoStatus = COLUNA_PARA_STATUS[colunaChave];
     // Fechado: pergunta se converteu ou dispensou.
@@ -1062,8 +1072,12 @@ function Fila() {
   async function emLote(ids, acaoLote) {
     setErro(''); setMsgOk('');
     try {
-      const r = await api.followupEmLote(ids, acaoLote);
-      const n = r.afetados;
+      // A API aceita até 500 por pedido: seleção maior vai em partes.
+      let n = 0;
+      for (let i = 0; i < ids.length; i += 500) {
+        const r = await api.followupEmLote(ids.slice(i, i + 500), acaoLote);
+        n += r.afetados;
+      }
       setMsgOk(`${n} card${n === 1 ? '' : 's'} ${acaoLote === 'excluir' ? (n === 1 ? 'excluído' : 'excluídos') : (n === 1 ? 'dispensado' : 'dispensados')}.`);
       setSel(new Set()); setSelecionando(false);
       carregar();
@@ -1186,6 +1200,10 @@ function Fila() {
   });
 
   const listaProblemas = ordenar(comProblema, ordem === 'urgencia' ? 'recentes' : ordem);
+  // Tudo o que está na tela agora (respeita busca, filtro de tipo e a aba
+  // "Não dá para enviar").
+  const visiveis = !dados ? [] : soProblemas ? comProblema : Object.values(dados.colunas).flat();
+  const todosVisiveisMarcados = visiveis.length > 0 && visiveis.every((i) => sel.has(i.id));
 
   return (
     <div className="space-y-4 pb-20">
@@ -1402,6 +1420,12 @@ function Fila() {
             <span className="text-sm font-semibold text-slate-700">
               {sel.size ? `${sel.size} selecionado${sel.size === 1 ? '' : 's'}` : 'Toque nos cards para selecionar'}
             </span>
+            {visiveis.length > 0 && (
+              <button type="button" className="h-9 px-2 text-sm font-semibold text-maninho-700 hover:underline"
+                onClick={() => setSel(todosVisiveisMarcados ? new Set() : new Set(visiveis.map((i) => i.id)))}>
+                {todosVisiveisMarcados ? 'Desmarcar todos' : `Marcar todos (${visiveis.length})`}
+              </button>
+            )}
             <button type="button" className="btn-ghost h-9" disabled={!sel.size}
               onClick={() => confirmarLote([...sel], 'dispensar')}>
               <X className="h-4 w-4" /> Dispensar
