@@ -1266,6 +1266,16 @@ const COLUNA_POR_STATUS = {
 };
 
 /**
+ * Pedido de avaliação não espera resposta nem vira serviço: depois de
+ * enviado já vai para Fechados. O status continua 'enviado'/'respondeu'
+ * para as métricas.
+ */
+function colunaDoItem(item) {
+  if (item.tipo === 'avaliacao' && (item.status === 'enviado' || item.status === 'respondeu')) return 'fechado';
+  return COLUNA_POR_STATUS[item.status] || 'fechado';
+}
+
+/**
  * Retorna 4 colunas já com os cards dentro + contagem por tipo (pra
  * alimentar os chips de filtro). Tudo em uma requisição só.
  *
@@ -1317,8 +1327,7 @@ async function kanban({ tipo, busca } = {}) {
     'fechado':     [],
   };
   for (const item of rows) {
-    const col = COLUNA_POR_STATUS[item.status] || 'fechado';
-    colunas[col].push(item);
+    colunas[colunaDoItem(item)].push(item);
   }
 
   // Contagem por tipo pros chips (SEMPRE em cima do total, ignora o
