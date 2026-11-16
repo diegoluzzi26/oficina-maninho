@@ -29,6 +29,7 @@ const api = (path, opt = {}) => ctx.api(path, { token: ctx.tokenA, ...opt });
 
 beforeEach(async () => {
   await q('DELETE FROM followup_fila');
+  await q('DELETE FROM followup_excluidos');
   await q('DELETE FROM retornos');
   await q(`DELETE FROM ordens_servico WHERE id <> $1`, [ctx.idsA.os]);
 });
@@ -96,6 +97,29 @@ test('revisão: retorno substituído por um mais novo do mesmo serviço não ent
   await retorno({ dias: 180, criadoHa: 0 }); // o novo, longe
   const g = await api('/api/followup/gerar', { method: 'POST', body: { chave: 'revisao' } });
   assert.equal(g.data.gerados, 0);
+});
+
+test('card excluído não volta quando a fila é atualizada', async () => {
+  await api('/api/followup/automacoes/revisao', { method: 'PUT', body: { antecedencia_dias: 7, ativo: true } });
+  await retorno({ dias: 5 });
+  const g = await api('/api/followup/gerar', { method: 'POST', body: { chave: 'revisao' } });
+  assert.equal(g.data.gerados, 1);
+  const [item] = await q('SELECT id FROM followup_fila');
+
+  const exc = await api('/api/followup/fila/em-lote', { method: 'POST', body: { ids: [item.id], acao: 'excluir' } });
+  assert.equal(exc.status, 200, JSON.stringify(exc.data));
+  assert.equal(exc.data.afetados, 1);
+
+  const g2 = await api('/api/followup/gerar', { method: 'POST', body: { chave: 'revisao' } });
+  assert.equal(g2.status, 200, JSON.stringify(g2.data));
+  assert.equal(g2.data.gerados, 0, 'excluído não entra de novo');
+  assert.equal((await q('SELECT 1 FROM followup_fila')).length, 0);
+
+  // Retorno novo do mesmo cliente é outro assunto: entra normalmente.
+  await q('DELETE FROM retornos');
+  await retorno({ dias: 3 });
+  const g3 = await api('/api/followup/gerar', { method: 'POST', body: { chave: 'revisao' } });
+  assert.equal(g3.data.gerados, 1);
 });
 
 test('cliente respondeu no WhatsApp (número sem o 9): enviado vira respondeu', async () => {

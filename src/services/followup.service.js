@@ -178,10 +178,7 @@ async function reagendar(id, { agendado_para, notas }, userId) {
  */
 async function acaoEmLote({ ids, acao }, userId) {
   if (acao === 'excluir') {
-    const { rowCount } = await db.query(
-      `DELETE FROM followup_fila WHERE id = ANY($1::uuid[]) AND envio_iniciado_em IS NULL`, [ids],
-    );
-    return { afetados: rowCount };
+    return { afetados: await apagarDaFila(ids, { poupaEmEnvio: true }) };
   }
   const { rows } = await db.query(
     `UPDATE followup_fila SET status = 'dispensado', envio_iniciado_em = NULL
@@ -221,8 +218,31 @@ async function verificarNumeros(userId) {
 }
 
 async function removerItem(id) {
-  const { rowCount } = await db.query('DELETE FROM followup_fila WHERE id=$1', [id]);
-  if (!rowCount) throw AppError.notFound('Follow-up não encontrado');
+  const n = await apagarDaFila([id]);
+  if (!n) throw AppError.notFound('Follow-up não encontrado');
+}
+
+/**
+ * Apaga cards da fila e deixa a marca em followup_excluidos, para a geração
+ * ("Atualizar fila" e a das 8h) não trazer de volta o que o dono excluiu.
+ * Só o que veio de automação ou de retorno precisa de marca: card manual
+ * não é gerado sozinho. Retorna quantos foram apagados.
+ */
+async function apagarDaFila(ids, { poupaEmEnvio = false } = {}) {
+  const { rows } = await db.query(
+    `WITH apagados AS (
+       DELETE FROM followup_fila
+        WHERE id = ANY($1::uuid[]) ${poupaEmEnvio ? 'AND envio_iniciado_em IS NULL' : ''}
+       RETURNING cliente_id, regra_id, os_origem_id, retorno_id, tipo, criado_em
+     ), marcas AS (
+       INSERT INTO followup_excluidos (cliente_id, regra_id, os_origem_id, retorno_id, tipo, criado_em)
+       SELECT cliente_id, regra_id, os_origem_id, retorno_id, tipo::text, criado_em
+         FROM apagados
+        WHERE regra_id IS NOT NULL OR retorno_id IS NOT NULL
+     )
+     SELECT count(*)::int AS n FROM apagados`, [ids],
+  );
+  return rows[0].n;
 }
 
 async function registrarHistorico(fila_id, acao, usuario_id, notas) {
@@ -759,6 +779,7 @@ const CANDIDATOS = {
         AND r.agendado_para >= CURRENT_DATE - interval '60 days'
         AND c.telefone IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM followup_fila f WHERE f.retorno_id = r.id)
+        AND NOT EXISTS (SELECT 1 FROM followup_excluidos x WHERE x.retorno_id = r.id)
         AND NOT EXISTS (
           SELECT 1 FROM retornos r2
            WHERE r2.cliente_id = r.cliente_id
@@ -787,6 +808,10 @@ const CANDIDATOS = {
           SELECT 1 FROM followup_fila ff
            WHERE ff.os_origem_id = os.id AND ff.regra_id = $2
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_excluidos x
+           WHERE x.os_origem_id = os.id AND x.regra_id = $2
+        )
       ORDER BY os.cliente_id, COALESCE(os.paga_em, os.fechada_em) DESC`,
     [regra.intervalo_dias, regra.id],
   ),
@@ -810,6 +835,11 @@ const CANDIDATOS = {
           SELECT 1 FROM followup_fila ff
            WHERE ff.cliente_id = c.id AND ff.tipo = 'reativacao'
              AND ff.criado_em > u.ultima_visita
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_excluidos x
+           WHERE x.cliente_id = c.id AND x.tipo = 'reativacao'
+             AND x.criado_em > u.ultima_visita
         )
       LIMIT 300`,
     [regra.intervalo_dias],
@@ -837,6 +867,11 @@ const CANDIDATOS = {
           SELECT 1 FROM followup_fila ff
            WHERE ff.cliente_id = c.id AND ff.tipo = 'promocao'
              AND ff.criado_em > now() - interval '30 days'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_excluidos x
+           WHERE x.cliente_id = c.id AND x.tipo = 'promocao'
+             AND x.criado_em > now() - interval '30 days'
         )
       ORDER BY c.nome
       LIMIT 500`,
@@ -905,6 +940,10 @@ function consultaCampanha(regra) {
                SELECT 1 FROM followup_fila ff
                 WHERE ff.cliente_id = c.id AND ff.regra_id = $1
                   AND ff.criado_em > now() - interval '30 days')
+             AND NOT EXISTS (
+               SELECT 1 FROM followup_excluidos x
+                WHERE x.cliente_id = c.id AND x.regra_id = $1
+                  AND x.criado_em > now() - interval '30 days')
            ORDER BY c.nome
            LIMIT 500`,
     params,
@@ -944,6 +983,8 @@ const CANDIDATOS_GATILHO = {
           ${condCarro}
           AND NOT EXISTS (
             SELECT 1 FROM followup_fila ff WHERE ff.os_origem_id = os.id AND ff.regra_id = $4)
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_excluidos x WHERE x.os_origem_id = os.id AND x.regra_id = $4)
         LIMIT 300`,
       params,
     );
@@ -977,6 +1018,11 @@ const CANDIDATOS_GATILHO = {
              WHERE ff.cliente_id = c.id AND ff.regra_id = $2
                AND ff.criado_em > u.ultima_visita
           )
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_excluidos x
+             WHERE x.cliente_id = c.id AND x.regra_id = $2
+               AND x.criado_em > u.ultima_visita
+          )
         LIMIT 300`,
       params,
     );
@@ -1001,6 +1047,11 @@ const CANDIDATOS_GATILHO = {
             SELECT 1 FROM followup_fila ff
              WHERE ff.cliente_id = c.id AND ff.regra_id = $1
                AND ff.criado_em > now() - interval '300 days'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM followup_excluidos x
+             WHERE x.cliente_id = c.id AND x.regra_id = $1
+               AND x.criado_em > now() - interval '300 days'
           )`,
       params,
     );
