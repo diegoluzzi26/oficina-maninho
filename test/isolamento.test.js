@@ -14,7 +14,16 @@ const { setup } = require('./helpers/tenancy');
 
 let ctx;
 
-before(async () => { ctx = await setup(); });
+before(async () => {
+  ctx = await setup();
+  // Sem contrato aceito a API responde 403 em tudo (exigirContrato) — e o 403
+  // mascararia o 404 que estes testes querem provar. As rotas usadas aqui
+  // cabem no plano padrão (profissional): nenhuma exige 'ia' ou 'fiscal'.
+  for (const [nome, token] of [['A', ctx.tokenA], ['B', ctx.tokenB]]) {
+    const r = await ctx.api('/api/contrato/aceitar', { method: 'POST', token, body: {} });
+    assert.ok(r.status < 300, `aceite do contrato (${nome}): ${JSON.stringify(r.data)}`);
+  }
+});
 after(async () => { if (ctx) await ctx.teardown(); });
 
 // Atalhos: A é o "atacante", tenta alcançar recursos de B.
