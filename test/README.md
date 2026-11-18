@@ -38,10 +38,13 @@ No Windows (PowerShell):
 $env:TEST_DATABASE_URL="postgres://oficina:SENHA@localhost:5432/oficina_test"; npm test
 ```
 
-`JWT_SECRET` é lido do `.env` (via dotenv), como no app. O `DATABASE_URL` não
-precisa estar definido: `npm test` pré-carrega `test/helpers/env.js`, que copia
-`TEST_DATABASE_URL` para `DATABASE_URL` antes de qualquer arquivo de teste
-carregar `src/` (e sobrepõe o do `.env`, para nenhum teste usar o banco de dev).
+Só `TEST_DATABASE_URL` é obrigatório. `npm test` pré-carrega
+`test/helpers/env.js` antes de qualquer arquivo de teste carregar `src/`:
+
+- copia `TEST_DATABASE_URL` para `DATABASE_URL` (sobrepondo o do `.env`, para
+  nenhum teste usar o banco de dev);
+- usa o `JWT_SECRET` do ambiente/`.env` se houver; senão gera um aleatório por
+  processo de teste.
 
 ### Notas
 
