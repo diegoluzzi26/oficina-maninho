@@ -44,5 +44,12 @@ $env:TEST_DATABASE_URL="postgres://oficina:SENHA@localhost:5432/oficina_test"; n
 
 - Os schemas `oficina_ta`/`oficina_tb` e os usuários/oficinas de teste são
   removidos no fim (e recriados a cada run) — a suíte é idempotente.
+- `npm test` roda os arquivos **em série** (`--test-concurrency=1`): todas as
+  suítes usam os mesmos schemas `oficina_ta`/`oficina_tb` e, em paralelo, uma
+  dropa/recria o schema enquanto a outra o usa.
+- Toda suíte que chama a API precisa aceitar o contrato no `before()`
+  (`POST /api/contrato/aceitar` com cada token) — sem isso a API responde 403
+  em tudo. O plano padrão das oficinas de teste é `profissional`; rotas que
+  exigem `ia`/`fiscal` precisam de plano `completo`.
 - Nenhum dado real é tocado: só o schema-modelo `oficina_maninho` é lido
   (estrutura), nunca escrito.
