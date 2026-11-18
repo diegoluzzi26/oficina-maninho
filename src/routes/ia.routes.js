@@ -99,6 +99,8 @@ router.post('/precificar', validate({ body: precificarBody }),
 
 // Conversa com o consultor. O histórico vem do frontend; a última
 // mensagem tem que ser do usuário (exigência da API do Claude).
+// O consultor consulta os dados da oficina por ferramentas (só leitura) e
+// devolve `propostas` (WhatsApp/follow-up) que o usuário confirma na tela.
 const conversarBody = z.object({
   mensagens: z.array(z.object({
     role: z.enum(['user', 'assistant']),
@@ -110,8 +112,7 @@ const conversarBody = z.object({
 router.post('/conversar', validate({ body: conversarBody }),
   h(async (req, res) => {
     const painel = await relatorios.painelMes({});
-    const resposta = await svc.conversar(req.body, painel);
-    res.json({ resposta });
+    res.json(await svc.conversar(req.body, painel));
   }));
 
 module.exports = router;

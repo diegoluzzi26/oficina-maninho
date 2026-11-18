@@ -31,12 +31,119 @@ function renderMarkdown(texto) {
 
 const PERGUNTAS_PRONTAS = [
   'Como estão as finanças da oficina este mês?',
+  'Quais OS estão abertas há mais tempo?',
+  'Quais despesas vencem nos próximos 7 dias?',
+  'Como está o follow-up nos últimos 30 dias?',
+  'Quais serviços mais faturaram nos últimos 3 meses?',
   'Como aumentar o ticket médio sem perder cliente?',
-  'Quanto devo cobrar pela hora de mão de obra?',
-  'Como reduzir as despesas fixas?',
-  'Como fazer o cliente voltar para a revisão?',
-  'Como organizar o fluxo de caixa da semana?',
 ];
+
+// Nomes amigáveis das consultas que o consultor fez (rodapé da resposta).
+const NOMES_CONSULTA = {
+  buscar_clientes: 'clientes', detalhes_cliente: 'ficha do cliente', historico_veiculo: 'histórico do veículo',
+  listar_ordens: 'ordens de serviço', detalhes_ordem: 'detalhe da OS', painel_financeiro: 'painel financeiro',
+  faturamento_periodo: 'faturamento', listar_despesas: 'despesas', fila_followup: 'fila de follow-up',
+  metricas_followup: 'métricas de follow-up', propor_mensagem_whatsapp: 'rascunho de WhatsApp',
+  propor_followup: 'proposta de follow-up',
+};
+
+const TIPOS_FOLLOWUP = {
+  manutencao: 'Manutenção', reativacao: 'Reativação', promocao: 'Promoção', avaliacao: 'Avaliação',
+};
+
+// ------------------ Cartões de ação (só gravam com confirmação) ------------------
+function CartaoWhatsApp({ proposta }) {
+  const [mensagem, setMensagem] = useState(proposta.mensagem);
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    try { await navigator.clipboard.writeText(mensagem); setCopiado(true); } catch { /* sem permissão */ }
+  }
+
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Rascunho de WhatsApp</p>
+      <p className="mt-0.5 text-sm font-semibold text-slate-800">
+        {proposta.cliente_nome}{proposta.telefone ? <span className="font-normal text-slate-500"> · {proposta.telefone}</span> : null}
+      </p>
+      <textarea rows={4} className="input mt-2 text-sm" value={mensagem} maxLength={2000}
+        onChange={(e) => { setMensagem(e.target.value); setCopiado(false); }} />
+      <div className="mt-2 flex flex-wrap justify-end gap-2">
+        <button type="button" className="btn-ghost text-xs" onClick={copiar}>{copiado ? 'Copiado ✓' : 'Copiar'}</button>
+        {proposta.numero_whatsapp ? (
+          <a className="btn-primary text-xs" target="_blank" rel="noreferrer"
+            href={`https://wa.me/${proposta.numero_whatsapp}?text=${encodeURIComponent(mensagem)}`}>
+            Abrir no WhatsApp
+          </a>
+        ) : (
+          <span className="self-center text-xs text-slate-500">Cliente sem telefone cadastrado.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CartaoFollowup({ proposta }) {
+  const [mensagem, setMensagem] = useState(proposta.mensagem);
+  const [agendado, setAgendado] = useState(proposta.agendado_para || '');
+  const [estado, setEstado] = useState('pendente'); // pendente | salvando | salvo | descartado
+  const [erro, setErro] = useState('');
+
+  async function confirmar() {
+    setErro(''); setEstado('salvando');
+    try {
+      await api.criarFollowupManual({
+        cliente_id: proposta.cliente_id,
+        carro_id: proposta.carro_id || null,
+        tipo: proposta.tipo_followup,
+        mensagem,
+        ...(agendado ? { agendado_para: agendado } : {}),
+        ...(proposta.notas ? { notas: proposta.notas } : {}),
+      });
+      setEstado('salvo');
+    } catch (e) { setErro(e.message); setEstado('pendente'); }
+  }
+
+  if (estado === 'descartado') {
+    return <p className="text-xs text-slate-400">Proposta de follow-up para {proposta.cliente_nome} descartada.</p>;
+  }
+
+  return (
+    <div className="rounded-lg border border-maninho-200 bg-white p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-maninho-700">
+        Proposta de follow-up · {TIPOS_FOLLOWUP[proposta.tipo_followup] || proposta.tipo_followup}
+      </p>
+      <p className="mt-0.5 text-sm font-semibold text-slate-800">
+        {proposta.cliente_nome}{proposta.carro_rotulo ? <span className="font-normal text-slate-500"> · {proposta.carro_rotulo}</span> : null}
+      </p>
+      {estado === 'salvo' ? (
+        <p className="mt-2 text-sm text-emerald-700">
+          ✓ Adicionado à fila de follow-up{agendado ? ` para ${agendado.split('-').reverse().join('/')}` : ''}.
+        </p>
+      ) : (
+        <>
+          <textarea rows={4} className="input mt-2 text-sm" value={mensagem} maxLength={2000}
+            onChange={(e) => setMensagem(e.target.value)} />
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+            <label className="mr-auto flex items-center gap-2 text-xs text-slate-600">
+              Agendar para
+              <input type="date" className="input h-8 w-auto py-0 text-xs" value={agendado}
+                onChange={(e) => setAgendado(e.target.value)} />
+            </label>
+            <button type="button" className="btn-ghost text-xs" disabled={estado === 'salvando'}
+              onClick={() => setEstado('descartado')}>Descartar</button>
+            <button type="button" className="btn-primary text-xs"
+              disabled={estado === 'salvando' || mensagem.trim().length < 10}
+              onClick={confirmar}>
+              {estado === 'salvando' ? 'Salvando…' : 'Adicionar à fila'}
+            </button>
+          </div>
+          {erro && <p className="mt-1 text-xs text-red-600">{erro}</p>}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ------------------ Consultor (chat) ------------------
 function Consultor() {
@@ -55,8 +162,12 @@ function Consultor() {
     const historico = [...mensagens, { role: 'user', content: p }];
     setMensagens(historico); setTexto(''); setErro(''); setCarregando(true);
     try {
-      const r = await api.iaConversar(historico.slice(-20));
-      setMensagens((m) => [...m, { role: 'assistant', content: r.resposta }]);
+      // Só role/content vão pra API; propostas e consultas ficam na tela.
+      const r = await api.iaConversar(historico.slice(-20).map(({ role, content }) => ({ role, content })));
+      setMensagens((m) => [...m, {
+        role: 'assistant', content: r.resposta,
+        propostas: r.propostas || [], consultas: r.consultas || [],
+      }]);
     } catch (e) {
       setErro(e.message);
       // Devolve a pergunta pro campo pra dar pra tentar de novo.
@@ -71,7 +182,8 @@ function Consultor() {
           <div className="py-6 text-center">
             <p className="text-sm font-semibold text-slate-700">Pergunte qualquer coisa sobre a gestão da oficina.</p>
             <p className="mt-1 text-xs text-slate-500">
-              O consultor já conhece os números do mês (receita, despesas, ticket médio, custo da hora).
+              O consultor consulta clientes, veículos, OS, financeiro, despesas e follow-up da oficina.
+              Mensagens e follow-ups que ele sugerir só valem depois que você confirmar.
             </p>
             <div className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
               {PERGUNTAS_PRONTAS.map((q) => (
@@ -89,12 +201,24 @@ function Consultor() {
               ? 'bg-maninho-600 text-sm text-white'
               : 'border border-slate-200 bg-slate-50/70'}`}>
               {m.role === 'user' ? m.content : renderMarkdown(m.content)}
+              {m.propostas?.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {m.propostas.map((p, j) => (p.tipo === 'whatsapp'
+                    ? <CartaoWhatsApp key={j} proposta={p} />
+                    : <CartaoFollowup key={j} proposta={p} />))}
+                </div>
+              )}
+              {m.consultas?.length > 0 && (
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Consultou: {[...new Set(m.consultas.map((c) => NOMES_CONSULTA[c] || c))].join(', ')}
+                </p>
+              )}
             </div>
           </div>
         ))}
         {carregando && (
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Spinner className="h-4 w-4" /> Pensando…
+            <Spinner className="h-4 w-4" /> Consultando os dados da oficina…
           </div>
         )}
         <div ref={fimRef} />
@@ -105,7 +229,7 @@ function Consultor() {
       <form className="flex gap-2 border-t border-slate-200 p-3"
         onSubmit={(e) => { e.preventDefault(); perguntar(); }}>
         <textarea rows={1} className="input min-h-[40px] flex-1 resize-none"
-          placeholder="Ex: vale a pena contratar mais um mecânico?"
+          placeholder="Ex: quando o João da Silva veio pela última vez?"
           value={texto} onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); perguntar(); } }} />
         <button type="submit" className="btn-primary" disabled={carregando || !texto.trim()}>Enviar</button>
@@ -314,7 +438,7 @@ export default function Assistente() {
     <div className="space-y-5">
       <div>
         <h1 className="font-display text-[26px] font-semibold uppercase tracking-wide text-maninho-800">Assistente IA</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Dicas de gestão e preço de serviço com base nos números da oficina.</p>
+        <p className="mt-0.5 text-sm text-slate-500">Pergunte sobre clientes, OS, financeiro e follow-up — e receba dicas de gestão e preço.</p>
       </div>
 
       <div className="flex rounded-md border border-slate-300 bg-white p-0.5 shadow-sm w-fit">

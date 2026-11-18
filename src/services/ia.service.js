@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
+const ferramentas = require('./ia-ferramentas.service');
 
 /**
  * Integração com IA generativa (Claude via Anthropic API).
@@ -41,6 +42,17 @@ const SEM_ESFORCO = /haiku-4|sonnet-4-5|claude-3/;
  * dar folga no maxTokens, senão a resposta sai vazia.
  */
 async function chamarClaude(prompt, { maxTokens = 400, modelo, system, messages, esforco } = {}) {
+  const data = await requisicaoClaude({ maxTokens, modelo, system, esforco,
+    messages: messages || [{ role: 'user', content: prompt }] });
+  return textoDaResposta(data);
+}
+
+/**
+ * Chamada crua à Messages API. Devolve o JSON inteiro (content com blocos
+ * de texto, raciocínio e tool_use) — o consultor precisa disso pra rodar o
+ * laço de ferramentas.
+ */
+async function requisicaoClaude({ maxTokens = 400, modelo, system, messages, esforco, tools, toolChoice }) {
   const chave = chaveOuFalha();
   const modeloFinal = modelo || process.env.IA_MODELO || MODELO_DEFAULT;
   const comEsforco = esforco && !SEM_ESFORCO.test(modeloFinal);
@@ -57,7 +69,9 @@ async function chamarClaude(prompt, { maxTokens = 400, modelo, system, messages,
       max_tokens: maxTokens,
       ...(system ? { system } : {}),
       ...(comEsforco ? { output_config: { effort: esforco } } : {}),
-      messages: messages || [{ role: 'user', content: prompt }],
+      ...(tools ? { tools } : {}),
+      ...(toolChoice ? { tool_choice: toolChoice } : {}),
+      messages,
     }),
   });
 
@@ -66,7 +80,10 @@ async function chamarClaude(prompt, { maxTokens = 400, modelo, system, messages,
     console.error('[ia] erro Anthropic:', res.status, txt);
     throw new AppError(`IA indisponível (HTTP ${res.status})`, 502);
   }
-  const data = await res.json();
+  return res.json();
+}
+
+function textoDaResposta(data) {
   // A resposta pode vir com bloco de raciocínio (thinking) antes do texto.
   const texto = (data?.content || [])
     .filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -554,11 +571,18 @@ Responda APENAS com um objeto JSON válido, sem markdown:
   };
 }
 
+// Teto de consultas (chamadas de ferramenta) por pergunta — controla custo.
+const MAX_CONSULTAS = 8;
+
 /**
  * Consultor de gestão em formato de conversa. Sem estado no servidor:
- * o frontend manda o histórico a cada pergunta. O retrato da oficina
- * (números do mês + custo/hora) vai no system prompt, pra IA responder
- * com base nos dados reais e não em conselho genérico.
+ * o frontend manda o histórico a cada pergunta. O retrato do mês vai no
+ * system prompt; pra qualquer outra coisa (cliente, veículo, OS, despesas,
+ * follow-up) o modelo usa as ferramentas de ia-ferramentas.service, que
+ * rodam no schema da oficina logada.
+ *
+ * Ações (mensagem de WhatsApp, follow-up) só voltam como `propostas`:
+ * o usuário confirma no chat e o frontend grava pelas rotas normais.
  */
 async function conversar({ mensagens }, painel) {
   const [of, custo] = await Promise.all([perfilOficina(), custoHoraOficina()]);
@@ -578,24 +602,66 @@ async function conversar({ mensagens }, painel) {
     comparativo_mes_anterior: painel.comparativo,
     custo_hora_oficina: custo,
   };
+  const hoje = new Date().toISOString().slice(0, 10);
 
-  const system = `Você é o consultor de gestão da oficina ${of.rotulo}${of.especialidades ? `, especialidades: ${of.especialidades}` : ''}. Quem conversa com você é o dono ou gerente.
+  const system = `Você é o consultor de gestão da oficina ${of.rotulo}${of.especialidades ? `, especialidades: ${of.especialidades}` : ''}. Quem conversa com você é o dono ou gerente. Hoje é ${hoje}.
 
 Ajude com administração de oficina mecânica: precificação, margem, fluxo de caixa, controle de despesas, produtividade da equipe, captação e retenção de clientes, atendimento, estoque de peças, garantia e organização do dia a dia.
 
-Números atuais da oficina (use quando forem relevantes pra pergunta):
+Números do mês atual (use quando forem relevantes):
 ${JSON.stringify(retrato, null, 2)}
+
+Você tem ferramentas para consultar os dados reais da oficina: clientes, veículos, ordens de serviço, financeiro, despesas e follow-up. Use-as sempre que a pergunta depender de dados que não estão acima — não chute. Você pode fazer no máximo ${MAX_CONSULTAS} consultas por pergunta; prefira filtros certeiros a listas grandes. Para achar um cliente pelo nome, use buscar_clientes antes das outras.
+
+Ações: você NÃO grava nem envia nada. Quando fizer sentido mandar mensagem ou agendar um retorno, use propor_mensagem_whatsapp ou propor_followup; o usuário vê um cartão com botão de confirmar. Depois de propor, diga em uma frase o que propôs — não repita a mensagem inteira no texto.
 
 Regras:
 - Português brasileiro, direto e prático, como um consultor experiente que conhece oficina de bairro.
 - Respostas curtas (até ~250 palavras), com passos concretos. Use listas quando ajudar.
-- Cite os números da oficina quando sustentarem o conselho; não invente dados que não estão aqui.
+- Cite os números da oficina quando sustentarem o conselho; não invente dados que não vieram do retrato ou das ferramentas.
+- Não mostre ids internos (UUID) na resposta.
 - Pode usar markdown simples: ## títulos, **negrito** e listas com "- ".
 - Assuntos jurídicos, tributários ou trabalhistas: dê a orientação geral e recomende confirmar com contador ou advogado.
 - Se a pergunta fugir de gestão da oficina, responda em uma frase e traga a conversa de volta.`;
 
   const modelo = process.env.IA_MODELO_ANALISE || MODELO_ANALISE_DEFAULT;
-  return chamarClaude(null, { system, messages: mensagens, maxTokens: 4000, modelo, esforco: 'low' });
+  const conversa = mensagens.map((m) => ({ role: m.role, content: m.content }));
+  const propostas = [];
+  const consultas = [];
+
+  // Cada volta: o modelo responde ou pede ferramentas. Esgotado o teto,
+  // a última volta força resposta em texto (tool_choice none).
+  for (let volta = 0; volta <= MAX_CONSULTAS; volta += 1) {
+    const esgotou = consultas.length >= MAX_CONSULTAS;
+    const data = await requisicaoClaude({
+      system, messages: conversa, maxTokens: 4000, modelo, esforco: 'low',
+      tools: ferramentas.DEFINICOES,
+      ...(esgotou ? { toolChoice: { type: 'none' } } : {}),
+    });
+
+    const pedidos = (data.content || []).filter((b) => b.type === 'tool_use');
+    if (data.stop_reason !== 'tool_use' || !pedidos.length) {
+      return { resposta: textoDaResposta(data), propostas, consultas };
+    }
+
+    // Devolve o turno do assistente inteiro (inclusive raciocínio) — a API exige.
+    conversa.push({ role: 'assistant', content: data.content });
+    const resultados = [];
+    for (const p of pedidos) {
+      if (consultas.length >= MAX_CONSULTAS) {
+        resultados.push({ type: 'tool_result', tool_use_id: p.id, is_error: true,
+          content: 'Limite de consultas desta pergunta atingido. Responda com o que já tem.' });
+        continue;
+      }
+      consultas.push(p.name);
+      const r = await ferramentas.executar(p.name, p.input);
+      if (r.proposta) propostas.push(r.proposta);
+      resultados.push({ type: 'tool_result', tool_use_id: p.id, content: r.conteudo,
+        ...(r.erro ? { is_error: true } : {}) });
+    }
+    conversa.push({ role: 'user', content: resultados });
+  }
+  throw new AppError('O consultor não conseguiu concluir a resposta', 502);
 }
 
 async function status() {
