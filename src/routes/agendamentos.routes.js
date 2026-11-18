@@ -43,6 +43,7 @@ const criar = z.object({
   duracao_min: z.coerce.number().int().min(5).max(720).default(60),
   observacoes: z.string().optional().nullable(),
   servicos: z.array(itemAgendamento).default([]),
+  notificar_whatsapp: z.boolean().default(false),
 })
   .refine((v) => v.cliente_id || v.novo_cliente,
     { message: 'Informe cliente_id ou novo_cliente', path: ['cliente_id'] })
@@ -59,6 +60,8 @@ const atualizar = z.object({
   observacoes: z.string().optional().nullable(),
   status: z.enum(['agendado', 'concluido', 'cancelado']).optional(),
   servicos: z.array(itemAgendamento).optional(),
+  // Só avisa se a data/hora mudou de fato.
+  notificar_whatsapp: z.boolean().default(false),
 });
 
 const filtroMes = z.object({
@@ -87,11 +90,26 @@ router.get('/dia', validate({ query: filtroDia }),
 router.get('/:id', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.buscarPorId(req.params.id))));
 
-router.post('/', validate({ body: criar }),
-  h(async (req, res) => res.status(201).json(await svc.criar(req.body, req.user.id))));
+router.post('/', validate({ body: criar }), h(async (req, res) => {
+  const { notificar_whatsapp, ...dados } = req.body;
+  const ag = await svc.criar(dados, req.user.id);
+  const resposta = { ...ag };
+  if (notificar_whatsapp) resposta.whatsapp = await svc.avisarCliente(ag, 'marcado');
+  res.status(201).json(resposta);
+}));
 
-router.put('/:id', validate({ params: v.idParam, body: atualizar }),
-  h(async (req, res) => res.json(await svc.atualizar(req.params.id, req.body))));
+router.put('/:id', validate({ params: v.idParam, body: atualizar }), h(async (req, res) => {
+  const { notificar_whatsapp, ...dados } = req.body;
+  const antes = notificar_whatsapp ? await svc.buscarPorId(req.params.id) : null;
+  const ag = await svc.atualizar(req.params.id, dados);
+  const resposta = { ...ag };
+  const remarcou = antes
+    && new Date(antes.data_agendada).getTime() !== new Date(ag.data_agendada).getTime();
+  if (remarcou && ag.status === 'agendado') {
+    resposta.whatsapp = await svc.avisarCliente(ag, 'remarcado');
+  }
+  res.json(resposta);
+}));
 
 router.patch('/:id/cancelar', validate({ params: v.idParam }),
   h(async (req, res) => res.json(await svc.cancelar(req.params.id))));
