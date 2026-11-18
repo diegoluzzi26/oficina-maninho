@@ -54,6 +54,7 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
   const [duracao, setDuracao] = useState(60);
   const [obs, setObs] = useState('');
   const [itens, setItens] = useState([]);  // [{servico_id, nome_servico}]
+  const [notificar, setNotificar] = useState(true);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -88,6 +89,7 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
       setItens((editando.servicos || []).map((s) => ({
         servico_id: s.servico_id, nome_servico: s.nome_servico,
       })));
+      setNotificar(true);
     } else {
       setClienteId('');
       setCarroId('');
@@ -99,6 +101,7 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
       setDuracao(60);
       setObs('');
       setItens([]);
+      setNotificar(true);
     }
     setErro('');
   }, [aberto, editando, dataInicial]);
@@ -140,6 +143,7 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
         duracao_min: Number(duracao),
         observacoes: obs || null,
         servicos: itens.filter((i) => i.servico_id || i.nome_servico.trim()),
+        notificar_whatsapp: notificar,
       };
       // Edição sempre usa IDs existentes; criação pode mandar novo_*
       if (editando) {
@@ -340,6 +344,12 @@ function FormAgendamento({ aberto, editando, dataInicial, onFechar, onSalvo }) {
             placeholder="Cliente pediu pra deixar o carro antes das 9h, vai buscar às 17h" />
         </Campo>
 
+        <label className="flex cursor-pointer items-center gap-2 rounded-md bg-maninho-50 px-4 py-3 text-sm text-slate-700">
+          <input type="checkbox" checked={notificar} onChange={(e) => setNotificar(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-maninho-600 focus:ring-maninho-600/30" />
+          {editando ? 'Avisar cliente pelo WhatsApp se mudar a data/hora' : 'Avisar cliente pelo WhatsApp'}
+        </label>
+
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
           <button type="submit" className="btn-primary"
@@ -458,6 +468,7 @@ export default function Agenda() {
   const [detalheDia, setDetalheDia] = useState({});  // { [YYYY-MM-DD]: [ag,ag] } populado sob demanda
   const [diaSelecionado, setDiaSelecionado] = useState(hojeISO());
   const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -534,6 +545,7 @@ export default function Agenda() {
       </div>
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {aviso && <Alerta tipo="aviso" onFechar={() => setAviso('')}>{aviso}</Alerta>}
 
       {/* Calendário + painel do dia lado a lado */}
       <div className="grid gap-5 lg:grid-cols-[1fr_400px]">
@@ -628,7 +640,9 @@ export default function Agenda() {
       <FormAgendamento aberto={formAberto} editando={editando}
         dataInicial={diaSelecionado}
         onFechar={() => setFormAberto(false)}
-        onSalvo={() => {
+        onSalvo={(salvo) => {
+          setAviso(salvo?.whatsapp && !salvo.whatsapp.enviado
+            ? `Agendamento salvo, mas o WhatsApp não foi enviado: ${salvo.whatsapp.motivo}` : '');
           setFormAberto(false); setEditando(null);
           carregarMes(); carregarDia(diaSelecionado);
         }} />
