@@ -20,6 +20,22 @@ function tempoLegivel(min) {
   return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
 }
 
+/**
+ * Aviso depois de salvar um prazo de retorno novo: o backend já colocou
+ * nas revisões quem fez o serviço/peça antes. Sem prazo novo, null.
+ */
+function avisoRetornos(item) {
+  if (item?.clientes_na_revisao === undefined) return null;
+  const n = item.clientes_na_revisao;
+  if (!n) {
+    return `Retorno de ${item.intervalo_retorno_meses} meses salvo em "${item.nome}". `
+      + 'Nenhum cliente novo entrou nas revisões: não há OS fechadas com esse item sem retorno.';
+  }
+  return `Retorno de ${item.intervalo_retorno_meses} meses salvo em "${item.nome}". `
+    + `${n === 1 ? '1 cliente que já fez entrou' : `${n} clientes que já fizeram entraram`} nas revisões. `
+    + 'Quem estiver perto do prazo aparece na fila do follow-up ao atualizar.';
+}
+
 // ------------------ Modal: Novo serviço ------------------
 function FormServico({ aberto, onFechar, onSalvo }) {
   const vazio = { nome: '', descricao: '', valor_padrao: '',
@@ -268,6 +284,7 @@ export default function Servicos() {
   const [pecas, setPecas] = useState(null);
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
   const [aberto, setAberto] = useState(false);
   const [semNcm, setSemNcm] = useState(false);
   const [editandoPeca, setEditandoPeca] = useState(null);
@@ -361,6 +378,7 @@ export default function Servicos() {
       )}
 
       {erro && <Alerta tipo="erro" onFechar={() => setErro('')}>{erro}</Alerta>}
+      {ok && <Alerta tipo="ok" onFechar={() => setOk('')}>{ok}</Alerta>}
 
       {lista === null ? (
         <div className="card">
@@ -404,7 +422,10 @@ export default function Servicos() {
           <ul className="divide-y-0">
             {filtrada.map((item) => aba === 'servicos' ? (
               <LinhaServico key={item.id} servico={item} ehAdmin={ehAdmin}
-                onSalvo={(a) => setServicos((l) => l.map((x) => x.id === a.id ? a : x))}
+                onSalvo={(a) => {
+                  setServicos((l) => l.map((x) => x.id === a.id ? a : x));
+                  setOk(avisoRetornos(a) || '');
+                }}
                 onExcluido={(id) => setServicos((l) => l.filter((x) => x.id !== id))}
                 onVirouPeca={() => carregar()} />
             ) : (
@@ -421,7 +442,11 @@ export default function Servicos() {
 
       {editandoPeca && (
         <ModalPeca peca={editandoPeca} onFechar={() => setEditandoPeca(null)}
-          onSalvo={(a) => { setPecas((l) => l.map((x) => (x.id === a.id ? a : x))); setEditandoPeca(null); }} />
+          onSalvo={(a) => {
+            setPecas((l) => l.map((x) => (x.id === a.id ? a : x)));
+            setEditandoPeca(null);
+            setOk(avisoRetornos(a) || '');
+          }} />
       )}
       {loteAberto && (
         <ModalNcmLote onFechar={() => setLoteAberto(false)}
