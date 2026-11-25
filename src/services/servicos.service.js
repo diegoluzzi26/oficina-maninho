@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const { chave } = require('../utils/semelhanca');
+const retornos = require('./retornos.service');
 
 async function listar({ busca, incluir_inativos } = {}) {
   const params = []; const where = [];
@@ -35,11 +36,18 @@ async function atualizar(id, d) {
     params.push(v); campos.push(`${k} = $${params.length}`);
   }
   if (!campos.length) return buscarPorId(id);
+  const prazoAntes = d.intervalo_retorno_meses != null
+    ? (await buscarPorId(id)).intervalo_retorno_meses : null;
   params.push(id);
   const { rows } = await db.query(
     `UPDATE servicos SET ${campos.join(', ')} WHERE id = $${params.length} RETURNING *`, params,
   );
   if (!rows[0]) throw AppError.notFound('Serviço não encontrado');
+  // Prazo de retorno novo: as OS que já tiveram o serviço entram nas revisões.
+  if (d.intervalo_retorno_meses != null && d.intervalo_retorno_meses !== prazoAntes) {
+    const g = await retornos.gerarDoCatalogo({ servico_id: id });
+    return { ...rows[0], retornos_criados: g.retornos, clientes_na_revisao: g.clientes };
+  }
   return rows[0];
 }
 

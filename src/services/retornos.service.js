@@ -103,7 +103,55 @@ async function remover(id) {
   if (!r.rowCount) throw AppError.notFound('Retorno não encontrado');
 }
 
+/**
+ * O prazo de retorno acabou de ser colocado (ou mudado) num serviço ou
+ * peça do catálogo: cria os retornos das OS já fechadas que tiveram o
+ * item. O trigger do banco só cobre as OS fechadas dali em diante.
+ *
+ * Vale a OS mais recente de cada cliente+carro (quem refez o serviço é
+ * chamado pela última vez que fez), contando o prazo a partir do
+ * fechamento dela. `criado_em` recebe essa mesma data para a revisão
+ * reconhecer qual retorno é o mais novo. OS que já tem retorno do item
+ * (mesmo ignorado ou contatado) não ganha outro.
+ * Retorna quantos retornos foram criados e quantos clientes eles cobrem
+ * (cliente com dois carros conta uma vez).
+ */
+async function gerarDoCatalogo({ servico_id, peca_id }) {
+  const ehServico = Boolean(servico_id);
+  const { rows: [r] } = await db.query(
+    `WITH ultimas AS (
+       SELECT DISTINCT ON (o.cliente_id, o.carro_id)
+              o.id AS os_id, o.cliente_id, o.carro_id,
+              COALESCE(o.fechada_em, o.paga_em, o.aberta_em) AS feita_em,
+              cat.nome, cat.intervalo_retorno_meses AS meses
+         FROM ${ehServico ? 'os_servicos' : 'os_pecas'} it
+         JOIN ordens_servico o ON o.id = it.os_id
+         JOIN ${ehServico ? 'servicos' : 'pecas'} cat ON cat.id = it.${ehServico ? 'servico_id' : 'peca_id'}
+        WHERE cat.id = $1
+          AND cat.intervalo_retorno_meses IS NOT NULL
+          AND o.status IN ('finalizada', 'paga')
+        ORDER BY o.cliente_id, o.carro_id, COALESCE(o.fechada_em, o.paga_em, o.aberta_em) DESC
+     ), criados AS (
+     INSERT INTO retornos (cliente_id, carro_id, os_id, servico_id, nome_servico,
+                           agendado_para, motivo, criado_em)
+     SELECT u.cliente_id, u.carro_id, u.os_id, ${ehServico ? '$1::uuid' : 'NULL'}, u.nome,
+            (u.feita_em::date + (u.meses || ' months')::interval)::date,
+            ${ehServico ? 'u.nome' : `'Troca de ' || u.nome`}, u.feita_em
+       FROM ultimas u
+      WHERE NOT EXISTS (
+        SELECT 1 FROM retornos r
+         WHERE r.os_id = u.os_id
+           AND ${ehServico ? 'r.servico_id = $1' : 'r.servico_id IS NULL AND r.nome_servico = u.nome'}
+      )
+     RETURNING cliente_id
+     )
+     SELECT count(*)::int AS retornos, count(DISTINCT cliente_id)::int AS clientes FROM criados`,
+    [servico_id || peca_id],
+  );
+  return r;
+}
+
 module.exports = {
   listar, doMes, criar, buscarPorId, atualizar,
-  marcarContatado, ignorar, remover,
+  marcarContatado, ignorar, remover, gerarDoCatalogo,
 };

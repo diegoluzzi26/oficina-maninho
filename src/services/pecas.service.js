@@ -1,6 +1,7 @@
 'use strict';
 const db = require('../config/db');
 const ncm = require('./ncm.service');
+const retornos = require('./retornos.service');
 const { agrupar } = require('../utils/semelhanca');
 const AppError = require('../utils/AppError');
 
@@ -51,11 +52,18 @@ async function atualizar(id, d) {
     params.push(v); campos.push(`${k} = $${params.length}`);
   }
   if (!campos.length) return buscarPorId(id);
+  const prazoAntes = d.intervalo_retorno_meses != null
+    ? (await buscarPorId(id)).intervalo_retorno_meses : null;
   params.push(id);
   const { rows } = await db.query(
     `UPDATE pecas SET ${campos.join(', ')} WHERE id = $${params.length} RETURNING id`, params,
   );
   if (!rows[0]) throw AppError.notFound('Peça não encontrada');
+  // Prazo de retorno novo: as OS que já tiveram a peça entram nas revisões.
+  if (d.intervalo_retorno_meses != null && d.intervalo_retorno_meses !== prazoAntes) {
+    const g = await retornos.gerarDoCatalogo({ peca_id: id });
+    return { ...(await buscarPorId(id)), retornos_criados: g.retornos, clientes_na_revisao: g.clientes };
+  }
   return buscarPorId(id);
 }
 
