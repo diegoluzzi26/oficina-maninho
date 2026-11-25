@@ -20,3 +20,4 @@ Marque o status ao concluir cada fase.
 2. [x] Lembrete automático de revisão via WhatsApp. (geração diária da fila é automática; o envio do WhatsApp segue manual, com revisão no Kanban)
 3. [x] Cada oficina com o próprio número de WhatsApp. (config por oficina, instância = slug, webhook roteado por instância; no deploy, reconectar o QR da Maninho na instância 'maninho')
 4. [x] Assinatura, onboarding e contrato. (onboarding por super-admin + assinatura Fase A com bloqueio/graça + planos essencial/profissional/completo com gating de recursos + aceite de contrato por oficina; falta só a Fase B — provedor de pagamento por webhook)
+5. [x] Consultor de IA com acesso aos dados da oficina. (chat do Assistente consulta clientes, veículos, OS, financeiro, despesas e follow-up por ferramentas, só leitura e no schema da oficina do JWT; mensagem de WhatsApp e follow-up só como proposta que o admin confirma na tela; teto de 8 consultas por pergunta; só admin no plano Completo)
