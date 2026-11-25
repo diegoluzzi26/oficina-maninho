@@ -202,3 +202,77 @@ test('resultados: enviados, responderam, voltaram e faturamento', async () => {
   assert.equal(r.data.por_tipo.manutencao.voltaram, 1);
   assert.equal(r.data.por_mes.length, 1);
 });
+
+// ---- Prazo de retorno colocado depois: OS antigas entram nas revisões ----
+
+/** OS fechada há `dias` dias; `item` = { servico_id } ou { peca_id, nome }. */
+async function osFechadaHa(dias, item) {
+  const [os] = await q(
+    `INSERT INTO ordens_servico (cliente_id, carro_id) VALUES ($1, $2) RETURNING id`,
+    [ctx.idsA.cliente, ctx.idsA.carro],
+  );
+  if (item.servico_id) {
+    await q(`INSERT INTO os_servicos (os_id, servico_id, nome_servico, valor_unit) VALUES ($1, $2, 'Alinhamento', 120)`,
+      [os.id, item.servico_id]);
+  } else {
+    await q(`INSERT INTO os_pecas (os_id, peca_id, descricao, valor_unit) VALUES ($1, $2, $3, 80)`,
+      [os.id, item.peca_id, item.nome]);
+  }
+  await q(
+    `UPDATE ordens_servico SET status = 'finalizada',
+            aberta_em = now() - ($2::int || ' days')::interval, fechada_em = now() - ($2::int || ' days')::interval
+      WHERE id = $1`, [os.id, dias],
+  );
+  return os.id;
+}
+
+test('prazo de retorno colocado no serviço: OS que já tiveram o serviço entram nas revisões', async () => {
+  const [s] = await q(`INSERT INTO servicos (nome, valor_padrao) VALUES ('Alinhamento retroativo', 120) RETURNING id`);
+  await osFechadaHa(400, { servico_id: s.id });
+  const ultima = await osFechadaHa(178, { servico_id: s.id });
+  assert.equal((await q('SELECT 1 FROM retornos')).length, 0, 'sem prazo, fechar a OS não cria retorno');
+
+  const up = await api(`/api/servicos/${s.id}`, { method: 'PUT', body: { intervalo_retorno_meses: 6 } });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.equal(up.data.retornos_criados, 1, "um por cliente+carro, da OS mais recente");
+  assert.equal(up.data.clientes_na_revisao, 1);
+
+  const [r] = await q(
+    `SELECT r.os_id, r.servico_id, r.status,
+            r.agendado_para = (o.fechada_em::date + interval '6 months')::date AS data_certa
+       FROM retornos r JOIN ordens_servico o ON o.id = r.os_id`);
+  assert.equal(r.os_id, ultima);
+  assert.equal(r.servico_id, s.id);
+  assert.equal(r.status, 'pendente');
+  assert.equal(r.data_certa, true, 'prazo conta do fechamento da OS');
+
+  // Salvar de novo (mesmo prazo, ou prazo novo) não duplica.
+  const igual = await api(`/api/servicos/${s.id}`, { method: 'PUT', body: { intervalo_retorno_meses: 6, valor_padrao: 130 } });
+  assert.equal(igual.data.retornos_criados, undefined);
+  const outro = await api(`/api/servicos/${s.id}`, { method: 'PUT', body: { intervalo_retorno_meses: 12 } });
+  assert.equal(outro.data.retornos_criados, 0);
+  assert.equal((await q('SELECT 1 FROM retornos')).length, 1);
+
+  // E o retorno vencendo cai na fila de revisão.
+  await api('/api/followup/automacoes/revisao', { method: 'PUT', body: { antecedencia_dias: 10, ativo: true } });
+  const g = await api('/api/followup/gerar', { method: 'POST', body: { chave: 'revisao' } });
+  assert.equal(g.data.gerados, 1);
+  const [item] = await q('SELECT os_origem_id, mensagem FROM followup_fila');
+  assert.equal(item.os_origem_id, ultima);
+  assert.match(item.mensagem, /Alinhamento retroativo/);
+});
+
+test('prazo de retorno colocado na peça: OS que já tiveram a peça entram nas revisões', async () => {
+  const [p] = await q(`INSERT INTO pecas (nome, valor_padrao) VALUES ('Filtro de cabine retroativo', 80) RETURNING id`);
+  const os = await osFechadaHa(30, { peca_id: p.id, nome: 'Filtro de cabine retroativo' });
+
+  const up = await api(`/api/pecas/${p.id}`, { method: 'PUT', body: { intervalo_retorno_meses: 12 } });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.equal(up.data.retornos_criados, 1);
+
+  const [r] = await q('SELECT os_id, servico_id, nome_servico, motivo FROM retornos');
+  assert.equal(r.os_id, os);
+  assert.equal(r.servico_id, null);
+  assert.equal(r.nome_servico, 'Filtro de cabine retroativo');
+  assert.equal(r.motivo, 'Troca de Filtro de cabine retroativo');
+});
