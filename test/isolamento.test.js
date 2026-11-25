@@ -14,7 +14,15 @@ const { setup } = require('./helpers/tenancy');
 
 let ctx;
 
-before(async () => { ctx = await setup(); });
+before(async () => {
+  ctx = await setup();
+  // Sem aceite do contrato a API responde 403 em tudo — o teste mediria o
+  // bloqueio do contrato, não o isolamento. As duas oficinas aceitam antes.
+  for (const token of [ctx.tokenA, ctx.tokenB]) {
+    const aceite = await ctx.api('/api/contrato/aceitar', { method: 'POST', token, body: {} });
+    assert.equal(aceite.status < 300, true, `aceite do contrato: ${JSON.stringify(aceite.data)}`);
+  }
+});
 after(async () => { if (ctx) await ctx.teardown(); });
 
 // Atalhos: A é o "atacante", tenta alcançar recursos de B.
