@@ -139,6 +139,34 @@ como `✓ NNN_nome.sql`.
 Se algum arquivo do frontend mudou, a Vercel redeploya sozinha assim
 que o push chega ao GitHub — não precisa mexer no servidor pra isso.
 
+#### Deploy pelo botão do GitHub (Actions)
+
+Em **Actions → Deploy produção → Run workflow**, o GitHub entra por SSH
+no servidor e roda `deploy/deploy.sh` em `/opt/oficina`, depois confere se
+a API responde `/health`. Só roda quando alguém clica — merge não publica
+sozinho.
+
+Se o que vai chegar traz **migration nova**, o deploy para sem mexer em
+nada: migration só vai pra produção depois de testada num dump restaurado,
+e esse deploy é feito na mão (comando acima).
+
+Configuração (uma vez), em Settings → Secrets and variables → Actions:
+
+```bash
+# No seu computador: chave só pra deploy, sem senha
+ssh-keygen -t ed25519 -N "" -C "deploy-github" -f deploy_github
+ssh-copy-id -i deploy_github.pub root@<IP>   # ou cole no ~/.ssh/authorized_keys do root
+ssh-keyscan -t ed25519 <IP>                   # saída vira DEPLOY_SSH_KNOWN_HOSTS
+```
+
+| Segredo | Valor |
+|---|---|
+| `DEPLOY_HOST` | IP ou domínio do servidor |
+| `DEPLOY_SSH_KEY` | conteúdo do arquivo `deploy_github` (chave privada) |
+| `DEPLOY_SSH_KNOWN_HOSTS` | saída do `ssh-keyscan` |
+
+Depois de cadastrar, apague o `deploy_github` do computador.
+
 ### 1.5.6 Domínio próprio (opcional, ~R$40/ano)
 
 Depois de comprar `autoeletricamaninho.com.br`:
