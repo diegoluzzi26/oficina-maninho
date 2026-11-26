@@ -7,6 +7,9 @@ const pool = new Pool({
   connectionString: env.databaseUrl,
   max: 10,
   idleTimeoutMillis: 30000,
+  // CURRENT_DATE/now() no fuso da oficina, não no padrão do servidor do
+  // banco (que pode ser UTC e virar o dia às 21h).
+  options: `-c timezone=${process.env.TZ || 'America/Sao_Paulo'}`,
 });
 
 pool.on('error', (err) => {
