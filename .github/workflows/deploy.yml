@@ -1,0 +1,92 @@
+# Deploy em produção pelo botão "Run workflow" (aba Actions → Deploy produção).
+#
+# Entra por SSH no servidor, confere se o que vai chegar traz migration nova
+# e, se não trouxer, roda deploy/deploy.sh (git pull + stack inteira com
+# --build). Com migration nova o deploy PARA sem mexer em nada: migration só
+# entra em produção depois de testada num dump restaurado (ver CLAUDE.md), e
+# esse deploy é feito na mão.
+#
+# Segredos (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST              IP ou domínio do servidor
+#   DEPLOY_SSH_KEY           chave privada SSH só pra deploy (a pública vai
+#                            no ~/.ssh/authorized_keys do root no servidor)
+#   DEPLOY_SSH_KNOWN_HOSTS   saída de `ssh-keyscan -t ed25519 <host>`
+name: Deploy produção
+
+on:
+  workflow_dispatch:
+
+# Nunca dois deploys ao mesmo tempo; o segundo espera o primeiro terminar.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIR_APP: /opt/oficina
+    steps:
+      - name: Configurar SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$HOST" ]; then
+            echo "::error::Faltam segredos: DEPLOY_HOST, DEPLOY_SSH_KEY e DEPLOY_SSH_KNOWN_HOSTS."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy no servidor
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "root@$HOST" "DIR_APP='$DIR_APP' sh -s" <<'REMOTO'
+          set -eu
+          cd "$DIR_APP"
+
+          git fetch --quiet
+          ATUAL="$(git rev-parse --short HEAD)"
+          NOVO="$(git rev-parse --short '@{u}')"
+          echo "==> Servidor em $ATUAL; main em $NOVO"
+          if [ "$ATUAL" = "$NOVO" ]; then
+            echo "==> Já está na versão mais nova; rebuild mesmo assim."
+          fi
+
+          MIGRATIONS="$(git diff --name-only --diff-filter=AM HEAD '@{u}' -- migrations/)"
+          if [ -n "$MIGRATIONS" ]; then
+            echo "::error::Deploy cancelado: chegam migrations novas. Teste num dump e faça esse deploy na mão."
+            echo "$MIGRATIONS"
+            exit 1
+          fi
+
+          sh deploy/deploy.sh
+
+          echo "==> Conferindo a API"
+          for i in $(seq 1 30); do
+            if docker exec oficina-api wget -qO- http://127.0.0.1:3000/health >/dev/null 2>&1; then
+              echo "==> API respondeu /health"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::A API não respondeu /health em 60s. Últimos logs:"
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml logs api --tail=50
+          exit 1
+          REMOTO
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
