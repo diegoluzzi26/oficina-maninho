@@ -2,6 +2,10 @@
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const osService = require('./os.service');
+const config = require('./config.service');
+const assinatura = require('./assinatura.service');
+const wa = require('./whatsapp.service');
+const { formatBR } = require('../utils/phone');
 
 /**
  * Agenda de serviços futuros.
@@ -233,7 +237,65 @@ async function agendadosDeAmanha() {
   }));
 }
 
+// ---------------------------------------------------------------------
+// Aviso ao cliente por WhatsApp (marcado / remarcado)
+// ---------------------------------------------------------------------
+
+/** "terça, 17/11 às 09:00" no fuso da oficina. */
+function quandoBR(dataAgendada) {
+  const d = new Date(dataAgendada);
+  const tz = { timeZone: 'America/Sao_Paulo' };
+  const dia = d.toLocaleDateString('pt-BR', { ...tz, weekday: 'long' }).replace('-feira', '');
+  const data = d.toLocaleDateString('pt-BR', { ...tz, day: '2-digit', month: '2-digit' });
+  const hora = d.toLocaleTimeString('pt-BR', { ...tz, hour: '2-digit', minute: '2-digit' });
+  return `${dia}, ${data} às ${hora}`;
+}
+
+/** Texto da mensagem. Pura (testável). tipo: 'marcado' | 'remarcado'. */
+function mensagemAgendamento(ag, tipo, nomeOficina) {
+  const primeiroNome = String(ag.cliente_nome || '').trim().split(/\s+/)[0];
+  const carro = [ag.marca, ag.modelo].filter(Boolean).join(' ');
+  const servicos = (ag.servicos || []).map((s) => s.nome_servico).filter(Boolean);
+  const verbo = tipo === 'remarcado' ? 'foi remarcado para' : 'está marcado para';
+  const onde = nomeOficina ? ` na ${nomeOficina}` : '';
+  return `Olá, ${primeiroNome}! Seu horário${onde} ${verbo} ${quandoBR(ag.data_agendada)}`
+    + ` (${carro}${ag.placa ? `, placa ${ag.placa}` : ''})`
+    + (servicos.length ? ` — ${servicos.join(', ')}` : '')
+    + '. Se precisar remarcar, é só responder esta mensagem.';
+}
+
+async function nomeOficinaAtual() {
+  const slug = db.slugAtual();
+  if (!slug) return null;
+  const { rows } = await db.pool.query('SELECT nome FROM oficinas WHERE slug = $1', [slug]);
+  return rows[0]?.nome || null;
+}
+
+/**
+ * Manda a mensagem pro cliente. Nunca lança: o agendamento já foi
+ * gravado, então a falha volta só no campo `whatsapp` da resposta.
+ */
+async function avisarCliente(ag, tipo) {
+  try {
+    if (!(await assinatura.recursoNaOficinaAtual('whatsapp'))) {
+      return { enviado: false, motivo: 'WhatsApp disponível a partir do plano Profissional' };
+    }
+    if (!config.whatsapp().enabled) return { enviado: false, motivo: 'WhatsApp não configurado' };
+    if (!ag.cliente_telefone) return { enviado: false, motivo: 'Cliente sem telefone' };
+
+    const msg = await wa.notificar({
+      telefone: ag.cliente_telefone,
+      cliente_id: ag.cliente_id,
+      mensagem: mensagemAgendamento(ag, tipo, await nomeOficinaAtual()),
+    });
+    return { enviado: true, id: msg?.id, para: formatBR(ag.cliente_telefone) };
+  } catch (err) {
+    return { enviado: false, motivo: err.message };
+  }
+}
+
 module.exports = {
+  mensagemAgendamento, avisarCliente,
   listarPorMes, listarPorDia, buscarPorId, agendadosDeAmanha,
   criar, atualizar, cancelar, remover, converterEmOS,
 };
